@@ -324,6 +324,12 @@
     background:linear-gradient(180deg,#3a2a1e,#241a15);
     border:3px solid #ffb27a; border-radius:14px; padding:12px;
   }
+  #shopModal, #shopPanel, #statusModal, #statusPanel, #teleportModal, #teleportPanel,
+  #chatModal, #chatPanel, #chatMessages, #jobSelectModal, #jobSelectPanel,
+  #offlineModal, #offlinePanel, #saveCodeModal, #saveCodePanel, #saveCodeScroll,
+  #itemList, #teleportList, #errorPanel {
+    touch-action:auto; -webkit-overflow-scrolling:touch;
+  }
   #chatPanel h2 { color:#ffb27a; font-size:15px; margin-bottom:8px; text-align:center; }
   #chatConnectBox { margin-bottom:8px; }
   #myPeerRow, #chatConnectRow {
@@ -563,7 +569,7 @@
           <button class="shopTabBtn" data-tab="armor" style="flex:1;">🛡️ 방어구</button>
           <button class="shopTabBtn" data-tab="enhance" style="flex:1;">✨ 강화</button>
         </div>
-        <div id="itemList" style="max-height:220px; overflow-y:auto;"></div>
+        <div id="itemList" style="max-height:220px; overflow-y:auto; touch-action:auto;"></div>
         <button id="closeShop">닫기</button>
       </div>
     </div>
@@ -583,7 +589,7 @@
     <div id="teleportModal">
       <div id="teleportPanel">
         <h2>🗺️ 텔레포트</h2>
-        <div id="teleportList" style="max-height:260px; overflow-y:auto;"></div>
+        <div id="teleportList" style="max-height:260px; overflow-y:auto; touch-action:auto;"></div>
         <button id="closeTeleport">닫기</button>
       </div>
     </div>
