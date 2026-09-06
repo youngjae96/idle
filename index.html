@@ -1925,6 +1925,18 @@ function makeRuinWarden(x) {
     state:'chase', actionCooldown: 90, telegraphT:0, slamT:0, engaged:false,
   };
 }
+function makeHighBoss(x, tier, name, theme, power) {
+  const boss = makeRuinWarden(x);
+  boss.name = name;
+  boss.theme = theme;
+  boss.isFinal = false;
+  boss.hp = Math.round((900 + tier * 55) * power);
+  boss.maxHp = boss.hp;
+  boss.atk = Math.round((28 + tier * 1.5) * power);
+  boss.goldReward = Math.round((700 + tier * 28) * power * GOLD_DROP_MULTIPLIER);
+  boss.expReward = Math.round((900 + tier * 45) * power);
+  return boss;
+}
 
 // ---------- Projectiles (ranged monster attacks + ranged job attacks) ----------
 let projectiles = [];
@@ -2501,6 +2513,44 @@ const MAPS = {
     decor: 'abyss',
     monsters: [],
     minLevel: 25,
+  },
+  sky: {
+    name: '천공의 성채',
+    width: 2100,
+    groundColor: '#596b9a',
+    platforms: [
+      {x:0,y:GROUND_Y,w:2100,h:60}, {x:300,y:GROUND_Y-120,w:140,h:20},
+      {x:650,y:GROUND_Y-210,w:130,h:20}, {x:980,y:GROUND_Y-140,w:160,h:20},
+      {x:1370,y:GROUND_Y-230,w:140,h:20}, {x:1740,y:GROUND_Y-120,w:160,h:20},
+    ],
+    portalBack: { x: 20, y: GROUND_Y-70, w:36, h:70, to:'abyss', arriveSide:'portalForward' },
+    portalForward: { x: 2010, y: GROUND_Y-70, w:36, h:70, to:'ruins', arriveSide:'portalBack' },
+    npc: null, decor: 'frost', monsters: [], minLevel: 32,
+  },
+  ruins: {
+    name: '신성 유적',
+    width: 2250,
+    groundColor: '#665846',
+    platforms: [
+      {x:0,y:GROUND_Y,w:2250,h:60}, {x:380,y:GROUND_Y-100,w:150,h:20},
+      {x:760,y:GROUND_Y-180,w:150,h:20}, {x:1120,y:GROUND_Y-120,w:180,h:20},
+      {x:1510,y:GROUND_Y-210,w:150,h:20}, {x:1880,y:GROUND_Y-130,w:170,h:20},
+    ],
+    portalBack: { x: 20, y: GROUND_Y-70, w:36, h:70, to:'sky', arriveSide:'portalForward' },
+    portalForward: { x: 2160, y: GROUND_Y-70, w:36, h:70, to:'throne', arriveSide:'portalBack' },
+    npc: null, decor: 'dungeon', monsters: [], minLevel: 40,
+  },
+  throne: {
+    name: '종말의 왕좌',
+    width: 2400,
+    groundColor: '#241326',
+    platforms: [
+      {x:0,y:GROUND_Y,w:2400,h:60}, {x:320,y:GROUND_Y-140,w:130,h:20},
+      {x:700,y:GROUND_Y-220,w:120,h:20}, {x:1080,y:GROUND_Y-150,w:170,h:20},
+      {x:1480,y:GROUND_Y-240,w:140,h:20}, {x:1880,y:GROUND_Y-160,w:160,h:20},
+    ],
+    portalBack: { x: 20, y: GROUND_Y-70, w:36, h:70, to:'ruins', arriveSide:'portalForward' },
+    npc: null, decor: 'abyss', monsters: [], minLevel: 50,
   }
 };
 function setupMapMonsters() {
@@ -2528,6 +2578,15 @@ function setupMapMonsters() {
     .concat([ makeVoidBat(420, GROUND_Y-260, 16), makeVoidBat(950, GROUND_Y-220, 17), makeVoidBat(1450, GROUND_Y-240, 18) ])
     .concat([ makeRiftWraith(560, 16), makeRiftWraith(1080, 17), makeRiftWraith(1580, 18), makeRiftKnight(1780, 19) ])
     .concat([ makeRuinWarden(1880) ]);
+  MAPS.sky.monsters = [220,600,1050,1450,1810].map((x,i) => makeShadowKnight(x, 22 + Math.floor(i/2)))
+    .concat([ makeVoidBat(450, GROUND_Y-250, 22), makeVoidBat(1200, GROUND_Y-210, 24), makeVoidBat(1700, GROUND_Y-260, 25) ])
+    .concat([ makeRiftWraith(820, 23), makeRiftKnight(1550, 25), makeHighBoss(1980, 26, '천공의 감시자', 'frost', 1.15) ]);
+  MAPS.ruins.monsters = [240,650,1100,1550,1920].map((x,i) => makeShadowKnight(x, 28 + Math.floor(i/2)))
+    .concat([ makeRiftWraith(480, 28), makeRiftWraith(1250, 30), makeRiftKnight(1740, 31) ])
+    .concat([ makeHighBoss(2140, 32, '성역의 수호자', 'lava', 1.3) ]);
+  MAPS.throne.monsters = [240,620,1000,1400,1800].map((x,i) => makeShadowKnight(x, 34 + Math.floor(i/2)))
+    .concat([ makeVoidBat(500, GROUND_Y-260, 34), makeRiftWraith(820, 35), makeVoidBat(1280, GROUND_Y-230, 36), makeRiftKnight(1650, 37) ])
+    .concat([ makeHighBoss(2280, 40, '종말의 왕', 'abyss', 1.55) ]);
 }
 setupMapMonsters();
 
@@ -2917,6 +2976,9 @@ const TELEPORT_DESTS = [
   { id:'lava', name:'🌋 용암 협곡' },
   { id:'frost', name:'❄️ 얼어붙은 정상' },
   { id:'abyss', name:'🌌 멸망의 균열' },
+  { id:'sky', name:'☁️ 천공의 성채' },
+  { id:'ruins', name:'🏛️ 신성 유적' },
+  { id:'throne', name:'👑 종말의 왕좌' },
 ];
 function openTeleport() { renderTeleportList(); openModal('teleportModal'); }
 function closeTeleport() { closeModal('teleportModal'); }
@@ -4257,7 +4319,7 @@ document.getElementById('newGameLink').addEventListener('click', () => {
 });
 
 function startCommon() {
-  [MAPS.field, MAPS.dungeon, MAPS.beach, MAPS.lava, MAPS.frost, MAPS.abyss].forEach(map => map.monsters.forEach(m => {
+  [MAPS.field, MAPS.dungeon, MAPS.beach, MAPS.lava, MAPS.frost, MAPS.abyss, MAPS.sky, MAPS.ruins, MAPS.throne].forEach(map => map.monsters.forEach(m => {
     m.dead = false; m.hp = m.maxHp; m.x = m.startX; if (m.type==='bat') m.y = m.baseY;
     if (m.type === 'boss') { m.state = 'chase'; m.actionCooldown = 90; m.engaged = false; }
   }));
