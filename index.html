@@ -497,7 +497,6 @@
     margin-top:9px; padding:6px 10px; border:1px solid #ffaaaa; border-radius:7px;
     background:#7a2930; color:#fff; font:12px var(--font-body); touch-action:auto;
   }
-
   #btnStatus, #btnInventory, #btnTeleport, #btnChat, #btnSaveCode, #btnMute, #btnTownWarp, #btnAutoHunt {
     box-shadow: 0 2px 0 rgba(0,0,0,0.4); transition: transform .08s, box-shadow .08s;
   }
@@ -772,7 +771,14 @@ document.addEventListener('focusin', e => {
 });
 window.addEventListener('scroll', pinScroll);
 
-const canvas = document.getElementById('gameCanvas');
+const ui = {
+  get(id) { return document.getElementById(id); },
+  text(id, value) { this.get(id).textContent = value; },
+  width(id, value) { this.get(id).style.width = value; },
+  on(id, event, handler, options) { this.get(id).addEventListener(event, handler, options); },
+};
+
+const canvas = ui.get('gameCanvas');
 const ctx = canvas.getContext('2d');
 const W = canvas.width, H = canvas.height;
 const GRAVITY = 0.55, JUMP_FORCE = -13.6, MOVE_SPEED = 4.0, GROUND_Y = 540;
@@ -815,14 +821,14 @@ function rectsOverlap(a, b) {
 
 // ---------- Responsive canvas fit ----------
 function fitCanvas() {
-  const wrapEl = document.getElementById('wrap');
+  const wrapEl = ui.get('wrap');
   const availW = wrapEl.clientWidth;
-  const hudH = document.getElementById('hud').offsetHeight;
+  const hudH = ui.get('hud').offsetHeight;
   const h1H = document.querySelector('h1').offsetHeight;
-  const msgH = document.getElementById('msg').offsetHeight;
-  const ctrlH = document.getElementById('controls').offsetHeight;
-  const btnH = document.getElementById('startBtn').offsetHeight;
-  const linkH = document.getElementById('newGameLink').offsetHeight;
+  const msgH = ui.get('msg').offsetHeight;
+  const ctrlH = ui.get('controls').offsetHeight;
+  const btnH = ui.get('startBtn').offsetHeight;
+  const linkH = ui.get('newGameLink').offsetHeight;
   const gaps = 5 * 6 + 12; // approx flex gaps + padding
   const availH = wrapEl.clientHeight - hudH - h1H - msgH - ctrlH - btnH - linkH - gaps;
   const scale = Math.max(0.2, Math.min(availW / W, availH / H));
@@ -1342,7 +1348,7 @@ function playerTakeDamage(dmg) {
   spawnFloatText(player.x + player.w/2, player.y, '-' + dmg, '#ff6a6a');
   if (player.hp <= 0) {
     player.hp = 0;
-    const goldLoss = Math.floor(player.gold * 0.15);
+    const goldLoss = Math.floor(player.gold * GAME_BALANCE.deathGoldLossRate);
     spendGold(goldLoss, 'death_loss');
     showMsg(`쓰러졌습니다... 골드 ${goldLoss} 손실. 마을로 이동합니다.`, 2200);
     switchMap('town');
@@ -1481,7 +1487,12 @@ function trySkill() {
   if (hitAny) showMsg(`${job.skillEmoji} ${job.skillName}!`, 700);
 }
 
-const GOLD_DROP_MULTIPLIER = 0.7;
+const GAME_BALANCE = Object.freeze({
+  goldDropMultiplier: 0.7,
+  deathGoldLossRate: 0.15,
+  offlineMaxHours: 8,
+});
+const GOLD_DROP_MULTIPLIER = GAME_BALANCE.goldDropMultiplier;
 
 function killMonster(map, m) {
   m.dead = true;
@@ -2239,30 +2250,33 @@ const MAPS = {
     minLevel: 25,
   }
 };
-MAPS.field.monsters = [200,400,800,1200].map((x,i) => makeMonster(x, Math.floor(i/2)))
-  .concat([ makeBat(550, GROUND_Y-220, 1), makeBat(950, GROUND_Y-180, 1) ])
-  .concat([ makeGoblin(650, 1), makeGoblin(1050, 1), makeEliteGoblin(1320, 2) ])
-  .concat([ makeMushroom(320, 1), makeMushroom(1150, 1) ]);
-MAPS.dungeon.monsters = [180,420,900].map((x,i) => makeMonster(x, 3 + Math.floor(i/2)))
-  .concat([ makeBat(450, GROUND_Y-220, 4), makeBat(850, GROUND_Y-200, 4) ])
-  .concat([ makeGoblin(300, 3), makeGoblin(660, 4), makeGoblin(980, 4), makeEliteGoblin(1080, 5) ])
-  .concat([ makeMushroom(560, 3), makeMushroom(820, 4) ])
-  .concat([ makeBoss(1180) ]);
-MAPS.beach.monsters = [200,500,900,1300].map((x,i) => makeCrab(x, 5 + Math.floor(i/2)))
-  .concat([ makeSnail(350, 5), makeSnail(1100, 6), makeShellCrab(750, 7) ])
-  .concat([ makeBat(650, GROUND_Y-200, 6), makeBat(1150, GROUND_Y-180, 6) ]);
-MAPS.lava.monsters = [200,600,1000,1400].map((x,i) => makeScorpion(x, 8 + Math.floor(i/2)))
-  .concat([ makeGoblin(400, 8), makeGoblin(1200, 9), makeMagmaScorpion(820, 10) ])
-  .concat([ makeCrab(800, 9), makeSnail(1050, 9) ])
-  .concat([ makeLavaBoss(1500) ]);
-MAPS.frost.monsters = [200,600,1000,1450].map((x,i) => makeFrostWolf(x, 12 + Math.floor(i/2)))
-  .concat([ makeIceSpirit(400, 12), makeIceSpirit(900, 13), makeIceSpirit(1300, 14), makeFrostWisp(1120, 15) ])
-  .concat([ makeScorpion(700, 12), makeGoblin(1150, 13) ])
-  .concat([ makeFrostBoss(1650) ]);
-MAPS.abyss.monsters = [250,700,1150,1650].map((x,i) => makeShadowKnight(x, 16 + Math.floor(i/2)))
-  .concat([ makeVoidBat(420, GROUND_Y-260, 16), makeVoidBat(950, GROUND_Y-220, 17), makeVoidBat(1450, GROUND_Y-240, 18) ])
-  .concat([ makeRiftWraith(560, 16), makeRiftWraith(1080, 17), makeRiftWraith(1580, 18), makeRiftKnight(1780, 19) ])
-  .concat([ makeRuinWarden(1880) ]);
+function setupMapMonsters() {
+  MAPS.field.monsters = [200,400,800,1200].map((x,i) => makeMonster(x, Math.floor(i/2)))
+    .concat([ makeBat(550, GROUND_Y-220, 1), makeBat(950, GROUND_Y-180, 1) ])
+    .concat([ makeGoblin(650, 1), makeGoblin(1050, 1), makeEliteGoblin(1320, 2) ])
+    .concat([ makeMushroom(320, 1), makeMushroom(1150, 1) ]);
+  MAPS.dungeon.monsters = [180,420,900].map((x,i) => makeMonster(x, 3 + Math.floor(i/2)))
+    .concat([ makeBat(450, GROUND_Y-220, 4), makeBat(850, GROUND_Y-200, 4) ])
+    .concat([ makeGoblin(300, 3), makeGoblin(660, 4), makeGoblin(980, 4), makeEliteGoblin(1080, 5) ])
+    .concat([ makeMushroom(560, 3), makeMushroom(820, 4) ])
+    .concat([ makeBoss(1180) ]);
+  MAPS.beach.monsters = [200,500,900,1300].map((x,i) => makeCrab(x, 5 + Math.floor(i/2)))
+    .concat([ makeSnail(350, 5), makeSnail(1100, 6), makeShellCrab(750, 7) ])
+    .concat([ makeBat(650, GROUND_Y-200, 6), makeBat(1150, GROUND_Y-180, 6) ]);
+  MAPS.lava.monsters = [200,600,1000,1400].map((x,i) => makeScorpion(x, 8 + Math.floor(i/2)))
+    .concat([ makeGoblin(400, 8), makeGoblin(1200, 9), makeMagmaScorpion(820, 10) ])
+    .concat([ makeCrab(800, 9), makeSnail(1050, 9) ])
+    .concat([ makeLavaBoss(1500) ]);
+  MAPS.frost.monsters = [200,600,1000,1450].map((x,i) => makeFrostWolf(x, 12 + Math.floor(i/2)))
+    .concat([ makeIceSpirit(400, 12), makeIceSpirit(900, 13), makeIceSpirit(1300, 14), makeFrostWisp(1120, 15) ])
+    .concat([ makeScorpion(700, 12), makeGoblin(1150, 13) ])
+    .concat([ makeFrostBoss(1650) ]);
+  MAPS.abyss.monsters = [250,700,1150,1650].map((x,i) => makeShadowKnight(x, 16 + Math.floor(i/2)))
+    .concat([ makeVoidBat(420, GROUND_Y-260, 16), makeVoidBat(950, GROUND_Y-220, 17), makeVoidBat(1450, GROUND_Y-240, 18) ])
+    .concat([ makeRiftWraith(560, 16), makeRiftWraith(1080, 17), makeRiftWraith(1580, 18), makeRiftKnight(1780, 19) ])
+    .concat([ makeRuinWarden(1880) ]);
+}
+setupMapMonsters();
 
 let currentMap = 'town';
 function switchMap(id, arriveSide) {
@@ -2313,7 +2327,7 @@ let quest = { count: 0, target: 5, reward: 15, tier: 1 };
 let economyLog = [];
 
 function showMsg(t, ms=1500) {
-  const msg = document.getElementById('msg');
+  const msg = ui.get('msg');
   msg.textContent = t;
   msg.classList.remove('msg-pop');
   void msg.offsetWidth;
@@ -2321,15 +2335,15 @@ function showMsg(t, ms=1500) {
   msgTimer = ms;
 }
 function updateHUD() {
-  document.getElementById('lvl').textContent = player.level;
-  document.getElementById('gold').textContent = Math.floor(player.gold);
-  document.getElementById('hpBar').style.width = Math.max(0, player.hp/player.maxHp*100) + '%';
-  document.getElementById('hpText').textContent = `${Math.max(0,Math.round(player.hp))}/${player.maxHp}`;
-  document.getElementById('mpBar').style.width = Math.max(0, player.mp/player.maxMp*100) + '%';
-  document.getElementById('mpText').textContent = `${Math.max(0,Math.round(player.mp))}/${player.maxMp}`;
-  document.getElementById('expBar').style.width = (player.exp/player.expNeeded*100) + '%';
-  document.getElementById('questText').textContent = `사냥터에서 몬스터 ${quest.target}마리 처치하기 (${quest.count}/${quest.target}) → 보상 ${quest.reward}🪙`;
-  document.getElementById('questBar').style.width = (quest.count/quest.target*100) + '%';
+  ui.text('lvl', player.level);
+  ui.text('gold', Math.floor(player.gold));
+  ui.width('hpBar', Math.max(0, player.hp/player.maxHp*100) + '%');
+  ui.text('hpText', `${Math.max(0,Math.round(player.hp))}/${player.maxHp}`);
+  ui.width('mpBar', Math.max(0, player.mp/player.maxMp*100) + '%');
+  ui.text('mpText', `${Math.max(0,Math.round(player.mp))}/${player.maxMp}`);
+  ui.width('expBar', (player.exp/player.expNeeded*100) + '%');
+  ui.text('questText', `사냥터에서 몬스터 ${quest.target}마리 처치하기 (${quest.count}/${quest.target}) → 보상 ${quest.reward}🪙`);
+  ui.width('questBar', (quest.count/quest.target*100) + '%');
 
   document.getElementById('potionCount').textContent = player.potions || 0;
   document.getElementById('usePotion').disabled = (player.potions || 0) <= 0 || player.hp >= player.maxHp;
@@ -3623,7 +3637,7 @@ function computeOfflineProgress(save) {
   const savedMap = MAPS[save.currentMap];
   if (!save.autoHunt || !savedMap || !savedMap.monsters || !savedMap.monsters.length) return null;
 
-  const elapsedMs = Math.min(Date.now() - save.savedAt, 8 * 3600 * 1000);
+  const elapsedMs = Math.min(Date.now() - save.savedAt, GAME_BALANCE.offlineMaxHours * 3600 * 1000);
   if (elapsedMs < 30000) return null;
 
   const lvl = save.player.level;
