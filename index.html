@@ -2958,6 +2958,7 @@ const STATE_SEND_INTERVAL_MS = 120;
 // needs nothing beyond what PeerJS's public broker already gives us.
 const LOBBY_PREFIX = 'forest-tale-lobby-';
 const LOBBY_COUNT = 5;
+const MAX_ROOM_CONNECTIONS = 4;
 let matchingLobbyId = null; // set once our own peer identity IS a public lobby slot
 let isMatching = false;
 // While tryConnectLobby is actively probing an empty lobby slot, PeerJS
@@ -3002,9 +3003,14 @@ function handleIncomingConnection(c) {
   // the random match doing its job — accept automatically instead of asking,
   // since there's no "friend" to confirm here, that's the whole point.
   if (matchingLobbyId) {
-    setupConnection(c);
-    addChatMessage('system', '🎲 낯선 모험가가 매칭되어 들어왔어요!');
-    if (!document.getElementById('chatModal').classList.contains('open')) bumpChatUnread();
+    if (Object.keys(connections).length >= MAX_ROOM_CONNECTIONS) {
+      try { c.close(); } catch (e) {}
+      return;
+    }
+    if (setupConnection(c)) {
+      addChatMessage('system', '🎲 낯선 모험가가 매칭되어 들어왔어요!');
+      if (!document.getElementById('chatModal').classList.contains('open')) bumpChatUnread();
+    }
     return;
   }
   // If the player isn't even looking at the chat screen right now, don't let
@@ -3089,6 +3095,20 @@ function bumpChatUnread() {
 function clearChatUnread() {
   chatUnread = 0;
   document.getElementById('chatUnreadBadge').classList.remove('show');
+}
+function removeRemotePlayersForConnection(connectionPeerId) {
+  for (const id in remotePlayers) {
+    if (remotePlayers[id].connectionPeerId === connectionPeerId) delete remotePlayers[id];
+  }
+}
+function closeAllConnections() {
+  const activeConnections = Object.values(connections);
+  connections = {};
+  remotePlayers = {};
+  for (const connection of activeConnections) {
+    try { connection.close(); } catch (e) {}
+  }
+  updateChatStatus();
 }
 const CHAT_HISTORY_MAX = 200; // a spammy or malicious peer shouldn't be able to grow this DOM list without bound
 function addChatMessage(kind, text, nickname) {
@@ -3205,7 +3225,13 @@ function sendCurrentState(connection) {
 // that id (falling back to the connection's own peer for anything sent
 // directly, or for older/foreign clients that don't set it).
 function originIdOf(c, data) {
-  return (data && typeof data.id === 'string' && data.id) || c.peer;
+  const id = data && typeof data.id === 'string' ? data.id : '';
+  const isRoomId = id.startsWith(ROOM_PREFIX) && /^\d{6}$/.test(id.slice(ROOM_PREFIX.length));
+  const isLobbyId = id.startsWith(LOBBY_PREFIX) && /^\d+$/.test(id.slice(LOBBY_PREFIX.length));
+  return (isRoomId || isLobbyId) ? id : c.peer;
+}
+function remotePlayerKey(connectionPeerId, originId) {
+  return `${connectionPeerId}::${originId}`;
 }
 
 // Nothing here is a trusted server, so remote packets are just as untrusted
@@ -3270,6 +3296,11 @@ function announceConnectionOpen(c) {
   lastStateSent = 0; // force an immediate state broadcast next frame
 }
 function setupConnection(c) {
+  const existing = connections[c.peer];
+  if (existing && existing !== c) {
+    try { c.close(); } catch (e) {}
+    return false;
+  }
   connections[c.peer] = c;
   const msgTimestamps = [];
   c.on('open', () => announceConnectionOpen(c));
@@ -3293,7 +3324,10 @@ function setupConnection(c) {
       relayToOthers(c.peer, { type: 'chat', id: originId, text, nickname });
     } else if (data.type === 'state') {
       const clean = sanitizeRemoteState(data);
-      remotePlayers[originId] = Object.assign(clean, { lastSeen: Date.now() });
+      const remoteKey = remotePlayerKey(c.peer, originId);
+      remotePlayers[remoteKey] = Object.assign(clean, {
+        lastSeen: Date.now(), connectionPeerId: c.peer, originId,
+      });
       renderRoomMembers();
       relayToOthers(c.peer, Object.assign({ id: originId }, clean));
     } else if (data.type === 'state-request') {
@@ -3301,16 +3335,17 @@ function setupConnection(c) {
     }
   });
   c.on('close', () => {
-    delete connections[c.peer];
-    delete remotePlayers[c.peer];
+    if (connections[c.peer] === c) delete connections[c.peer];
+    removeRemotePlayersForConnection(c.peer);
     updateChatStatus();
     addChatMessage('system', '연결이 종료되었습니다.');
   });
   c.on('error', () => {
-    delete connections[c.peer];
-    delete remotePlayers[c.peer];
+    if (connections[c.peer] === c) delete connections[c.peer];
+    removeRemotePlayersForConnection(c.peer);
     updateChatStatus();
   });
+  return true;
 }
 // Drop anyone we haven't heard a position update from in a while (covers the
 // case where a tab is killed without firing the 'close' event).
@@ -3382,8 +3417,7 @@ function initPeer(attempt) {
 function makeNewRoom() {
   if (peer && !peer.destroyed) { try { peer.destroy(); } catch(e) {} }
   peer = null;
-  connections = {};
-  remotePlayers = {};
+  closeAllConnections();
   matchingLobbyId = null;
   setMatchUI('done', '');
   updateChatStatus();
@@ -3436,7 +3470,7 @@ function tryConnectLobby(order, idx, cb) {
     settled = true;
     if (currentLobbyProbeReject === advance) currentLobbyProbeReject = null;
     clearTimeout(timer);
-    setupConnection(c);
+    if (!setupConnection(c)) { cb(true); return; }
     // We're already inside this connection's 'open' event, so the 'open'
     // listener setupConnection just registered above will never fire on its
     // own (see the comment on announceConnectionOpen) — run it ourselves.
@@ -3459,9 +3493,7 @@ function becomeLobbyHost(order, idx) {
   const lobbyId = LOBBY_PREFIX + order[idx];
   if (peer && !peer.destroyed) { try { peer.destroy(); } catch (e) {} }
   peer = null;
-  connections = {};
-  remotePlayers = {};
-  updateChatStatus();
+  closeAllConnections();
   let p;
   try {
     p = new Peer(lobbyId, { config: peerIceConfig() });
@@ -3492,6 +3524,10 @@ function becomeLobbyHost(order, idx) {
 }
 function startRandomMatch() {
   if (isMatching) return;
+  if (Object.keys(connections).length > 0) {
+    setMatchUI('done', '이미 연결된 모험가가 있어요. 먼저 현재 연결을 종료해주세요.');
+    return;
+  }
   matchingLobbyId = null;
   setMatchUI('searching', '');
   const order = shuffledLobbyOrder();
@@ -3597,8 +3633,12 @@ document.getElementById('connectPeerBtn').addEventListener('click', () => {
   if (!peer) return;
   const targetId = ROOM_PREFIX + code;
   if (connections[targetId]) return;
-  const c = peer.connect(targetId);
-  setupConnection(c);
+  try {
+    const c = peer.connect(targetId, { reliable: true });
+    setupConnection(c);
+  } catch (e) {
+    addChatMessage('system', '방에 연결할 수 없어요. 잠시 후 다시 시도해주세요.');
+  }
 });
 function sendChatMessage() {
   const input = document.getElementById('chatInput');
