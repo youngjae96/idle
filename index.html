@@ -2931,12 +2931,25 @@ function broadcastAll(data) {
 function relayToOthers(fromId, data) {
   for (const id in connections) { if (id !== fromId) { try { connections[id].send(data); } catch(e) {} } }
 }
+function getLocalPlayerState() {
+  return {
+    type: 'state', x: player.x, y: player.y, facing: player.facing,
+    anim: player.attackAnim > 0 ? 'attack' : (!player.onGround ? 'jump' : (Math.abs(player.vx) > 0.3 ? 'walk' : 'idle')),
+    hp: player.hp, maxHp: player.maxHp, nickname: player.nickname,
+    job: player.job, level: player.level, map: currentMap,
+  };
+}
+function sendCurrentState(connection) {
+  try { connection.send(getLocalPlayerState()); } catch (e) {}
+}
 function setupConnection(c) {
   connections[c.peer] = c;
   c.on('open', () => {
     updateChatStatus();
     addChatMessage('system', '친구와 연결되었습니다!');
     try { c.send({ type:'chat', nickname: player.nickname || '모험가', text: '👋 접속했습니다!' }); } catch(e) {}
+    sendCurrentState(c);
+    setTimeout(() => sendCurrentState(c), 250);
     lastStateSent = 0; // force an immediate state broadcast next frame
   });
   c.on('data', data => {
@@ -2948,6 +2961,8 @@ function setupConnection(c) {
       remotePlayers[c.peer] = Object.assign({}, data, { lastSeen: Date.now() });
       renderRoomMembers();
       relayToOthers(c.peer, data);
+    } else if (data.type === 'state-request') {
+      sendCurrentState(c);
     }
   });
   c.on('close', () => {
@@ -3260,14 +3275,7 @@ function sendStateThrottled() {
   const now = Date.now();
   if (now - lastStateSent < STATE_SEND_INTERVAL_MS) return;
   lastStateSent = now;
-  broadcastAll({
-    type: 'state',
-    x: player.x, y: player.y, facing: player.facing,
-    anim: player.attackAnim > 0 ? 'attack' : (!player.onGround ? 'jump' : (Math.abs(player.vx) > 0.3 ? 'walk' : 'idle')),
-    hp: player.hp, maxHp: player.maxHp,
-    nickname: player.nickname, job: player.job, level: player.level,
-    map: currentMap,
-  });
+  broadcastAll(getLocalPlayerState());
 }
 function drawRemotePlayer(rp) {
   const job = JOBS[rp.job] || JOBS.warrior;
