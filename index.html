@@ -746,6 +746,20 @@
 </div>
 
 <script>
+/*
+ * Single-file map
+ * 1. Boot and device/browser compatibility helpers
+ * 2. Input, audio, particles, and shared game constants
+ * 3. Player, combat, monsters, projectiles, and maps
+ * 4. Rendering and modal UI
+ * 5. P2P co-op, room matching, and chat
+ * 6. Save data, offline progress, and save-code import/export
+ * 7. Game start, autosave, background recovery, and final initialization
+ *
+ * Keep new code inside its closest section. Put shared state beside the
+ * section that owns it, and keep DOM event binding at the end of that section.
+ */
+
 // Show runtime errors on the page so mobile testing does not require DevTools.
 (function installMobileErrorPanel() {
   const panel = document.createElement('div');
@@ -1401,7 +1415,7 @@ function updatePlayer() {
 
   // portal check
   const portalsHere = [map.portalBack, map.portalForward].filter(Boolean);
-  if (player.portalCooldown <= 0) {
+  if (!autoHunt && player.portalCooldown <= 0) {
     for (const pt of portalsHere) {
       if (rectsOverlap(player, pt)) { switchMap(pt.to, pt.arriveSide); break; }
     }
@@ -1572,8 +1586,8 @@ function autoHuntStep(map) {
 
   // attack once in range (prefer the AOE skill when it's ready)
   if (!needDescend && Math.abs(dx) <= engageRange && canAttack) {
-    if (player.skillCooldown <= 0) trySkill();
-    else if (player.attackCooldown <= 0) tryAttack();
+    if (player.skillCooldown <= 0 && trySkill(false)) return moving;
+    if (player.attackCooldown <= 0) tryAttack();
   }
 
   return moving;
@@ -1704,11 +1718,14 @@ function tryAttack() {
   }
 }
 
-function trySkill() {
-  if (player.skillCooldown > 0) return;
+function trySkill(showInsufficientMessage = true) {
+  if (player.skillCooldown > 0) return false;
   const job = JOBS[player.job] || JOBS.warrior;
   const cost = job.skillCost;
-  if (player.mp < cost) { showMsg('MP가 부족합니다', 700); return; }
+  if (player.mp < cost) {
+    if (showInsufficientMessage) showMsg('MP가 부족합니다', 700);
+    return false;
+  }
   player.mp -= cost;
   player.skillCooldown = job.skillCooldown;
   player.skillCooldownMax = job.skillCooldown;
@@ -1727,6 +1744,7 @@ function trySkill() {
     if (Math.hypot(mx - cx, my - cy) < radius) { dealDamage(map, m, player.atk * job.skillDmgMult, cx); hitAny = true; }
   }
   if (hitAny) showMsg(`${job.skillEmoji} ${job.skillName}!`, 700);
+  return true;
 }
 
 function killMonster(map, m) {
