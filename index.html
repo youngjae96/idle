@@ -56,9 +56,13 @@
 
   #hud {
     width:100%; display:flex; flex-direction:column; gap:4px; flex-shrink:0;
-    background: linear-gradient(180deg,var(--panel-a),var(--panel-b));
-    padding:6px 12px; border-radius:12px; border:2px solid var(--border-purple);
-    box-shadow: inset 0 0 8px rgba(0,0,0,0.4);
+    background: linear-gradient(180deg, rgba(67,48,92,0.96), rgba(29,18,38,0.96));
+    padding:6px 12px; border-radius:12px; border:2px solid rgba(143,109,201,0.9);
+    box-shadow: inset 0 0 10px rgba(255,255,255,0.08), 0 8px 18px rgba(15,8,18,0.35);
+    position:relative;
+  }
+  #hud::before {
+    content:''; position:absolute; inset:2px 8px auto 8px; height:1px; background:linear-gradient(90deg, transparent, rgba(255,214,128,0.9), transparent);
   }
   .hud-top { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#e8dcff; font-weight:bold; flex-wrap:wrap; row-gap:4px; }
   .hud-top > div { min-width:0; flex-wrap:wrap; row-gap:4px; }
@@ -71,13 +75,21 @@
   .hud-row .bar-outer { flex:1; }
 
   #canvasWrap { position:relative; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; width:100%; overflow:hidden; }
-  #gameCanvas { display:block; max-width:100%; max-height:100%; height:auto; border:4px solid #2a1e14; border-radius:8px; background:#7fc9e8; box-shadow:0 12px 30px rgba(0,0,0,0.5); }
+  #gameCanvas { display:block; max-width:100%; max-height:100%; height:auto; border:4px solid #2a1e14; border-radius:8px; background:#7fc9e8; box-shadow:0 12px 30px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(255,255,255,0.08); }
 
-  #msg { height:16px; color:#ffd166; font-weight:bold; font-size:11.5px; text-align:center; text-shadow:0 1px 2px rgba(0,0,0,0.6); flex-shrink:0; }
-  #controls { color:#b8a8d8; font-size:10px; opacity:0.85; text-align:center; flex-shrink:0; }
+  #msg { height:16px; color:#ffd166; font-weight:bold; font-size:11.5px; text-align:center; text-shadow:0 1px 2px rgba(0,0,0,0.6); flex-shrink:0; letter-spacing:0.3px; }
+  #controls { color:#b8a8d8; font-size:10px; opacity:0.85; text-align:center; flex-shrink:0; letter-spacing:0.1px; }
 
   #startBtn { padding:9px 24px; font-size:15px; font-weight:bold; background:linear-gradient(180deg,var(--gold-a),var(--gold-b)); color:#4a2a10; border:none; border-radius:30px; box-shadow:0 4px 0 var(--gold-shadow); flex-shrink:0; }
-  #startBtn:active { box-shadow:0 1px 0 var(--gold-shadow); transform:translateY(3px); }
+  #startBtn { min-width:150px; letter-spacing:0.5px; animation:startButtonPulse 2.8s ease-in-out infinite; transition:transform .08s, box-shadow .08s, filter .15s; }
+  #startBtn:hover { filter:brightness(1.08); }
+  #startBtn:active { box-shadow:0 1px 0 var(--gold-shadow); transform:translateY(3px); animation:none; }
+  @keyframes startButtonPulse {
+    0%,100% { box-shadow:0 4px 0 var(--gold-shadow), 0 0 0 rgba(255,209,102,0); }
+    50% { box-shadow:0 4px 0 var(--gold-shadow), 0 0 20px rgba(255,209,102,0.28); }
+  }
+  #newGameLink, #saveCodeLink { cursor:pointer; transition:color .15s, transform .15s; }
+  #newGameLink:hover, #saveCodeLink:hover { color:#ffe08a !important; transform:translateY(-1px); }
 
   #touchPad { position:absolute; inset:0; pointer-events:none; }
   .tbtn {
@@ -137,9 +149,17 @@
   #bossBar {
     position:absolute; top:8px; left:50%; transform:translateX(-50%);
     width:82%; max-width:480px; z-index:15; display:none;
-    background:linear-gradient(180deg,rgba(30,10,16,0.92),rgba(14,4,8,0.92));
+    background:linear-gradient(180deg,rgba(46,12,16,0.96),rgba(18,4,10,0.96));
     border:2px solid #ff5a5a; border-radius:10px; padding:5px 10px;
-    box-shadow:0 4px 14px rgba(0,0,0,0.5), 0 0 12px rgba(255,90,90,0.4);
+    box-shadow:0 4px 14px rgba(0,0,0,0.5), 0 0 18px rgba(255,90,90,0.5), inset 0 0 8px rgba(255,200,200,0.2);
+  }
+  #bossBar.show {
+    animation: bossBarPulse 0.8s ease-in-out 1;
+  }
+  @keyframes bossBarPulse {
+    0% { transform:translateX(-50%) scale(0.98); opacity:0.7; }
+    50% { transform:translateX(-50%) scale(1.01); opacity:1; }
+    100% { transform:translateX(-50%) scale(1); opacity:1; }
   }
   #bossBar.show { display:block; }
   #bossBar .bn { display:flex; justify-content:space-between; font-size:11px; color:#ffd8d8; font-weight:bold; text-shadow:0 1px 2px #000; margin-bottom:3px; }
@@ -171,6 +191,7 @@
   #shopModal {
     position:absolute; inset:0; background:rgba(10,6,16,0.75);
     display:none; align-items:center; justify-content:center; z-index:20;
+    backdrop-filter: blur(2px);
   }
   #shopModal.open { display:flex; }
   #shopPanel {
@@ -433,6 +454,35 @@
   #closeShop:active, #closeStatus:active, #closeTeleport:active, #closeChat:active {
     box-shadow: 0 1px 0 #362a4a; transform: translateY(2px);
   }
+
+  #shopModal, #statusModal, #teleportModal, #chatModal, #jobSelectModal, #offlineModal, #saveCodeModal {
+    background:rgba(7,5,14,0.78);
+    backdrop-filter:blur(4px) saturate(0.9);
+  }
+  #shopPanel, #statusPanel, #teleportPanel, #chatPanel, #jobSelectPanel, #offlinePanel, #saveCodePanel {
+    animation:panelRise .22s ease-out both;
+  }
+  @keyframes panelRise {
+    from { opacity:0; transform:translateY(10px) scale(0.97); }
+    to { opacity:1; transform:translateY(0) scale(1); }
+  }
+  #shopPanel, #statusPanel, #teleportPanel, #chatPanel, #offlinePanel, #saveCodePanel {
+    box-shadow:0 18px 38px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+  .shop-item button, .shopTabBtn, .jobCard, #closeOffline, #copyExportCode, #applyImportCode {
+    transition:transform .08s, filter .15s, box-shadow .15s;
+  }
+  .shop-item button:hover, .shopTabBtn:hover, .jobCard:hover, #closeOffline:hover, #copyExportCode:hover, #applyImportCode:hover { filter:brightness(1.08); }
+  .shop-item button:active, .shopTabBtn:active, .jobCard:active, #closeOffline:active, #copyExportCode:active, #applyImportCode:active { transform:translateY(2px); }
+  .bar-inner { position:relative; overflow:hidden; }
+  .bar-inner::after {
+    content:''; position:absolute; inset:0; transform:translateX(-100%);
+    background:linear-gradient(105deg, transparent 25%, rgba(255,255,255,0.35) 50%, transparent 75%);
+    animation:barSheen 3.8s ease-in-out infinite;
+  }
+  @keyframes barSheen { 0%,55% { transform:translateX(-100%); } 75%,100% { transform:translateX(100%); } }
+  #msg.msg-pop { animation:msgPop .18s ease-out both; }
+  @keyframes msgPop { from { opacity:0; transform:translateY(3px) scale(0.96); } to { opacity:1; transform:translateY(0) scale(1); } }
 
   #btnStatus, #btnInventory, #btnTeleport, #btnChat, #btnSaveCode, #btnMute, #btnTownWarp, #btnAutoHunt {
     box-shadow: 0 2px 0 rgba(0,0,0,0.4); transition: transform .08s, box-shadow .08s;
@@ -1352,13 +1402,16 @@ function trySkill() {
   if (hitAny) showMsg(`${job.skillEmoji} ${job.skillName}!`, 700);
 }
 
+const GOLD_DROP_MULTIPLIER = 0.7;
+
 function killMonster(map, m) {
   m.dead = true;
-  player.gold += m.goldReward;
+  player.gold += Math.round(m.goldReward * GOLD_DROP_MULTIPLIER);
   gainExp(m.expReward);
   sfxKill();
   spawnParticles(m.x + m.w/2, m.y + m.h/2, m.type==='boss'?30:10, { color: m.type==='boss'?'#ffd166':'#7fe07f', size: m.type==='boss'?5:3, spread: m.type==='boss'?10:5 });
-  spawnFloatText(m.x + m.w/2, m.y - 10, `+${m.goldReward}🪙`, '#ffd166');
+  const droppedGold = Math.round(m.goldReward * GOLD_DROP_MULTIPLIER);
+  spawnFloatText(m.x + m.w/2, m.y - 10, `+${droppedGold}🪙`, '#ffd166');
 
   if (m.type === 'boss') {
     screenShake();
@@ -1383,7 +1436,7 @@ function killMonster(map, m) {
     quest.tier++;
     quest.count = 0;
     quest.target = 5 + quest.tier * 2;
-    quest.reward = 15 + quest.tier * 10;
+    quest.reward = 12 + quest.tier * 8;
   }
   updateHUD();
 }
@@ -1398,35 +1451,35 @@ function killMonster(map, m) {
 function makeMonster(x, tier) {
   return {
     x, y: GROUND_Y - 20, w: 26, h: 20, startX: x, range: 70, dir: Math.random()<0.5?-1:1, speed: 1.0 + tier*0.1,
-    hp: 12 + tier*7.5 + tier*tier*1.1, maxHp: 12 + tier*7.5 + tier*tier*1.1, atk: 2 + tier*1.6 + tier*tier*0.26, goldReward: 3 + tier*2, expReward: 4 + tier*3,
+    hp: 12 + tier*7.5 + tier*tier*1.1, maxHp: 12 + tier*7.5 + tier*tier*1.1, atk: 2 + tier*1.6 + tier*tier*0.26, goldReward: (3 + tier*2) * GOLD_DROP_MULTIPLIER, expReward: 4 + tier*3,
     name: '슬라임', type:'slime', dead:false, respawnAt:0, hitCooldown:0,
   };
 }
 function makeBat(x, baseY, tier) {
   return {
     x, y: baseY, w: 24, h: 18, startX: x, baseY, range: 90, dir: Math.random()<0.5?-1:1, speed: 1.6 + tier*0.1,
-    hp: 9 + tier*6.25 + tier*tier*0.95, maxHp: 9 + tier*6.25 + tier*tier*0.95, atk: 2 + tier*1.6 + tier*tier*0.26, goldReward: 4 + tier*2, expReward: 5 + tier*3,
+    hp: 9 + tier*6.25 + tier*tier*0.95, maxHp: 9 + tier*6.25 + tier*tier*0.95, atk: 2 + tier*1.6 + tier*tier*0.26, goldReward: (4 + tier*2) * GOLD_DROP_MULTIPLIER, expReward: 5 + tier*3,
     name: '박쥐', type:'bat', dead:false, respawnAt:0, hitCooldown:0, bobT: Math.random()*10,
   };
 }
 function makeGoblin(x, tier) {
   return {
     x, y: GROUND_Y - 30, w: 28, h: 30, startX: x, range: 100, dir: Math.random()<0.5?-1:1, speed: 1.7 + tier*0.12,
-    hp: 22 + tier*11.25 + tier*tier*1.7, maxHp: 22 + tier*11.25 + tier*tier*1.7, atk: 4 + tier*2.4 + tier*tier*0.4, goldReward: 6 + tier*3, expReward: 8 + tier*4,
+    hp: 22 + tier*11.25 + tier*tier*1.7, maxHp: 22 + tier*11.25 + tier*tier*1.7, atk: 4 + tier*2.4 + tier*tier*0.4, goldReward: (6 + tier*3) * GOLD_DROP_MULTIPLIER, expReward: 8 + tier*4,
     name: '고블린', type:'goblin', dead:false, respawnAt:0, hitCooldown:0,
   };
 }
 function makeMushroom(x, tier) {
   return {
     x, y: GROUND_Y - 22, w: 26, h: 22, startX: x, range: 0, dir: 1, speed: 0,
-    hp: 14 + tier*7.5 + tier*tier*1.1, maxHp: 14 + tier*7.5 + tier*tier*1.1, atk: 3 + tier*1.6 + tier*tier*0.26, goldReward: 5 + tier*2, expReward: 6 + tier*3,
+    hp: 14 + tier*7.5 + tier*tier*1.1, maxHp: 14 + tier*7.5 + tier*tier*1.1, atk: 3 + tier*1.6 + tier*tier*0.26, goldReward: (5 + tier*2) * GOLD_DROP_MULTIPLIER, expReward: 6 + tier*3,
     name: '독버섯', type:'mushroom', dead:false, respawnAt:0, hitCooldown:0, rangedCooldown: 60 + Math.random()*60,
   };
 }
 function makeBoss(x) {
   return {
     x, y: GROUND_Y - 64, w: 52, h: 64, startX: x, range: 0, dir: -1, speed: 1.3,
-    hp: 320, maxHp: 320, atk: 16, goldReward: 150, expReward: 180,
+    hp: 320, maxHp: 320, atk: 16, goldReward: 150 * GOLD_DROP_MULTIPLIER, expReward: 180,
     name: '그림자 군주', type:'boss', dead:false, respawnAt:Infinity, hitCooldown:0,
     state:'chase', actionCooldown: 90, telegraphT:0, slamT:0, engaged:false,
   };
@@ -1434,28 +1487,28 @@ function makeBoss(x) {
 function makeCrab(x, tier) {
   return {
     x, y: GROUND_Y - 22, w: 30, h: 22, startX: x, range: 60, dir: Math.random()<0.5?-1:1, speed: 2.3 + tier*0.15,
-    hp: 20 + tier*10 + tier*tier*1.55, maxHp: 20 + tier*10 + tier*tier*1.55, atk: 5 + tier*2.56 + tier*tier*0.43, goldReward: 9 + tier*3, expReward: 10 + tier*4,
+    hp: 20 + tier*10 + tier*tier*1.55, maxHp: 20 + tier*10 + tier*tier*1.55, atk: 5 + tier*2.56 + tier*tier*0.43, goldReward: (9 + tier*3) * GOLD_DROP_MULTIPLIER, expReward: 10 + tier*4,
     name: '집게게', type:'crab', dead:false, respawnAt:0, hitCooldown:0, rangedCooldown: 80 + Math.random()*60,
   };
 }
 function makeSnail(x, tier) {
   return {
     x, y: GROUND_Y - 24, w: 30, h: 24, startX: x, range: 30, dir: Math.random()<0.5?-1:1, speed: 0.5 + tier*0.05,
-    hp: 34 + tier*15 + tier*tier*2.3, maxHp: 34 + tier*15 + tier*tier*2.3, atk: 4 + tier*2.24 + tier*tier*0.38, goldReward: 8 + tier*3, expReward: 9 + tier*4,
+    hp: 34 + tier*15 + tier*tier*2.3, maxHp: 34 + tier*15 + tier*tier*2.3, atk: 4 + tier*2.24 + tier*tier*0.38, goldReward: (8 + tier*3) * GOLD_DROP_MULTIPLIER, expReward: 9 + tier*4,
     name: '소라고둥', type:'snail', dead:false, respawnAt:0, hitCooldown:0,
   };
 }
 function makeScorpion(x, tier) {
   return {
     x, y: GROUND_Y - 26, w: 30, h: 26, startX: x, range: 110, dir: Math.random()<0.5?-1:1, speed: 1.8 + tier*0.15,
-    hp: 26 + tier*12.5 + tier*tier*1.95, maxHp: 26 + tier*12.5 + tier*tier*1.95, atk: 6 + tier*2.88 + tier*tier*0.48, goldReward: 11 + tier*4, expReward: 12 + tier*5,
+    hp: 26 + tier*12.5 + tier*tier*1.95, maxHp: 26 + tier*12.5 + tier*tier*1.95, atk: 6 + tier*2.88 + tier*tier*0.48, goldReward: (11 + tier*4) * GOLD_DROP_MULTIPLIER, expReward: 12 + tier*5,
     name: '전갈', type:'scorpion', dead:false, respawnAt:0, hitCooldown:0, dashCooldown:0, dashT:0,
   };
 }
 function makeLavaBoss(x) {
   return {
     x, y: GROUND_Y - 70, w: 58, h: 70, startX: x, range: 0, dir: -1, speed: 1.5,
-    hp: 720, maxHp: 720, atk: 28, goldReward: 380, expReward: 500,
+    hp: 720, maxHp: 720, atk: 28, goldReward: 380 * GOLD_DROP_MULTIPLIER, expReward: 500,
     name: '용암 정령', type:'boss', theme:'lava', dead:false, respawnAt:Infinity, hitCooldown:0,
     state:'chase', actionCooldown: 90, telegraphT:0, slamT:0, engaged:false,
   };
@@ -1463,21 +1516,21 @@ function makeLavaBoss(x) {
 function makeIceSpirit(x, tier) {
   return {
     x, y: GROUND_Y - 24, w: 26, h: 24, startX: x, range: 40, dir: Math.random()<0.5?-1:1, speed: 0.9 + tier*0.08,
-    hp: 24 + tier*11.25 + tier*tier*1.45, maxHp: 24 + tier*11.25 + tier*tier*1.45, atk: 5 + tier*2.56 + tier*tier*0.43, goldReward: 12 + tier*4, expReward: 14 + tier*5,
+    hp: 24 + tier*11.25 + tier*tier*1.45, maxHp: 24 + tier*11.25 + tier*tier*1.45, atk: 5 + tier*2.56 + tier*tier*0.43, goldReward: (12 + tier*4) * GOLD_DROP_MULTIPLIER, expReward: 14 + tier*5,
     name: '얼음정령', type:'icespirit', dead:false, respawnAt:0, hitCooldown:0, rangedCooldown: 70 + Math.random()*60,
   };
 }
 function makeFrostWolf(x, tier) {
   return {
     x, y: GROUND_Y - 28, w: 32, h: 26, startX: x, range: 120, dir: Math.random()<0.5?-1:1, speed: 2.0 + tier*0.15,
-    hp: 30 + tier*13.75 + tier*tier*1.75, maxHp: 30 + tier*13.75 + tier*tier*1.75, atk: 7 + tier*3.2 + tier*tier*0.55, goldReward: 14 + tier*4, expReward: 16 + tier*5,
+    hp: 30 + tier*13.75 + tier*tier*1.75, maxHp: 30 + tier*13.75 + tier*tier*1.75, atk: 7 + tier*3.2 + tier*tier*0.55, goldReward: (14 + tier*4) * GOLD_DROP_MULTIPLIER, expReward: 16 + tier*5,
     name: '서리늑대', type:'frostwolf', dead:false, respawnAt:0, hitCooldown:0, dashCooldown:0, dashT:0,
   };
 }
 function makeFrostBoss(x) {
   return {
     x, y: GROUND_Y - 74, w: 60, h: 74, startX: x, range: 0, dir: -1, speed: 1.5,
-    hp: 1100, maxHp: 1100, atk: 38, goldReward: 650, expReward: 850,
+    hp: 1100, maxHp: 1100, atk: 38, goldReward: 650 * GOLD_DROP_MULTIPLIER, expReward: 850,
     name: '서리 군주', type:'boss', theme:'frost', dead:false, respawnAt:Infinity, hitCooldown:0,
     state:'chase', actionCooldown: 90, telegraphT:0, slamT:0, engaged:false,
   };
@@ -1488,28 +1541,28 @@ function makeFrostBoss(x) {
 function makeShadowKnight(x, tier) {
   return {
     x, y: GROUND_Y - 32, w: 30, h: 32, startX: x, range: 110, dir: Math.random()<0.5?-1:1, speed: 2.1 + tier*0.14,
-    hp: 46 + tier*17 + tier*tier*2.4, maxHp: 46 + tier*17 + tier*tier*2.4, atk: 10 + tier*4.0 + tier*tier*0.68, goldReward: 18 + tier*5, expReward: 20 + tier*6,
+    hp: 46 + tier*17 + tier*tier*2.4, maxHp: 46 + tier*17 + tier*tier*2.4, atk: 10 + tier*4.0 + tier*tier*0.68, goldReward: (18 + tier*5) * GOLD_DROP_MULTIPLIER, expReward: 20 + tier*6,
     name: '그림자기사', type:'shadowknight', dead:false, respawnAt:0, hitCooldown:0, dashCooldown:0, dashT:0,
   };
 }
 function makeVoidBat(x, baseY, tier) {
   return {
     x, y: baseY, w: 26, h: 20, startX: x, baseY, range: 100, dir: Math.random()<0.5?-1:1, speed: 2.3 + tier*0.14,
-    hp: 18 + tier*10 + tier*tier*1.55, maxHp: 18 + tier*10 + tier*tier*1.55, atk: 5 + tier*2.5 + tier*tier*0.42, goldReward: 16 + tier*5, expReward: 18 + tier*6,
+    hp: 18 + tier*10 + tier*tier*1.55, maxHp: 18 + tier*10 + tier*tier*1.55, atk: 5 + tier*2.5 + tier*tier*0.42, goldReward: (16 + tier*5) * GOLD_DROP_MULTIPLIER, expReward: 18 + tier*6,
     name: '심연박쥐', type:'voidbat', dead:false, respawnAt:0, hitCooldown:0, bobT: Math.random()*10,
   };
 }
 function makeRiftWraith(x, tier) {
   return {
     x, y: GROUND_Y - 30, w: 28, h: 30, startX: x, range: 50, dir: Math.random()<0.5?-1:1, speed: 1.0 + tier*0.08,
-    hp: 40 + tier*15 + tier*tier*2.1, maxHp: 40 + tier*15 + tier*tier*2.1, atk: 9 + tier*3.8 + tier*tier*0.64, goldReward: 20 + tier*6, expReward: 22 + tier*7,
+    hp: 40 + tier*15 + tier*tier*2.1, maxHp: 40 + tier*15 + tier*tier*2.1, atk: 9 + tier*3.8 + tier*tier*0.64, goldReward: (20 + tier*6) * GOLD_DROP_MULTIPLIER, expReward: 22 + tier*7,
     name: '균열정령', type:'riftwraith', dead:false, respawnAt:0, hitCooldown:0, rangedCooldown: 60 + Math.random()*60,
   };
 }
 function makeRuinWarden(x) {
   return {
     x, y: GROUND_Y - 80, w: 64, h: 80, startX: x, range: 0, dir: -1, speed: 1.6,
-    hp: 1900, maxHp: 1900, atk: 55, goldReward: 1000, expReward: 1300,
+    hp: 1900, maxHp: 1900, atk: 55, goldReward: 1000 * GOLD_DROP_MULTIPLIER, expReward: 1300,
     name: '멸망의 파수병', type:'boss', theme:'abyss', isFinal:true, dead:false, respawnAt:Infinity, hitCooldown:0,
     state:'chase', actionCooldown: 90, telegraphT:0, slamT:0, engaged:false,
   };
@@ -2164,7 +2217,14 @@ function drawCloud(x,y,s) {
 let camX = 0, running = false, msgTimer = 0, townWarpCooldown = 0;
 let quest = { count: 0, target: 5, reward: 15, tier: 1 };
 
-function showMsg(t, ms=1500) { document.getElementById('msg').textContent = t; msgTimer = ms; }
+function showMsg(t, ms=1500) {
+  const msg = document.getElementById('msg');
+  msg.textContent = t;
+  msg.classList.remove('msg-pop');
+  void msg.offsetWidth;
+  msg.classList.add('msg-pop');
+  msgTimer = ms;
+}
 function updateHUD() {
   document.getElementById('lvl').textContent = player.level;
   document.getElementById('gold').textContent = Math.floor(player.gold);
@@ -2310,6 +2370,37 @@ function drawTownDecor(map) {
   }
 }
 
+function drawBackgroundDepth(map) {
+  const drift = (camX * 0.18) % 320;
+  ctx.save();
+  ctx.globalAlpha = map.decor === 'abyss' ? 0.8 : 0.48;
+  ctx.fillStyle = map.decor === 'field' ? '#5f9a82'
+    : map.decor === 'dungeon' ? '#19132b'
+    : map.decor === 'beach' ? '#5aa7aa'
+    : map.decor === 'lava' ? '#32131a'
+    : map.decor === 'frost' ? '#79a8c4'
+    : map.decor === 'abyss' ? '#160b2b'
+    : '#9b704e';
+  for (let i=-1; i<6; i++) {
+    const x = i * 320 - drift;
+    ctx.beginPath();
+    ctx.moveTo(x, H - 92);
+    ctx.lineTo(x + 72, H - 148);
+    ctx.lineTo(x + 138, H - 112);
+    ctx.lineTo(x + 220, H - 176);
+    ctx.lineTo(x + 320, H - 96);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = map.decor === 'lava' || map.decor === 'abyss' ? 0.22 : 0.16;
+  const mist = ctx.createLinearGradient(0, H - 190, 0, H);
+  mist.addColorStop(0, 'rgba(255,255,255,0)');
+  mist.addColorStop(1, map.decor === 'frost' ? 'rgba(230,250,255,0.9)' : 'rgba(10,8,18,0.9)');
+  ctx.fillStyle = mist;
+  ctx.fillRect(0, H - 190, W, 190);
+  ctx.restore();
+}
+
 function draw() {
   const map = MAPS[currentMap];
   const sky = ctx.createLinearGradient(0,0,0,H);
@@ -2321,6 +2412,15 @@ function draw() {
   else if (map.decor === 'abyss') { sky.addColorStop(0,'#0a0414'); sky.addColorStop(0.55,'#1e0f38'); sky.addColorStop(1,'#100822'); }
   else { sky.addColorStop(0,'#ffe6b8'); sky.addColorStop(0.6,'#ffc98a'); sky.addColorStop(1,'#e8a860'); }
   ctx.fillStyle = sky; ctx.fillRect(0,0,W,H);
+
+  const boss = map.monsters && map.monsters.find(m => m.type === 'boss');
+  if (boss && !boss.dead && boss.engaged) {
+    const flash = 0.08 + Math.sin(Date.now() / 220) * 0.04;
+    ctx.fillStyle = `rgba(255, 90, 90, ${flash})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  drawBackgroundDepth(map);
 
   if (map.decor === 'abyss') {
     // starfield + drifting rift motes instead of clouds — a void sky, not another daytime map
@@ -2344,13 +2444,15 @@ function draw() {
     }
   }
 
-  ctx.fillStyle = map.decor === 'field' ? 'rgba(110,150,140,0.5)'
+  const mistColor = map.decor === 'field' ? 'rgba(110,150,140,0.5)'
     : map.decor === 'dungeon' ? 'rgba(20,10,30,0.6)'
     : map.decor === 'beach' ? 'rgba(120,190,200,0.4)'
     : map.decor === 'lava' ? 'rgba(60,20,10,0.7)'
     : map.decor === 'frost' ? 'rgba(200,230,245,0.55)'
     : map.decor === 'abyss' ? 'rgba(60,20,90,0.6)'
     : 'rgba(150,110,80,0.35)';
+  ctx.fillStyle = mistColor;
+
   if (map.decor === 'abyss') {
     // jagged floating shards instead of rolling hills
     for (let i=-1;i<6;i++) {
