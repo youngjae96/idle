@@ -3,6 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<!-- Best-effort hint against caching this HTML file itself. Not a guarantee —
+     GitHub Pages' CDN and some browsers may still cache it for a while — but
+     it stops most "새로고침해도 옛날 버전" cases. The in-app update banner
+     below (checkForUpdate) is the real safety net for anyone with the tab
+     already open when a new version goes live. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>고요숲 이야기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -91,6 +99,24 @@
   }
   #newGameLink, #saveCodeLink { cursor:pointer; transition:color .15s, transform .15s; }
   #newGameLink:hover, #saveCodeLink:hover { color:#ffe08a !important; transform:translateY(-1px); }
+
+  /* Update-available banner — see checkForUpdate() in the script. Sits above
+     everything else but never blocks input; the player can ignore it and
+     keep playing, and their save isn't touched until they choose to reload. */
+  #updateBanner {
+    position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);
+    transform:translateX(-50%); z-index:9999; display:none;
+    background:linear-gradient(180deg,#3a2a4a,#241a30); border:2px solid var(--gold-a);
+    border-radius:30px; padding:8px 10px 8px 16px; box-shadow:0 6px 18px rgba(0,0,0,0.5);
+    align-items:center; gap:10px; max-width:92%;
+  }
+  #updateBanner.show { display:flex; }
+  #updateBanner span { color:#ffe08a; font-size:12px; font-weight:bold; white-space:nowrap; }
+  #updateBanner button {
+    background:linear-gradient(180deg,var(--gold-a),var(--gold-b)); color:#4a2a10; border:none;
+    border-radius:20px; padding:6px 14px; font-size:12px; font-weight:bold; flex-shrink:0;
+  }
+  #updateBanner button:active { filter:brightness(0.95); }
 
   #touchPad { position:absolute; inset:0; pointer-events:none; }
   .tbtn {
@@ -540,6 +566,10 @@
 </style>
 </head>
 <body>
+<div id="updateBanner">
+  <span>🔄 새 버전이 있어요</span>
+  <button id="updateBannerBtn">새로고침</button>
+</div>
 <div id="wrap">
   <h1>🌲 고요숲 이야기 🌲</h1>
   <div id="hud">
@@ -767,6 +797,38 @@
     showError(String(event.reason || '처리되지 않은 오류'));
   });
 })();
+
+// ---------- Update checker ----------
+// Bump this string on every release you push to GitHub Pages. This does NOT
+// affect saves or game logic at all — it only powers the "새 버전이 있어요"
+// banner below, so someone who already had the tab open when you deployed
+// finds out without having to guess-and-refresh.
+const BUILD_VERSION = '2026-09-06.1';
+let updateAvailable = false;
+async function checkForUpdate() {
+  if (updateAvailable) return; // already showing the banner, no need to re-check
+  try {
+    // cache: 'no-store' + a cache-busting query param so we don't just get
+    // back our own cached copy of this page and compare it to itself.
+    const res = await fetch(location.pathname + '?_cb=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const text = await res.text();
+    const match = text.match(/BUILD_VERSION\s*=\s*'([^']+)'/);
+    if (match && match[1] && match[1] !== BUILD_VERSION) {
+      updateAvailable = true;
+      document.getElementById('updateBanner').classList.add('show');
+    }
+  } catch (e) {
+    // offline or network hiccup — just try again next interval, no need to
+    // bother the player about it
+  }
+}
+document.getElementById('updateBannerBtn').addEventListener('click', () => location.reload());
+// Check periodically for long-lived tabs, and whenever the tab comes back
+// into focus (covers the common case of "closed laptop, opened it a day
+// later" without needing a background timer to survive that gap).
+setInterval(checkForUpdate, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
 
 // Some Android browsers mis-measure the viewport when a page is opened
 // directly from a content:// URI (e.g. tapping a downloaded file), rendering
@@ -1127,6 +1189,72 @@ const ENHANCE_ATK_PER_LEVEL = 2;   // weapon slot: +2 atk per enhance level
 const ENHANCE_HP_PER_LEVEL = 7;    // armor slot: +7 max hp per enhance level
 function enhanceCost(level) { return Math.round(20 * Math.pow(level + 1, 2.1)); }
 
+// ---------- Tunable balance knobs ----------
+// Every number here used to be hardcoded inline at its point of use, in some
+// cases copy-pasted into more than one place (see computeCombatStats and
+// questRewardForTier below — those functions exist specifically so a value
+// changed here can't drift out of sync between live play and other code that
+// needs the same formula, like offline-farm simulation or save validation).
+// When tuning the game, this is the one place to look first.
+const GAME_BALANCE = Object.freeze({
+  // economy
+  goldDropMultiplier: 0.7,
+  deathGoldLossRate: 0.15,
+  offlineMaxHours: 8,
+  offlineEfficiency: 0.7,          // offline-farm gold/exp are worth this fraction of live-play rates
+  offlineRetreatPenaltySec: 15,    // simulated time "lost" walking back to town after a simulated death
+  // player growth per level / per stat point (shared by refreshStats and the
+  // offline-farm simulation via computeCombatStats)
+  atkPerLevel: 1.4,
+  hpPerLevel: 7,
+  atkPerStr: 0.7,
+  atkPerDex: 0.4,
+  atkPerLuk: 0.2,
+  atkPerIntMage: 1.6,   // mage-only bonus atk per INT
+  hpPerStr: 3,
+  critBase: 5,
+  critPerDex: 0.4,
+  critPerLuk: 0.6,
+  critCap: 60,
+  // quest reward curve (shared by the live quest-completion code and
+  // sanitizeSaveData's reconstruction of a loaded save — see
+  // questTargetForTier/questRewardForTier)
+  questBaseTarget: 5,     // tier 1 target
+  questTargetPerTier: 2,  // tier >=2: questBaseTarget + tier * this
+  questBaseReward: 15,    // tier 1 reward
+  questRewardFlat: 12,    // tier >=2: questRewardFlat + tier * questRewardPerTier
+  questRewardPerTier: 8,
+});
+const GOLD_DROP_MULTIPLIER = GAME_BALANCE.goldDropMultiplier;
+
+// Single source of truth for a character's combat stats from their raw data
+// (job/level/gear/stats) — used both for the live player (refreshStats) and
+// for simulating an offline-farming character (computeOfflineProgress) so
+// the two can never silently disagree about how strong a character is.
+function computeCombatStats(jobKey, level, weaponId, armorId, stats, weaponEnhance, armorEnhance) {
+  const job = JOBS[jobKey] || JOBS.warrior;
+  const weapon = WEAPONS.find(w => w.id === weaponId) || WEAPONS[0];
+  const armor = ARMORS.find(a => a.id === armorId) || ARMORS[0];
+  const s = stats || {};
+  const B = GAME_BALANCE;
+  let atk = job.baseAtk + (level - 1) * B.atkPerLevel + weapon.atk + (weaponEnhance || 0) * ENHANCE_ATK_PER_LEVEL
+    + (s.str || 0) * B.atkPerStr + (s.dex || 0) * B.atkPerDex + (s.luk || 0) * B.atkPerLuk;
+  if (jobKey === 'mage') atk += (s.int || 0) * B.atkPerIntMage;
+  const maxHp = job.baseHp + (level - 1) * B.hpPerLevel + armor.hp + (armorEnhance || 0) * ENHANCE_HP_PER_LEVEL + (s.str || 0) * B.hpPerStr;
+  return { atk, maxHp, job, weapon, armor };
+}
+
+// Same idea for the quest reward curve — tier 1 is a fixed baseline, every
+// tier after that follows a formula. Both the live quest-completion code and
+// sanitizeSaveData (which recomputes target/reward when a save is loaded)
+// call these instead of keeping their own copies of the numbers.
+function questTargetForTier(tier) {
+  return tier <= 1 ? GAME_BALANCE.questBaseTarget : GAME_BALANCE.questBaseTarget + tier * GAME_BALANCE.questTargetPerTier;
+}
+function questRewardForTier(tier) {
+  return tier <= 1 ? GAME_BALANCE.questBaseReward : GAME_BALANCE.questRewardFlat + tier * GAME_BALANCE.questRewardPerTier;
+}
+
 const JOBS = {
   warrior: { name:'전사', emoji:'⚔️', color:'#ff9a7a', baseHp:36, baseAtk:6, baseMp:18, mpGrowth:2, atkType:'melee', skillName:'회전베기', skillEmoji:'🌀' },
   mage:    { name:'마법사', emoji:'🔮', color:'#a880ff', baseHp:22, baseAtk:4, baseMp:60, mpGrowth:5, atkType:'ranged', skillName:'파이어볼', skillEmoji:'🔥' },
@@ -1174,23 +1302,17 @@ let player = {
 };
 
 function refreshStats() {
-  const job = JOBS[player.job] || JOBS.warrior;
-  const weapon = WEAPONS.find(w => w.id === player.weaponId) || WEAPONS[0];
-  const armor = ARMORS.find(a => a.id === player.armorId) || ARMORS[0];
   const s = player.stats;
   const lvl = player.level;
+  const { atk, maxHp, job } = computeCombatStats(player.job, lvl, player.weaponId, player.armorId, s, player.weaponEnhance, player.armorEnhance);
 
-  let atk = job.baseAtk + (lvl - 1) * 1.4 + weapon.atk + (player.weaponEnhance || 0) * ENHANCE_ATK_PER_LEVEL + s.str * 0.7 + s.dex * 0.4 + s.luk * 0.2;
-  if (player.job === 'mage') atk += s.int * 1.6;
-
-  const maxHp = job.baseHp + (lvl - 1) * 7 + armor.hp + (player.armorEnhance || 0) * ENHANCE_HP_PER_LEVEL + s.str * 3;
   const maxMp = job.baseMp + (lvl - 1) * job.mpGrowth + s.int * 3;
-  const crit = 5 + s.dex * 0.4 + s.luk * 0.6;
+  const crit = GAME_BALANCE.critBase + s.dex * GAME_BALANCE.critPerDex + s.luk * GAME_BALANCE.critPerLuk;
 
   player.atk = Math.round(atk * 10) / 10;
   player.maxHp = Math.round(maxHp);
   player.maxMp = Math.round(maxMp);
-  player.crit = Math.min(60, Math.round(crit * 10) / 10);
+  player.crit = Math.min(GAME_BALANCE.critCap, Math.round(crit * 10) / 10);
   player.hp = Math.min(player.hp, player.maxHp);
   player.mp = Math.min(player.mp, player.maxMp);
   updateHUD();
@@ -1534,13 +1656,6 @@ function trySkill() {
   if (hitAny) showMsg(`${job.skillEmoji} ${job.skillName}!`, 700);
 }
 
-const GAME_BALANCE = Object.freeze({
-  goldDropMultiplier: 0.7,
-  deathGoldLossRate: 0.15,
-  offlineMaxHours: 8,
-});
-const GOLD_DROP_MULTIPLIER = GAME_BALANCE.goldDropMultiplier;
-
 function killMonster(map, m) {
   m.dead = true;
   const droppedGold = Math.round(m.goldReward * GOLD_DROP_MULTIPLIER);
@@ -1572,8 +1687,8 @@ function killMonster(map, m) {
     spawnFloatText(player.x + player.w/2, player.y - 20, `퀘스트 완료! +${quest.reward}🪙`, '#c65ae0');
     quest.tier++;
     quest.count = 0;
-    quest.target = 5 + quest.tier * 2;
-    quest.reward = 12 + quest.tier * 8;
+    quest.target = questTargetForTier(quest.tier);
+    quest.reward = questRewardForTier(quest.tier);
   }
   updateHUD();
 }
@@ -2370,7 +2485,7 @@ function drawCloud(x,y,s) {
 }
 
 let camX = 0, running = false, msgTimer = 0, townWarpCooldown = 0;
-let quest = { count: 0, target: 5, reward: 15, tier: 1 };
+let quest = { count: 0, target: questTargetForTier(1), reward: questRewardForTier(1), tier: 1 };
 let economyLog = [];
 
 function showMsg(t, ms=1500) {
@@ -2648,10 +2763,25 @@ function draw() {
 
 function loop() { if (!running) return; update(); draw(); requestAnimationFrame(loop); }
 
+// ---------- Modal management ----------
+// Every full-screen panel (shop, status, teleport, chat, save code, job
+// select, offline-progress popup) shares the same `.open` class toggle.
+// Opening one through this helper auto-closes whichever other one happens
+// to be open, so tapping a different menu button doesn't leave two panels
+// stacked on top of each other — the player never has to close one by hand
+// before opening the next.
+const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal'];
+function openModal(id) {
+  for (const modalId of MODAL_IDS) {
+    if (modalId !== id) document.getElementById(modalId).classList.remove('open');
+  }
+  document.getElementById(id).classList.add('open');
+}
+
 // ---------- Shop ----------
 let shopTab = 'weapon';
 function openShop() {
-  document.getElementById('shopModal').classList.add('open');
+  openModal('shopModal');
   renderShopList();
   updateHUD();
 }
@@ -2659,7 +2789,7 @@ function closeShop() { document.getElementById('shopModal').classList.remove('op
 document.getElementById('closeShop').addEventListener('click', closeShop);
 
 // ---------- Status panel (stat point allocation) ----------
-function openStatus() { renderStatusPanel(); document.getElementById('statusModal').classList.add('open'); }
+function openStatus() { renderStatusPanel(); openModal('statusModal'); }
 function closeStatus() { document.getElementById('statusModal').classList.remove('open'); }
 function renderStatusPanel() {
   const job = JOBS[player.job] || JOBS.warrior;
@@ -2695,7 +2825,7 @@ const TELEPORT_DESTS = [
   { id:'frost', name:'❄️ 얼어붙은 정상' },
   { id:'abyss', name:'🌌 멸망의 균열' },
 ];
-function openTeleport() { renderTeleportList(); document.getElementById('teleportModal').classList.add('open'); }
+function openTeleport() { renderTeleportList(); openModal('teleportModal'); }
 function closeTeleport() { document.getElementById('teleportModal').classList.remove('open'); }
 function renderTeleportList() {
   const list = document.getElementById('teleportList');
@@ -2876,12 +3006,14 @@ function clearChatUnread() {
   chatUnread = 0;
   document.getElementById('chatUnreadBadge').classList.remove('show');
 }
+const CHAT_HISTORY_MAX = 200; // a spammy or malicious peer shouldn't be able to grow this DOM list without bound
 function addChatMessage(kind, text, nickname) {
   const list = document.getElementById('chatMessages');
   const div = document.createElement('div');
   div.className = 'chatMsg chatMsg-' + kind;
   div.textContent = kind === 'system' ? text : `${nickname || '?'}: ${text}`;
   list.appendChild(div);
+  while (list.children.length > CHAT_HISTORY_MAX) list.removeChild(list.firstChild);
   list.scrollTop = list.scrollHeight;
   // Anything that isn't our own outgoing message is worth surfacing if the
   // chat window happens to be closed when it comes in.
@@ -2898,12 +3030,23 @@ function playerJobLabel(job) {
   const info = JOBS[job];
   return info ? `${info.emoji} ${info.name}` : '모험가';
 }
+// A nickname is attacker-controlled free text from another peer, never
+// server-trusted data — every place it (or anything else remote) reaches the
+// DOM has to go through textContent/createElement, never innerHTML, or a
+// crafted nickname like "<img src=x onerror=...>" runs as real markup for
+// whoever's screen renders it.
 function renderPlayerDetail(member) {
   const detail = document.getElementById('playerDetail');
   const mapName = MAPS[member.map] ? MAPS[member.map].name : '알 수 없는 지역';
-  detail.innerHTML = `<strong>${member.nickname || '모험가'}</strong><br>` +
-    `${playerJobLabel(member.job)} · Lv.${member.level || 1}<br>` +
-    `📍 ${mapName}<br>❤️ HP ${Math.max(0, Math.round(member.hp || 0))}/${member.maxHp || 0}`;
+  detail.innerHTML = '';
+  const nameLine = document.createElement('strong');
+  nameLine.textContent = member.nickname || '모험가';
+  detail.append(
+    nameLine, document.createElement('br'),
+    document.createTextNode(`${playerJobLabel(member.job)} · Lv.${member.level || 1}`), document.createElement('br'),
+    document.createTextNode(`📍 ${mapName}`), document.createElement('br'),
+    document.createTextNode(`❤️ HP ${Math.max(0, Math.round(member.hp || 0))}/${member.maxHp || 0}`),
+  );
   detail.classList.add('show');
 }
 function renderRoomMembers() {
@@ -2920,7 +3063,12 @@ function renderRoomMembers() {
     const button = document.createElement('button');
     button.className = 'roomMemberBtn';
     const mapName = MAPS[member.map] ? MAPS[member.map].name : '알 수 없는 지역';
-    button.innerHTML = `<span>${member.self ? '⭐ ' : ''}${member.nickname || '모험가'}</span><span class="roomMemberMeta">${member.self ? '나' : `Lv.${member.level || 1} · ${mapName}`}</span>`;
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = (member.self ? '⭐ ' : '') + (member.nickname || '모험가');
+    const metaSpan = document.createElement('span');
+    metaSpan.className = 'roomMemberMeta';
+    metaSpan.textContent = member.self ? '나' : `Lv.${member.level || 1} · ${mapName}`;
+    button.append(nameSpan, metaSpan);
     button.addEventListener('click', () => renderPlayerDetail(member));
     list.appendChild(button);
   }
@@ -2933,7 +3081,7 @@ function relayToOthers(fromId, data) {
 }
 function getLocalPlayerState() {
   return {
-    type: 'state', x: player.x, y: player.y, facing: player.facing,
+    type: 'state', id: peer ? peer.id : null, x: player.x, y: player.y, facing: player.facing,
     anim: player.attackAnim > 0 ? 'attack' : (!player.onGround ? 'jump' : (Math.abs(player.vx) > 0.3 ? 'walk' : 'idle')),
     hp: player.hp, maxHp: player.maxHp, nickname: player.nickname,
     job: player.job, level: player.level, map: currentMap,
@@ -2942,25 +3090,84 @@ function getLocalPlayerState() {
 function sendCurrentState(connection) {
   try { connection.send(getLocalPlayerState()); } catch (e) {}
 }
+// A "state"/"chat" packet arriving on a direct connection isn't necessarily
+// FROM that connection's peer — in a room bigger than 2 people, the host
+// relays a leaf's packet on to every other leaf, so most of what a leaf
+// receives actually originates from someone else. Every outgoing packet now
+// carries the true sender's own peer id in `id`; this resolves it back to
+// that id (falling back to the connection's own peer for anything sent
+// directly, or for older/foreign clients that don't set it).
+function originIdOf(c, data) {
+  return (data && typeof data.id === 'string' && data.id) || c.peer;
+}
+
+// Nothing here is a trusted server, so remote packets are just as untrusted
+// as the room-code space itself — clamp/coerce every field to the shape the
+// game itself would ever produce before it touches storage or rendering,
+// the same way sanitizeSaveData() does for save files.
+function sanitizeRemoteState(data) {
+  const num = (v, lo, hi, fallback) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback; };
+  const str = (v, maxLen, fallback) => (typeof v === 'string' ? v.slice(0, maxLen) : fallback);
+  return {
+    type: 'state',
+    x: num(data.x, -100000, 100000, 0),
+    y: num(data.y, -100000, 100000, 0),
+    facing: data.facing === -1 ? -1 : 1,
+    anim: ['attack', 'jump', 'walk', 'idle'].includes(data.anim) ? data.anim : 'idle',
+    hp: num(data.hp, 0, 1_000_000, 0),
+    maxHp: num(data.maxHp, 1, 1_000_000, 1),
+    nickname: str(data.nickname, 12, '모험가'),
+    job: JOBS[data.job] ? data.job : 'warrior',
+    level: Math.round(num(data.level, 1, 999, 1)),
+    map: MAPS[data.map] ? data.map : 'town',
+  };
+}
+function sanitizeChatText(text) {
+  if (typeof text !== 'string') return null;
+  const trimmed = text.slice(0, 200).trim();
+  return trimmed ? trimmed : null;
+}
+
+// A malicious or misbehaving peer could otherwise send as fast as the wire
+// allows (the 120ms state throttle only limits what WE choose to send, not
+// what someone else sends us) — cap how much any single connection can
+// make us do per second, independent of the incoming-*connection* flood
+// guard above which only covers new connections.
+const PEER_MSG_LIMIT_WINDOW_MS = 1000, PEER_MSG_LIMIT_MAX = 30;
 function setupConnection(c) {
   connections[c.peer] = c;
+  const msgTimestamps = [];
   c.on('open', () => {
     updateChatStatus();
     addChatMessage('system', '친구와 연결되었습니다!');
-    try { c.send({ type:'chat', nickname: player.nickname || '모험가', text: '👋 접속했습니다!' }); } catch(e) {}
+    try { c.send({ type:'chat', id: peer ? peer.id : null, nickname: player.nickname || '모험가', text: '👋 접속했습니다!' }); } catch(e) {}
     sendCurrentState(c);
     setTimeout(() => sendCurrentState(c), 250);
     lastStateSent = 0; // force an immediate state broadcast next frame
   });
   c.on('data', data => {
-    if (!data || !data.type) return;
+    if (!data || typeof data.type !== 'string') return;
+    const now = Date.now();
+    while (msgTimestamps.length && now - msgTimestamps[0] > PEER_MSG_LIMIT_WINDOW_MS) msgTimestamps.shift();
+    msgTimestamps.push(now);
+    if (msgTimestamps.length > PEER_MSG_LIMIT_MAX) return; // silently drop, no need to alarm the player over it
+
+    const originId = originIdOf(c, data);
     if (data.type === 'chat') {
-      addChatMessage('friend', data.text, data.nickname);
-      relayToOthers(c.peer, data);
+      const text = sanitizeChatText(data.text);
+      if (!text) return;
+      const nickname = typeof data.nickname === 'string' ? data.nickname.slice(0, 12) : '모험가';
+      addChatMessage('friend', text, nickname);
+      // Relay a clean object built from scratch, not the raw payload plus
+      // patches — anything else an attacker packed onto `data` (arbitrary
+      // extra fields, oversized junk) would otherwise get forwarded and
+      // amplified through the rest of the mesh unexamined.
+      relayToOthers(c.peer, { type: 'chat', id: originId, text, nickname });
     } else if (data.type === 'state') {
-      remotePlayers[c.peer] = Object.assign({}, data, { lastSeen: Date.now() });
+      const clean = sanitizeRemoteState(data);
+      remotePlayers[originId] = Object.assign(clean, { lastSeen: Date.now() });
       renderRoomMembers();
-      relayToOthers(c.peer, data);
+      relayToOthers(c.peer, Object.assign({ id: originId }, clean));
     } else if (data.type === 'state-request') {
       sendCurrentState(c);
     }
@@ -3176,7 +3383,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 function openChat() {
-  document.getElementById('chatModal').classList.add('open');
+  openModal('chatModal');
   clearChatUnread();
   if (!peer) initPeer();
 }
@@ -3254,7 +3461,7 @@ function sendChatMessage() {
   const text = input.value.trim();
   if (!text) return;
   addChatMessage('me', text, player.nickname || '나');
-  broadcastAll({ type:'chat', nickname: player.nickname || '모험가', text });
+  broadcastAll({ type:'chat', id: peer ? peer.id : null, nickname: player.nickname || '모험가', text });
   input.value = '';
 }
 document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
@@ -3540,6 +3747,40 @@ function validateEconomyLog(log) {
   return log;
 }
 
+// ---------- Save schema migration ----------
+// Bump this whenever an update changes the *shape* of save data — a renamed
+// field, a new required field, a restructured `quest`/`player` object, etc.
+// (Balance-only changes like item prices or monster stats do NOT need a
+// bump — those are read fresh from WEAPONS/ARMORS/etc. every time, never
+// stored in the save itself.)
+//
+// For every bump, add a matching entry to SAVE_MIGRATIONS below that turns a
+// save from the previous version into the new shape. Skipping this step
+// doesn't crash anything immediately — sanitizeSaveData's fallbacks quietly
+// paper over missing/wrong-shaped fields — but "quietly paper over" often
+// means a returning player's stats, items, or progress silently reset to
+// defaults instead of carrying over. Migrating explicitly here keeps that
+// under your control instead of leaving it to sanitizeSaveData's defaults.
+const SAVE_SCHEMA_VERSION = 1;
+const SAVE_MIGRATIONS = {
+  // Example for the next time the shape changes:
+  // 2: (data) => {
+  //   data.player.newField = data.player.newField ?? 0;
+  //   return data;
+  // },
+};
+function migrateSaveData(data) {
+  if (!data || typeof data !== 'object') return data;
+  let version = Number.isInteger(data.schemaVersion) ? data.schemaVersion : 1;
+  while (version < SAVE_SCHEMA_VERSION) {
+    version++;
+    const migrate = SAVE_MIGRATIONS[version];
+    if (migrate) data = migrate(data);
+  }
+  data.schemaVersion = SAVE_SCHEMA_VERSION;
+  return data;
+}
+
 // Clamp/validate fields that shouldn't be able to leave the ranges the game
 // itself would ever produce. Used as a second line of defense even if the
 // checksum above is ever bypassed — an edited save that "checks out" but has
@@ -3561,7 +3802,11 @@ function sanitizeSaveData(data) {
   p.expNeeded = expectedExpNeeded;
   // Gold that's wildly out of line with character level is a strong tell of
   // hand-edited data — cap it relative to level rather than trusting it as-is.
-  const goldCap = 500 + p.level * 4000;
+  // (Loose on purpose: this is a sanity check against absurd edits, not a
+  // balance lever — a well-geared player grinding live for hours can easily
+  // out-earn the offline-farming formula's assumptions, so the cap needs
+  // plenty of headroom above normal play or it'll clip legitimate saves.)
+  const goldCap = 1000 + p.level * 20000;
   p.gold = Math.round(clampNum(p.gold, 0, goldCap, 0));
   if (!p.stats || typeof p.stats !== 'object') p.stats = { str:0, dex:0, int:0, luk:0 };
   const maxAllocatable = (p.level - 1) * 3;
@@ -3595,8 +3840,8 @@ function sanitizeSaveData(data) {
   if (!MAPS[data.currentMap]) data.currentMap = 'town';
   data.autoHunt = !!data.autoHunt;
   const questTier = Math.round(clampNum(data.quest && data.quest.tier, 1, 10000, 1));
-  const defaultTarget = questTier === 1 ? 5 : 5 + questTier * 2;
-  const defaultReward = questTier === 1 ? 15 : 15 + questTier * 10;
+  const defaultTarget = questTargetForTier(questTier);
+  const defaultReward = questRewardForTier(questTier);
   data.quest = {
     tier: questTier,
     target: defaultTarget,
@@ -3612,6 +3857,7 @@ function sanitizeSaveData(data) {
 
 function serializeSave() {
   return {
+    schemaVersion: SAVE_SCHEMA_VERSION,
     savedAt: Date.now(),
     currentMap,
     autoHunt,
@@ -3644,9 +3890,9 @@ function loadSave() {
       console.warn('save checksum mismatch — ignoring edited save');
       return null;
     }
-    try { return sanitizeSaveData(JSON.parse(parsed.data)); } catch (e) { return null; }
+    try { return sanitizeSaveData(migrateSaveData(JSON.parse(parsed.data))); } catch (e) { return null; }
   }
-  return sanitizeSaveData(parsed);
+  return sanitizeSaveData(migrateSaveData(parsed));
 }
 function clearSave() { lsRemove(SAVE_KEY); }
 
@@ -3670,7 +3916,7 @@ function parseSaveCode(codeStr) {
   const wrapper = decodeSaveCode(trimmed.slice(SAVE_CODE_PREFIX.length));
   if (!wrapper || typeof wrapper.data !== 'string' || typeof wrapper.chk !== 'string') throw new Error('bad-data');
   if (signPayload(wrapper.data) !== wrapper.chk) throw new Error('bad-checksum');
-  const data = JSON.parse(wrapper.data);
+  const data = migrateSaveData(JSON.parse(wrapper.data));
   const clean = sanitizeSaveData(data);
   if (!clean || !clean.player || !clean.player.job) throw new Error('bad-data');
   return clean;
@@ -3687,7 +3933,7 @@ function openSaveCodeModal() {
   importArea.value = '';
   const currentSave = running ? serializeSave() : loadSave();
   exportArea.value = currentSave ? buildSaveCode(currentSave) : '';
-  document.getElementById('saveCodeModal').classList.add('open');
+  openModal('saveCodeModal');
 }
 document.getElementById('btnSaveCode').addEventListener('click', openSaveCodeModal);
 const saveCodeLinkEl = document.getElementById('saveCodeLink');
@@ -3750,17 +3996,10 @@ function computeOfflineProgress(save) {
   const avgGold = 5 + lvl * 2;
   const avgExp = 6 + lvl * 3;
 
-  const job = JOBS[save.player.job] || JOBS.warrior;
-  const weapon = WEAPONS.find(w => w.id === save.player.weaponId) || WEAPONS[0];
-  const armor = ARMORS.find(a => a.id === save.player.armorId) || ARMORS[0];
-  const s = save.player.stats;
-  let atk = job.baseAtk + (lvl - 1) * 1.4 + weapon.atk + (save.player.weaponEnhance || 0) * ENHANCE_ATK_PER_LEVEL + s.str * 0.7 + s.dex * 0.4 + s.luk * 0.2;
-  if (save.player.job === 'mage') atk += s.int * 1.6;
-  const maxHp = job.baseHp + (lvl - 1) * 7 + armor.hp + (save.player.armorEnhance || 0) * ENHANCE_HP_PER_LEVEL + s.str * 3;
+  const { atk, maxHp } = computeCombatStats(save.player.job, lvl, save.player.weaponId, save.player.armorId, save.player.stats, save.player.weaponEnhance, save.player.armorEnhance);
 
   const atkIntervalSec = 26 / 60;
   const timePerKill = Math.max(0.35, (avgMonsterHp / Math.max(1, atk)) * atkIntervalSec);
-  const RETREAT_PENALTY_SEC = 15; // time "lost" walking back to town after fainting
 
   let hp = maxHp, potions = save.player.potions || 0;
   let timeUsed = 0, kills = 0, gold = 0, exp = 0, potionsUsed = 0, deaths = 0;
@@ -3777,7 +4016,7 @@ function computeOfflineProgress(save) {
       deaths++;
       gold = Math.round(gold * 0.85);
       hp = maxHp;
-      timeUsed += RETREAT_PENALTY_SEC;
+      timeUsed += GAME_BALANCE.offlineRetreatPenaltySec;
     } else if (hp < maxHp * 0.3 && potions > 0) {
       potions--;
       potionsUsed++;
@@ -3785,11 +4024,10 @@ function computeOfflineProgress(save) {
     }
   }
 
-  const OFFLINE_EFFICIENCY = 0.7;
   return {
     elapsedMs, kills,
-    gold: Math.round(gold * OFFLINE_EFFICIENCY),
-    exp: Math.round(exp * OFFLINE_EFFICIENCY),
+    gold: Math.round(gold * GAME_BALANCE.offlineEfficiency),
+    exp: Math.round(exp * GAME_BALANCE.offlineEfficiency),
     potionsUsed, deaths,
   };
 }
@@ -3805,7 +4043,7 @@ function showOfflineModal(result) {
   document.getElementById('offlineText').innerHTML =
     `${formatDuration(result.elapsedMs)} 동안 자동으로 사냥해서<br>` +
     `🪙 골드 +${result.gold} · ✨ 경험치 +${result.exp} 획득했어요!${extra}`;
-  document.getElementById('offlineModal').classList.add('open');
+  openModal('offlineModal');
 }
 document.getElementById('closeOffline').addEventListener('click', () => {
   document.getElementById('offlineModal').classList.remove('open');
@@ -3814,12 +4052,12 @@ document.getElementById('closeOffline').addEventListener('click', () => {
 document.getElementById('startBtn').addEventListener('click', () => {
   const save = loadSave();
   if (save) continueGame(save);
-  else document.getElementById('jobSelectModal').classList.add('open');
+  else openModal('jobSelectModal');
 });
 document.getElementById('newGameLink').addEventListener('click', () => {
   clearSave();
   document.getElementById('newGameLink').style.display = 'none';
-  document.getElementById('jobSelectModal').classList.add('open');
+  openModal('jobSelectModal');
 });
 
 function startCommon() {
@@ -3850,7 +4088,7 @@ function beginGame(job, nickname) {
     weaponId:'w0', armorId:'a0', ownedWeapons:['w0'], ownedArmors:['a0'],
     weaponEnhance:0, armorEnhance:0 };
   currentMap = 'town';
-  quest = { count: 0, target: 5, reward: 15, tier: 1 };
+  quest = { count: 0, target: questTargetForTier(1), reward: questRewardForTier(1), tier: 1 };
   refreshStats();
   player.hp = player.maxHp; player.mp = player.maxMp;
   startCommon();
