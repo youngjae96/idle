@@ -97,8 +97,8 @@
     0%,100% { box-shadow:0 4px 0 var(--gold-shadow), 0 0 0 rgba(255,209,102,0); }
     50% { box-shadow:0 4px 0 var(--gold-shadow), 0 0 20px rgba(255,209,102,0.28); }
   }
-  #newGameLink, #saveCodeLink { cursor:pointer; transition:color .15s, transform .15s; }
-  #newGameLink:hover, #saveCodeLink:hover { color:#ffe08a !important; transform:translateY(-1px); }
+  #newGameLink { cursor:pointer; transition:color .15s, transform .15s; }
+  #newGameLink:hover { color:#ffe08a !important; transform:translateY(-1px); }
 
   /* Update-available banner — see checkForUpdate() in the script. Sits above
      everything else but never blocks input; the player can ignore it and
@@ -341,15 +341,18 @@
   .unreadBadge.show { display:block; }
 
   #chatModal {
-    position:fixed; inset:0; background:rgba(10,6,16,0.75);
-    display:none; align-items:center; justify-content:center; z-index:9999;
+    position:fixed; inset:0; background:transparent; pointer-events:none;
+    display:none; align-items:flex-start; justify-content:flex-end; z-index:9999;
+    padding:54px 10px 10px 10px;
   }
   #chatModal.open { display:flex; }
   #chatPanel {
-    width:min(94%, 520px); height:min(88dvh, 620px); max-height:88dvh;
+    pointer-events:auto;
+    width:min(84vw, 300px); height:min(64dvh, 460px); max-height:64dvh;
     display:flex; flex-direction:column; overflow:hidden;
-    background:linear-gradient(180deg,#3a2a1e,#241a15);
-    border:3px solid #ffb27a; border-radius:14px; padding:12px;
+    background:linear-gradient(180deg, rgba(58,42,30,0.94), rgba(36,26,21,0.94));
+    border:2px solid #ffb27a; border-radius:14px; padding:10px;
+    box-shadow:0 10px 28px rgba(0,0,0,0.55); backdrop-filter: blur(3px);
   }
   #shopModal, #shopPanel, #statusModal, #statusPanel, #teleportModal, #teleportPanel,
   #chatModal, #chatPanel, #chatMessages, #jobSelectModal, #jobSelectPanel,
@@ -358,16 +361,19 @@
     touch-action:auto; -webkit-overflow-scrolling:touch;
   }
   #chatPanel h2 { color:#ffb27a; font-size:15px; margin-bottom:8px; text-align:center; }
-  #chatTabs { display:flex; gap:6px; margin-bottom:8px; }
-  .chatTabBtn {
-    flex:1; padding:7px; border:1px solid #8a6a5a; border-radius:8px;
-    background:rgba(255,255,255,0.08); color:#d8c8c0; font-size:11px; font-weight:bold;
+  #chatPanelTop { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:8px; }
+  #chatStatus { font-size:11px; color:#d8c8c0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #toggleFriendPanel {
+    flex-shrink:0; padding:5px 8px; border:1px solid #8a6a5a; border-radius:8px;
+    background:rgba(255,255,255,0.08); color:#d8c8c0; font-size:11px; font-weight:bold; white-space:nowrap;
   }
-  .chatTabBtn.active { background:linear-gradient(180deg,#ffb27a,#e8862a); color:#3a1a08; }
-  .chatView { display:none; min-height:0; }
-  .chatView.active { display:block; }
-  #chatView { flex-direction:column; flex:1; }
-  #chatView.active { display:flex; }
+  #toggleFriendPanel.open { background:linear-gradient(180deg,#ffb27a,#e8862a); color:#3a1a08; }
+  #closeChat {
+    flex-shrink:0; width:26px; height:26px; padding:0; line-height:1; font-size:13px; font-weight:bold;
+    background:rgba(255,255,255,0.1); color:#f0e8ff; border:1px solid #8a6a5a; border-radius:8px;
+  }
+  #friendsView { display:none; overflow-y:auto; min-height:0; max-height:44vh; margin-bottom:8px; flex-shrink:0; }
+  #friendsView.open { display:block; }
   #roomMembers { margin:8px 0; }
   #roomMembersTitle { color:#ffd8bd; font-size:11px; font-weight:bold; margin-bottom:5px; }
   #roomMembersList { display:flex; flex-direction:column; gap:4px; max-height:150px; overflow-y:auto; }
@@ -427,7 +433,6 @@
     flex:1; min-height:120px; max-height:none; overflow-y:auto;
     background:rgba(0,0,0,0.3); border-radius:10px; padding:8px; margin-bottom:8px;
   }
-  #friendsView { overflow-y:auto; min-height:0; }
   body.kb-open #chatConnectBox { display:none; }
   .chatMsg { font-size:12px; color:#f0e8ff; margin-bottom:5px; line-height:1.4; word-break:break-word; }
   .chatMsg-system { color:#a89ac0; font-style:italic; text-align:center; }
@@ -449,7 +454,6 @@
     border:2px solid var(--border-purple); border-radius:8px; color:#f0e8ff;
   }
   #chatInput:focus { outline:none; border-color:#ffb27a; }
-  #closeChat { width:100%; padding:8px; background:#5a4a70; color:#fff; border:none; border-radius:8px; font-weight:bold; }
 
   #offlineModal {
     position:absolute; inset:0; background:rgba(10,6,16,0.88);
@@ -617,9 +621,9 @@
         <div class="shop-item" style="flex-direction:column; align-items:stretch; gap:6px;">
           <div class="info"><span class="n">🧪 체력 물약</span>보유 <b id="potionCount">0</b>개 · HP 30% 이하 시 자동 사용</div>
           <div style="display:flex; gap:4px;">
-            <button id="usePotion" style="flex:1; padding:6px 4px; font-size:11px;">사용</button>
             <button id="buyPotion" style="flex:1;">1개 5🪙</button>
             <button id="buyPotion5" style="flex:1;">5개 25🪙</button>
+            <button id="buyPotion10" style="flex:1;">10개 50🪙</button>
           </div>
         </div>
         <div id="shopTabs" style="display:flex; gap:6px; margin:8px 0;">
@@ -653,12 +657,12 @@
     </div>
     <div id="chatModal">
       <div id="chatPanel">
-        <h2>💬 친구 / 채팅</h2>
-        <div id="chatTabs">
-          <button class="chatTabBtn active" data-chat-tab="friends">👥 친구 연결</button>
-          <button class="chatTabBtn" data-chat-tab="chat">💬 채팅</button>
+        <div id="chatPanelTop">
+          <span id="chatStatus">⚪ 연결 안 됨</span>
+          <button id="toggleFriendPanel">👥 친구 연결</button>
+          <button id="closeChat">✕</button>
         </div>
-        <div id="friendsView" class="chatView active">
+        <div id="friendsView">
           <div id="chatConnectBox">
           <div class="statRow" style="font-size:10.5px; color:#c8bce8; margin-bottom:4px;">친구에게 방 번호를 말해주고 그 번호로 들어오게 하세요. 3명 이상이면 한 명(방장)에게 나머지가 다 들어오면 자동으로 서로 연결돼요.</div>
           <div class="statRow" style="font-size:11px;">내 방 번호</div>
@@ -671,7 +675,6 @@
             <input id="friendIdInput" type="text" inputmode="numeric" maxlength="6" placeholder="친구 방 번호 6자리">
             <button id="connectPeerBtn">입장</button>
           </div>
-          <div class="statRow" id="chatStatus" style="font-size:11px;">⚪ 연결 안 됨</div>
           <div id="randomMatchDivider">또는</div>
           <button id="randomMatchBtn">🎲 랜덤 매칭으로 모험가 만나기</button>
           <div class="statRow" id="matchStatus" style="font-size:10.5px; color:#c8bce8;"></div>
@@ -683,14 +686,11 @@
           </div>
           <div id="pendingConnBox"></div>
         </div>
-        <div id="chatView" class="chatView">
-          <div id="chatMessages"></div>
-          <div id="chatInputRow">
-            <input id="chatInput" type="text" maxlength="120" placeholder="메시지 입력...">
-            <button id="sendChatBtn">전송</button>
-          </div>
+        <div id="chatMessages"></div>
+        <div id="chatInputRow">
+          <input id="chatInput" type="text" maxlength="120" placeholder="메시지 입력...">
+          <button id="sendChatBtn">전송</button>
         </div>
-        <button id="closeChat">닫기</button>
       </div>
     </div>
     <div id="jobSelectModal">
@@ -742,7 +742,6 @@
   <div id="controls">폰: 하단 버튼 · PC: ←→ 이동, 스페이스 점프, F 공격, D 스킬, Q 자동사냥 · 포탈에 들어가면 다음 맵으로 이동!</div>
   <button id="startBtn">게임 시작</button>
   <div id="newGameLink" style="display:none; text-align:center; font-size:11px; color:#a89ac0; margin-top:4px; text-decoration:underline;">새 캐릭터로 시작하기 (기존 저장 삭제)</div>
-  <div id="saveCodeLink" style="text-align:center; font-size:11px; color:#a89ac0; margin-top:4px; text-decoration:underline;">💾 저장 코드로 백업 / 복원하기</div>
 </div>
 
 <script>
@@ -1008,7 +1007,7 @@ document.getElementById('btnTownWarp').addEventListener('click', () => {
   switchMap('town');
 });
 
-const SFX_VOLUME_MULT = 4.2;
+const SFX_VOLUME_MULT = 6.5;
 function beep(freq, duration, type='sine', vol=0.08, glideTo=null) {
   if (!audioCtx || !soundOn) return;
   try {
@@ -1055,31 +1054,31 @@ const NOTE_FREQ = {
   C5:523.25, D5:587.33, E5:659.25, F5:698.46, G5:783.99, A5:880.00,
 };
 const BGM_THEMES = {
-  town: { tempo: 92, wave:'triangle', vol:0.05,
+  town: { tempo: 92, wave:'triangle', vol:0.085,
     melody: [['E4',1],['G4',1],['A4',1],['G4',1],['E4',1],['D4',1],['C4',2]],
     bass:   [['C3',4],['G2',4]] },
-  field: { tempo: 128, wave:'triangle', vol:0.05,
+  field: { tempo: 128, wave:'triangle', vol:0.085,
     melody: [['C4',0.5],['E4',0.5],['G4',0.5],['C5',0.5],['G4',0.5],['E4',0.5],['D4',0.5],['G4',0.5],
               ['C4',0.5],['E4',0.5],['F4',0.5],['G4',0.5],['E4',0.5],['C4',0.5],['D4',1]],
     bass:   [['C3',2],['G2',2],['A3',2],['F2',2]] },
-  dungeon: { tempo: 80, wave:'sine', vol:0.045,
+  dungeon: { tempo: 80, wave:'sine', vol:0.077,
     melody: [['A3',1.5],[null,0.5],['C4',1],[null,0.5],['E4',1.5],[null,0.5],['D4',1],[null,1]],
     bass:   [['A2',4],['F2',4]] },
-  beach: { tempo: 100, wave:'sine', vol:0.05,
+  beach: { tempo: 100, wave:'sine', vol:0.085,
     melody: [['G4',0.75],['A4',0.25],['B4',1],['G4',0.75],['E4',0.25],['D4',1],
               ['E4',0.75],['G4',0.25],['A4',1],['G4',1]],
     bass:   [['C3',2],['G2',2]] },
-  lava: { tempo: 150, wave:'sawtooth', vol:0.04,
+  lava: { tempo: 150, wave:'sawtooth', vol:0.068,
     melody: [['D4',0.5],['F4',0.5],['A4',0.5],['D5',0.5],['C5',0.5],['A4',0.5],['F4',0.5],['D4',0.5],
               ['E4',0.5],['G4',0.5],['Bb4',0.5],['E4',1]],
     bass:   [['D2',1],['D2',1],['A2',1],['A2',1],['F2',1],['F2',1],['C2',1],['C2',1]] },
-  frost: { tempo: 76, wave:'sine', vol:0.045,
+  frost: { tempo: 76, wave:'sine', vol:0.077,
     melody: [['E4',2],[null,1],['G4',1],['F4',2],[null,1],['D4',1],['C4',3],[null,1]],
     bass:   [['A2',4],['E2',4]] },
-  abyss: { tempo: 68, wave:'sawtooth', vol:0.04,
+  abyss: { tempo: 68, wave:'sawtooth', vol:0.068,
     melody: [['C4',1.5],[null,0.5],['Eb4',1],[null,0.5],['Gb4',1.5],[null,0.5],['D4',1],['C4',1.5],[null,1]],
     bass:   [['C2',2],['Gb1',2],['Eb2',2],['B1',2]] },
-  boss: { tempo: 150, wave:'square', vol:0.05,
+  boss: { tempo: 150, wave:'square', vol:0.085,
     melody: [['E4',0.5],['E4',0.5],['G4',0.5],['E4',0.5],['D4',0.5],['D4',0.5],['F4',0.5],['D4',0.5],
               ['C4',0.5],['C4',0.5],['E4',0.5],['C4',0.5],['B3',0.5],['B3',0.5],['D4',0.5],['B3',0.5]],
     bass:   [['E2',1],['E2',1],['D2',1],['D2',1],['C2',1],['C2',1],['B1',1],['B1',1]] },
@@ -1619,7 +1618,7 @@ function gainExp(amount) {
   while (player.exp >= player.expNeeded) {
     player.exp -= player.expNeeded;
     player.level++;
-    player.expNeeded = Math.floor(player.expNeeded * 1.35);
+    player.expNeeded = Math.floor(player.expNeeded * 1.45);
     player.statPoints += 3;
     gainedPoints += 3;
     leveled = true;
@@ -2658,13 +2657,13 @@ function updateHUD() {
   ui.width('questBar', (quest.count/quest.target*100) + '%');
 
   document.getElementById('potionCount').textContent = player.potions || 0;
-  document.getElementById('usePotion').disabled = (player.potions || 0) <= 0 || player.hp >= player.maxHp;
   document.getElementById('btnTownWarp').classList.toggle('cooling', townWarpCooldown > 0 || currentMap === 'town');
   document.getElementById('btnAutoHunt').classList.toggle('cooling', currentMap === 'town');
   const shopOpen = document.getElementById('shopModal').classList.contains('open');
   if (shopOpen) {
     document.getElementById('buyPotion').disabled = player.gold < 5;
     document.getElementById('buyPotion5').disabled = player.gold < 25;
+    document.getElementById('buyPotion10').disabled = player.gold < 50;
   }
 
   // skill cooldown ring
@@ -3109,6 +3108,7 @@ function handleIncomingConnection(c) {
 }
 
 function showConnectionRequest(c) {
+  setFriendPanel(true);
   const code = roomCodeOf(c.peer);
   const box = document.getElementById('pendingConnBox');
   box.classList.add('show');
@@ -3644,23 +3644,26 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 function openChat() {
+  const modal = document.getElementById('chatModal');
+  if (modal.classList.contains('open')) { closeChat(); return; }
   openModal('chatModal');
   clearChatUnread();
   if (!peer) initPeer();
+  // Chat itself is always visible now — no tab to click through. The friend
+  // connection panel only opens automatically the first time (before any
+  // connection exists); once connected it stays collapsed so the message
+  // list + input are right there immediately.
+  setFriendPanel(!peerConnected);
+  const messages = document.getElementById('chatMessages');
+  messages.scrollTop = messages.scrollHeight;
+  if (peerConnected) setTimeout(() => document.getElementById('chatInput').focus(), 50);
 }
-function setChatTab(tab) {
-  document.querySelectorAll('.chatTabBtn').forEach(button => {
-    button.classList.toggle('active', button.dataset.chatTab === tab);
-  });
-  document.getElementById('friendsView').classList.toggle('active', tab === 'friends');
-  document.getElementById('chatView').classList.toggle('active', tab === 'chat');
-  if (tab === 'chat') {
-    const messages = document.getElementById('chatMessages');
-    messages.scrollTop = messages.scrollHeight;
-  }
+function setFriendPanel(open) {
+  document.getElementById('friendsView').classList.toggle('open', open);
+  document.getElementById('toggleFriendPanel').classList.toggle('open', open);
 }
-document.querySelectorAll('.chatTabBtn').forEach(button => {
-  button.addEventListener('click', () => setChatTab(button.dataset.chatTab));
+document.getElementById('toggleFriendPanel').addEventListener('click', () => {
+  setFriendPanel(!document.getElementById('friendsView').classList.contains('open'));
 });
 function closeChat() { closeModal('chatModal'); }
 document.getElementById('btnChat').addEventListener('click', openChat);
@@ -3792,11 +3795,6 @@ function drawRemotePlayers() {
 for (const k of ['str','dex','int','luk']) {
   document.getElementById('btn_' + k).addEventListener('click', () => allocateStat(k));
 }
-document.getElementById('usePotion').addEventListener('click', () => {
-  if ((player.potions || 0) <= 0 || player.hp >= player.maxHp) return;
-  player.potions--; player.hp = player.maxHp; sfxCoin(); updateHUD();
-  spawnFloatText(player.x+player.w/2, player.y, '❤️ 회복!', '#5ae0a8');
-});
 function buyPotions(count, cost, reason) {
   if (!spendGold(cost, reason)) return;
   player.potions = (player.potions || 0) + count;
@@ -3805,6 +3803,7 @@ function buyPotions(count, cost, reason) {
 }
 document.getElementById('buyPotion').addEventListener('click', () => buyPotions(1, 5, 'potion'));
 document.getElementById('buyPotion5').addEventListener('click', () => buyPotions(5, 25, 'potion_bundle'));
+document.getElementById('buyPotion10').addEventListener('click', () => buyPotions(10, 50, 'potion_bundle10'));
 
 document.querySelectorAll('.shopTabBtn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -4056,7 +4055,7 @@ function sanitizeSaveData(data) {
   p.level = Math.round(clampNum(p.level, 1, 999, 1));
   p.exp = Math.round(clampNum(p.exp, 0, 10_000_000, 0));
   let expectedExpNeeded = 20;
-  for (let level = 1; level < p.level; level++) expectedExpNeeded = Math.floor(expectedExpNeeded * 1.35);
+  for (let level = 1; level < p.level; level++) expectedExpNeeded = Math.floor(expectedExpNeeded * 1.45);
   p.expNeeded = expectedExpNeeded;
   // Gold that's wildly out of line with character level is a strong tell of
   // hand-edited data — cap it relative to level rather than trusting it as-is.
@@ -4194,8 +4193,6 @@ function openSaveCodeModal() {
   openModal('saveCodeModal');
 }
 document.getElementById('btnSaveCode').addEventListener('click', openSaveCodeModal);
-const saveCodeLinkEl = document.getElementById('saveCodeLink');
-if (saveCodeLinkEl) saveCodeLinkEl.addEventListener('click', openSaveCodeModal);
 document.getElementById('closeSaveCode').addEventListener('click', () => closeModal('saveCodeModal'));
 document.getElementById('copyExportCode').addEventListener('click', () => {
   const area = document.getElementById('exportCodeArea');
