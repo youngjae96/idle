@@ -484,6 +484,20 @@
   #msg.msg-pop { animation:msgPop .18s ease-out both; }
   @keyframes msgPop { from { opacity:0; transform:translateY(3px) scale(0.96); } to { opacity:1; transform:translateY(0) scale(1); } }
 
+  #errorPanel {
+    position:fixed; left:10px; right:10px; top:10px; z-index:10000;
+    display:none; max-height:45vh; overflow:auto; padding:12px;
+    background:rgba(55,8,12,0.96); border:2px solid #ff7272; border-radius:10px;
+    color:#ffe8e8; font:12px/1.45 monospace; white-space:pre-wrap;
+    box-shadow:0 8px 24px rgba(0,0,0,0.5);
+  }
+  #errorPanel.show { display:block; }
+  #errorPanel strong { display:block; color:#ffabab; margin-bottom:5px; }
+  #copyErrorBtn {
+    margin-top:9px; padding:6px 10px; border:1px solid #ffaaaa; border-radius:7px;
+    background:#7a2930; color:#fff; font:12px var(--font-body); touch-action:auto;
+  }
+
   #btnStatus, #btnInventory, #btnTeleport, #btnChat, #btnSaveCode, #btnMute, #btnTownWarp, #btnAutoHunt {
     box-shadow: 0 2px 0 rgba(0,0,0,0.4); transition: transform .08s, box-shadow .08s;
   }
@@ -656,6 +670,58 @@
 </div>
 
 <script>
+// Show runtime errors on the page so mobile testing does not require DevTools.
+(function installMobileErrorPanel() {
+  const panel = document.createElement('div');
+  panel.id = 'errorPanel';
+  document.body.appendChild(panel);
+  let errorDetails = '';
+  const showError = (message, source='') => {
+    errorDetails = `${message}${source ? `\n${source}` : ''}`;
+    panel.innerHTML = '';
+    const title = document.createElement('strong');
+    title.textContent = '게임 오류가 발생했어요';
+    const details = document.createElement('div');
+    details.textContent = errorDetails;
+    const copyButton = document.createElement('button');
+    copyButton.id = 'copyErrorBtn';
+    copyButton.type = 'button';
+    copyButton.textContent = '오류 복사';
+    copyButton.addEventListener('click', async () => {
+      let copied = false;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(errorDetails);
+          copied = true;
+        }
+      } catch (e) {}
+      if (!copied) {
+        const input = document.createElement('textarea');
+        input.value = errorDetails;
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.focus(); input.select();
+        try { copied = document.execCommand('copy'); } catch (e) {}
+        input.remove();
+      }
+      copyButton.textContent = copied ? '복사 완료' : '길게 눌러 복사';
+      if (!copied) {
+        details.style.userSelect = 'text';
+        details.style.webkitUserSelect = 'text';
+      }
+    });
+    panel.append(title, details, copyButton);
+    panel.classList.add('show');
+  };
+  window.addEventListener('error', event => {
+    showError(event.message || '알 수 없는 오류', event.filename ? `${event.filename}:${event.lineno}` : '');
+  });
+  window.addEventListener('unhandledrejection', event => {
+    showError(String(event.reason || '처리되지 않은 오류'));
+  });
+})();
+
 // Some Android browsers mis-measure the viewport when a page is opened
 // directly from a content:// URI (e.g. tapping a downloaded file), rendering
 // as if the layout were much wider than the actual screen and clipping the
@@ -966,22 +1032,34 @@ const WEAPONS = [
   { id:'w0', name:'맨손', atk:0, price:0, emoji:'✊' },
   { id:'w1', name:'낡은 단검', atk:3, price:20, emoji:'🗡️' },
   { id:'w2', name:'견습생의 검', atk:7, price:60, emoji:'⚔️' },
+  { id:'w2a', name:'사냥꾼의 톱날', atk:10, price:100, emoji:'🔪' },
   { id:'w3', name:'기사의 장검', atk:13, price:150, emoji:'🗡️' },
+  { id:'w3a', name:'달빛 세이버', atk:17, price:260, emoji:'🌙' },
   { id:'w4', name:'서리한', atk:22, price:400, emoji:'❄️' },
+  { id:'w4a', name:'용암 파쇄창', atk:27, price:620, emoji:'🌋' },
   { id:'w5', name:'산호의 창', atk:32, price:900, emoji:'🔱' },
+  { id:'w5a', name:'화산의 갈고리', atk:39, price:1300, emoji:'⛏️' },
   { id:'w6', name:'흑요석 대검', atk:48, price:2000, emoji:'🖤' },
+  { id:'w6a', name:'빙결의 쌍날', atk:57, price:3000, emoji:'⚔️' },
   { id:'w7', name:'결빙의 심판자', atk:68, price:4500, emoji:'🧊' },
+  { id:'w7a', name:'균열의 낫', atk:80, price:6500, emoji:'🌌' },
   { id:'w8', name:'심연군주의 검', atk:95, price:9000, emoji:'🌑' },
 ];
 const ARMORS = [
   { id:'a0', name:'허름한 옷', hp:0, price:0, emoji:'👕' },
   { id:'a1', name:'가죽 조끼', hp:12, price:20, emoji:'🥋' },
   { id:'a2', name:'사슬 갑옷', hp:28, price:60, emoji:'🛡️' },
+  { id:'a2a', name:'강화 가죽 갑옷', hp:39, price:100, emoji:'🧥' },
   { id:'a3', name:'기사의 판금', hp:50, price:150, emoji:'🛡️' },
+  { id:'a3a', name:'달빛 망토', hp:68, price:260, emoji:'🧣' },
   { id:'a4', name:'용비늘 갑옷', hp:85, price:400, emoji:'🐉' },
+  { id:'a4a', name:'화산석 흉갑', hp:102, price:600, emoji:'🪨' },
   { id:'a5', name:'산호 갑옷', hp:120, price:850, emoji:'🐚' },
+  { id:'a5a', name:'화산 용린갑', hp:148, price:1250, emoji:'🐲' },
   { id:'a6', name:'흑요석 갑주', hp:180, price:1900, emoji:'⛓️' },
+  { id:'a6a', name:'빙벽의 중갑', hp:215, price:2850, emoji:'🧊' },
   { id:'a7', name:'서리군주의 갑옷', hp:250, price:4200, emoji:'❄️' },
+  { id:'a7a', name:'균열 수호복', hp:295, price:6200, emoji:'🌀' },
   { id:'a8', name:'심연의 갑옷', hp:340, price:8500, emoji:'🌌' },
 ];
 
@@ -1009,7 +1087,8 @@ function getOrCreateDeviceId() {
   const KEY = 'forestTaleDeviceId';
   let id = lsGet(KEY);
   if (!id) {
-    id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('dev-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    const webCrypto = globalThis.crypto;
+    id = (webCrypto && webCrypto.randomUUID) ? webCrypto.randomUUID() : ('dev-' + Date.now() + '-' + Math.random().toString(36).slice(2));
     lsSet(KEY, id);
   }
   return id;
@@ -1264,7 +1343,7 @@ function playerTakeDamage(dmg) {
   if (player.hp <= 0) {
     player.hp = 0;
     const goldLoss = Math.floor(player.gold * 0.15);
-    player.gold -= goldLoss;
+    spendGold(goldLoss, 'death_loss');
     showMsg(`쓰러졌습니다... 골드 ${goldLoss} 손실. 마을로 이동합니다.`, 2200);
     switchMap('town');
     player.hp = player.maxHp;
@@ -1406,11 +1485,11 @@ const GOLD_DROP_MULTIPLIER = 0.7;
 
 function killMonster(map, m) {
   m.dead = true;
-  player.gold += Math.round(m.goldReward * GOLD_DROP_MULTIPLIER);
-  gainExp(m.expReward);
+  const droppedGold = Math.round(m.goldReward * GOLD_DROP_MULTIPLIER);
+  addGold(droppedGold, 'kill');
+  addExp(m.expReward, 'kill');
   sfxKill();
   spawnParticles(m.x + m.w/2, m.y + m.h/2, m.type==='boss'?30:10, { color: m.type==='boss'?'#ffd166':'#7fe07f', size: m.type==='boss'?5:3, spread: m.type==='boss'?10:5 });
-  const droppedGold = Math.round(m.goldReward * GOLD_DROP_MULTIPLIER);
   spawnFloatText(m.x + m.w/2, m.y - 10, `+${droppedGold}🪙`, '#ffd166');
 
   if (m.type === 'boss') {
@@ -1429,7 +1508,7 @@ function killMonster(map, m) {
 
   quest.count++;
   if (quest.count >= quest.target) {
-    player.gold += quest.reward;
+    addGold(quest.reward, 'quest');
     sfxQuest();
     showMsg(`🎯 퀘스트 완료! 보상 +${quest.reward}🪙`, 2200);
     spawnFloatText(player.x + player.w/2, player.y - 20, `퀘스트 완료! +${quest.reward}🪙`, '#c65ae0');
@@ -1535,6 +1614,21 @@ function makeFrostBoss(x) {
     state:'chase', actionCooldown: 90, telegraphT:0, slamT:0, engaged:false,
   };
 }
+function makeEliteVariant(factory, x, tier, name, power=1.18) {
+  const monster = factory(x, tier);
+  monster.name = name;
+  monster.hp = Math.round(monster.hp * power);
+  monster.maxHp = monster.hp;
+  monster.atk = Math.round(monster.atk * (power - 0.03));
+  monster.goldReward = Math.round(monster.goldReward * 1.2);
+  monster.expReward = Math.round(monster.expReward * 1.2);
+  return monster;
+}
+function makeEliteGoblin(x, tier) { return makeEliteVariant(makeGoblin, x, tier, '광전사 고블린', 1.2); }
+function makeShellCrab(x, tier) { return makeEliteVariant(makeCrab, x, tier, '철갑 집게게', 1.18); }
+function makeMagmaScorpion(x, tier) { return makeEliteVariant(makeScorpion, x, tier, '용암 전갈', 1.2); }
+function makeFrostWisp(x, tier) { return makeEliteVariant(makeIceSpirit, x, tier, '빙결 망령', 1.18); }
+function makeRiftKnight(x, tier) { return makeEliteVariant(makeShadowKnight, x, tier, '균열 기사', 1.22); }
 // ---------- Abyss (final area) monsters — noticeably stronger than the
 // frost tier: higher base stats and steeper quadratic growth so this map
 // feels like a real step up, not just "one more field with new sprites".
@@ -2147,27 +2241,27 @@ const MAPS = {
 };
 MAPS.field.monsters = [200,400,800,1200].map((x,i) => makeMonster(x, Math.floor(i/2)))
   .concat([ makeBat(550, GROUND_Y-220, 1), makeBat(950, GROUND_Y-180, 1) ])
-  .concat([ makeGoblin(650, 1), makeGoblin(1050, 1) ])
+  .concat([ makeGoblin(650, 1), makeGoblin(1050, 1), makeEliteGoblin(1320, 2) ])
   .concat([ makeMushroom(320, 1), makeMushroom(1150, 1) ]);
 MAPS.dungeon.monsters = [180,420,900].map((x,i) => makeMonster(x, 3 + Math.floor(i/2)))
   .concat([ makeBat(450, GROUND_Y-220, 4), makeBat(850, GROUND_Y-200, 4) ])
-  .concat([ makeGoblin(300, 3), makeGoblin(660, 4), makeGoblin(980, 4) ])
+  .concat([ makeGoblin(300, 3), makeGoblin(660, 4), makeGoblin(980, 4), makeEliteGoblin(1080, 5) ])
   .concat([ makeMushroom(560, 3), makeMushroom(820, 4) ])
   .concat([ makeBoss(1180) ]);
 MAPS.beach.monsters = [200,500,900,1300].map((x,i) => makeCrab(x, 5 + Math.floor(i/2)))
-  .concat([ makeSnail(350, 5), makeSnail(1100, 6) ])
+  .concat([ makeSnail(350, 5), makeSnail(1100, 6), makeShellCrab(750, 7) ])
   .concat([ makeBat(650, GROUND_Y-200, 6), makeBat(1150, GROUND_Y-180, 6) ]);
 MAPS.lava.monsters = [200,600,1000,1400].map((x,i) => makeScorpion(x, 8 + Math.floor(i/2)))
-  .concat([ makeGoblin(400, 8), makeGoblin(1200, 9) ])
+  .concat([ makeGoblin(400, 8), makeGoblin(1200, 9), makeMagmaScorpion(820, 10) ])
   .concat([ makeCrab(800, 9), makeSnail(1050, 9) ])
   .concat([ makeLavaBoss(1500) ]);
 MAPS.frost.monsters = [200,600,1000,1450].map((x,i) => makeFrostWolf(x, 12 + Math.floor(i/2)))
-  .concat([ makeIceSpirit(400, 12), makeIceSpirit(900, 13), makeIceSpirit(1300, 14) ])
+  .concat([ makeIceSpirit(400, 12), makeIceSpirit(900, 13), makeIceSpirit(1300, 14), makeFrostWisp(1120, 15) ])
   .concat([ makeScorpion(700, 12), makeGoblin(1150, 13) ])
   .concat([ makeFrostBoss(1650) ]);
 MAPS.abyss.monsters = [250,700,1150,1650].map((x,i) => makeShadowKnight(x, 16 + Math.floor(i/2)))
   .concat([ makeVoidBat(420, GROUND_Y-260, 16), makeVoidBat(950, GROUND_Y-220, 17), makeVoidBat(1450, GROUND_Y-240, 18) ])
-  .concat([ makeRiftWraith(560, 16), makeRiftWraith(1080, 17), makeRiftWraith(1580, 18) ])
+  .concat([ makeRiftWraith(560, 16), makeRiftWraith(1080, 17), makeRiftWraith(1580, 18), makeRiftKnight(1780, 19) ])
   .concat([ makeRuinWarden(1880) ]);
 
 let currentMap = 'town';
@@ -2216,6 +2310,7 @@ function drawCloud(x,y,s) {
 
 let camX = 0, running = false, msgTimer = 0, townWarpCooldown = 0;
 let quest = { count: 0, target: 5, reward: 15, tier: 1 };
+let economyLog = [];
 
 function showMsg(t, ms=1500) {
   const msg = document.getElementById('msg');
@@ -3113,14 +3208,14 @@ document.getElementById('usePotion').addEventListener('click', () => {
   spawnFloatText(player.x+player.w/2, player.y, '❤️ 회복!', '#5ae0a8');
 });
 document.getElementById('buyPotion').addEventListener('click', () => {
-  if (player.gold >= 5) {
-    player.gold -= 5; player.potions = (player.potions || 0) + 1; sfxCoin(); updateHUD();
+  if (spendGold(5, 'potion')) {
+    player.potions = (player.potions || 0) + 1; sfxCoin(); updateHUD();
     spawnFloatText(player.x+player.w/2, player.y, '🧪 +1', '#5ae0a8');
   }
 });
 document.getElementById('buyPotion5').addEventListener('click', () => {
-  if (player.gold >= 25) {
-    player.gold -= 25; player.potions = (player.potions || 0) + 5; sfxCoin(); updateHUD();
+  if (spendGold(25, 'potion_bundle')) {
+    player.potions = (player.potions || 0) + 5; sfxCoin(); updateHUD();
     spawnFloatText(player.x+player.w/2, player.y, '🧪 +5', '#5ae0a8');
   }
 });
@@ -3163,8 +3258,7 @@ function renderEnhanceList() {
       btn.textContent = cost + '🪙';
       btn.disabled = player.gold < cost;
       btn.addEventListener('click', () => {
-        if (player.gold < cost) return;
-        player.gold -= cost;
+        if (!spendGold(cost, 'enhance')) return;
         const success = Math.random() < ENHANCE_RATES[level];
         if (success) {
           player[slot.enhanceField] = level + 1;
@@ -3220,8 +3314,7 @@ function renderShopList() {
       btn.textContent = item.price + '🪙';
       btn.disabled = player.gold < item.price;
       btn.addEventListener('click', () => {
-        if (player.gold < item.price) return;
-        player.gold -= item.price;
+        if (!spendGold(item.price, 'equipment')) return;
         owned.push(item.id);
         if (shopTab === 'weapon') player.weaponId = item.id; else player.armorId = item.id;
         sfxCoin();
@@ -3267,6 +3360,67 @@ function hashStr(str) {
   return (h >>> 0).toString(36);
 }
 function signPayload(json) { return hashStr(json + SAVE_SALT); }
+function economyEventHash(event) {
+  return signPayload(JSON.stringify({
+    id: event.id, kind: event.kind, gold: event.gold, exp: event.exp,
+    count: event.count, at: event.at, prev: event.prev,
+  }));
+}
+function recordEconomyEvent(kind, gold=0, exp=0, count=1) {
+  const previous = economyLog[economyLog.length - 1];
+  const event = {
+    id: previous ? previous.id + 1 : 1,
+    kind, gold: Math.round(Number(gold) || 0), exp: Math.round(Number(exp) || 0),
+    count: Math.max(1, Math.round(Number(count) || 1)), at: Date.now(),
+    prev: previous ? previous.hash : 'GENESIS',
+  };
+  event.hash = economyEventHash(event);
+  economyLog.push(event);
+  if (economyLog.length > 1000) {
+    economyLog.shift();
+    let previousHash = 'GENESIS';
+    economyLog.forEach((item, index) => {
+      item.id = index + 1;
+      item.prev = previousHash;
+      item.hash = economyEventHash(item);
+      previousHash = item.hash;
+    });
+  }
+}
+function addGold(amount, reason='reward') {
+  const value = Math.max(0, Math.round(Number(amount) || 0));
+  if (!value) return 0;
+  player.gold += value;
+  recordEconomyEvent(reason, value, 0);
+  return value;
+}
+function addExp(amount, reason='exp') {
+  const value = Math.max(0, Math.round(Number(amount) || 0));
+  if (!value) return 0;
+  gainExp(value);
+  recordEconomyEvent(reason, 0, value);
+  return value;
+}
+function spendGold(amount, reason='purchase') {
+  const value = Math.max(0, Math.round(Number(amount) || 0));
+  if (!value || player.gold < value) return false;
+  player.gold -= value;
+  recordEconomyEvent(reason, -value, 0);
+  return true;
+}
+function validateEconomyLog(log) {
+  if (log == null) return [];
+  if (!Array.isArray(log) || log.length > 1000) return null;
+  let previous = 'GENESIS';
+  let previousId = 0;
+  for (const event of log) {
+    if (!event || event.prev !== previous || event.id !== previousId + 1) return null;
+    if (economyEventHash(event) !== event.hash) return null;
+    previous = event.hash;
+    previousId = event.id;
+  }
+  return log;
+}
 
 // Clamp/validate fields that shouldn't be able to leave the ranges the game
 // itself would ever produce. Used as a second line of defense even if the
@@ -3332,6 +3486,9 @@ function sanitizeSaveData(data) {
     count: Math.round(clampNum(data.quest && data.quest.count, 0, defaultTarget - 1, 0)),
   };
   data.savedAt = Number.isFinite(Number(data.savedAt)) ? Number(data.savedAt) : Date.now();
+  const cleanEconomyLog = validateEconomyLog(data.economyLog);
+  if (cleanEconomyLog === null) return null;
+  data.economyLog = cleanEconomyLog;
   return data;
 }
 
@@ -3341,6 +3498,7 @@ function serializeSave() {
     currentMap,
     autoHunt,
     quest,
+    economyLog,
     player: {
       job: player.job, level: player.level, exp: player.exp, expNeeded: player.expNeeded,
       gold: player.gold, stats: player.stats, statPoints: player.statPoints,
@@ -3566,6 +3724,7 @@ function startCommon() {
 
 function beginGame(job, nickname) {
   clearSave();
+  economyLog = [];
   player = { x:60, y:GROUND_Y-40, vx:0, vy:0, w:28, h:40, facing:1, onGround:false, walkT:0, squash:1,
     invuln:0, attackCooldown:0, attackAnim:0, portalCooldown:0, skillCooldown:0,
     level:1, exp:0, expNeeded:20, hp:30, maxHp:30, atk:5, mp:20, maxMp:20, crit:5, gold:10,
@@ -3589,15 +3748,16 @@ function continueGame(save) {
   };
   currentMap = MAPS[save.currentMap] ? save.currentMap : 'town';
   quest = save.quest || { count: 0, target: 5, reward: 15, tier: 1 };
+  economyLog = save.economyLog || [];
   refreshStats();
   player.hp = player.maxHp; player.mp = player.maxMp;
   startCommon();
 
   const offline = computeOfflineProgress(save);
   if (offline) {
-    player.gold += offline.gold;
+    addGold(offline.gold, 'offline');
     player.potions = Math.max(0, (player.potions || 0) - offline.potionsUsed);
-    gainExp(offline.exp);
+    addExp(offline.exp, 'offline');
     saveGame();
     setTimeout(() => showOfflineModal(offline), 300);
   }
@@ -3647,9 +3807,9 @@ function markBack() {
   const save = Object.assign(serializeSave(), { savedAt: since });
   const offline = computeOfflineProgress(save);
   if (offline) {
-    player.gold += offline.gold;
+    addGold(offline.gold, 'offline');
     player.potions = Math.max(0, (player.potions || 0) - offline.potionsUsed);
-    gainExp(offline.exp);
+    addExp(offline.exp, 'offline');
     saveGame();
     updateHUD();
     setTimeout(() => showOfflineModal(offline), 200);
