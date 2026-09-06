@@ -2868,6 +2868,7 @@ function openModal(id) {
   }
   document.getElementById(id).classList.add('open');
 }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
 // ---------- Shop ----------
 let shopTab = 'weapon';
@@ -2876,12 +2877,12 @@ function openShop() {
   renderShopList();
   updateHUD();
 }
-function closeShop() { document.getElementById('shopModal').classList.remove('open'); }
+function closeShop() { closeModal('shopModal'); }
 document.getElementById('closeShop').addEventListener('click', closeShop);
 
 // ---------- Status panel (stat point allocation) ----------
 function openStatus() { renderStatusPanel(); openModal('statusModal'); }
-function closeStatus() { document.getElementById('statusModal').classList.remove('open'); }
+function closeStatus() { closeModal('statusModal'); }
 function renderStatusPanel() {
   const job = JOBS[player.job] || JOBS.warrior;
   document.getElementById('statSummary').textContent = `${player.nickname ? player.nickname + ' · ' : ''}Lv.${player.level} · ${job.emoji} ${job.name}`;
@@ -2918,7 +2919,7 @@ const TELEPORT_DESTS = [
   { id:'abyss', name:'🌌 멸망의 균열' },
 ];
 function openTeleport() { renderTeleportList(); openModal('teleportModal'); }
-function closeTeleport() { document.getElementById('teleportModal').classList.remove('open'); }
+function closeTeleport() { closeModal('teleportModal'); }
 function renderTeleportList() {
   const list = document.getElementById('teleportList');
   list.innerHTML = '';
@@ -3599,7 +3600,7 @@ function setChatTab(tab) {
 document.querySelectorAll('.chatTabBtn').forEach(button => {
   button.addEventListener('click', () => setChatTab(button.dataset.chatTab));
 });
-function closeChat() { document.getElementById('chatModal').classList.remove('open'); }
+function closeChat() { closeModal('chatModal'); }
 document.getElementById('btnChat').addEventListener('click', openChat);
 document.getElementById('closeChat').addEventListener('click', closeChat);
 // navigator.clipboard needs a secure (https) context, which a page opened from
@@ -3734,18 +3735,14 @@ document.getElementById('usePotion').addEventListener('click', () => {
   player.potions--; player.hp = player.maxHp; sfxCoin(); updateHUD();
   spawnFloatText(player.x+player.w/2, player.y, '❤️ 회복!', '#5ae0a8');
 });
-document.getElementById('buyPotion').addEventListener('click', () => {
-  if (spendGold(5, 'potion')) {
-    player.potions = (player.potions || 0) + 1; sfxCoin(); updateHUD();
-    spawnFloatText(player.x+player.w/2, player.y, '🧪 +1', '#5ae0a8');
-  }
-});
-document.getElementById('buyPotion5').addEventListener('click', () => {
-  if (spendGold(25, 'potion_bundle')) {
-    player.potions = (player.potions || 0) + 5; sfxCoin(); updateHUD();
-    spawnFloatText(player.x+player.w/2, player.y, '🧪 +5', '#5ae0a8');
-  }
-});
+function buyPotions(count, cost, reason) {
+  if (!spendGold(cost, reason)) return;
+  player.potions = (player.potions || 0) + count;
+  sfxCoin(); updateHUD();
+  spawnFloatText(player.x+player.w/2, player.y, `🧪 +${count}`, '#5ae0a8');
+}
+document.getElementById('buyPotion').addEventListener('click', () => buyPotions(1, 5, 'potion'));
+document.getElementById('buyPotion5').addEventListener('click', () => buyPotions(5, 25, 'potion_bundle'));
 
 document.querySelectorAll('.shopTabBtn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -3803,6 +3800,16 @@ function renderEnhanceList() {
   }
 }
 
+function equipShopItem(item, owned, price = 0) {
+  if (price && !spendGold(price, 'equipment')) return;
+  if (price) owned.push(item.id);
+  if (shopTab === 'weapon') player.weaponId = item.id; else player.armorId = item.id;
+  sfxCoin();
+  refreshStats();
+  if (price) updateHUD();
+  renderShopList();
+}
+
 function renderShopList() {
   if (shopTab === 'enhance') { renderEnhanceList(); return; }
   const list = document.getElementById('itemList');
@@ -3831,24 +3838,11 @@ function renderShopList() {
       btn.classList.add('equipped');
     } else if (isOwned) {
       btn.textContent = '장착';
-      btn.addEventListener('click', () => {
-        if (shopTab === 'weapon') player.weaponId = item.id; else player.armorId = item.id;
-        sfxCoin();
-        refreshStats();
-        renderShopList();
-      });
+      btn.addEventListener('click', () => equipShopItem(item, owned));
     } else {
       btn.textContent = item.price + '🪙';
       btn.disabled = player.gold < item.price;
-      btn.addEventListener('click', () => {
-        if (!spendGold(item.price, 'equipment')) return;
-        owned.push(item.id);
-        if (shopTab === 'weapon') player.weaponId = item.id; else player.armorId = item.id;
-        sfxCoin();
-        refreshStats();
-        updateHUD();
-        renderShopList();
-      });
+      btn.addEventListener('click', () => equipShopItem(item, owned, item.price));
     }
     row.appendChild(btn);
     list.appendChild(row);
@@ -4140,9 +4134,7 @@ function openSaveCodeModal() {
 document.getElementById('btnSaveCode').addEventListener('click', openSaveCodeModal);
 const saveCodeLinkEl = document.getElementById('saveCodeLink');
 if (saveCodeLinkEl) saveCodeLinkEl.addEventListener('click', openSaveCodeModal);
-document.getElementById('closeSaveCode').addEventListener('click', () => {
-  document.getElementById('saveCodeModal').classList.remove('open');
-});
+document.getElementById('closeSaveCode').addEventListener('click', () => closeModal('saveCodeModal'));
 document.getElementById('copyExportCode').addEventListener('click', () => {
   const area = document.getElementById('exportCodeArea');
   if (!area.value) { setSaveCodeMsg('내보낼 저장 데이터가 없어요. 먼저 게임을 시작해주세요.', false); return; }
@@ -4251,9 +4243,7 @@ function showOfflineModal(result) {
     `🪙 골드 +${result.gold} · ✨ 경험치 +${result.exp} 획득했어요!${extra}`;
   openModal('offlineModal');
 }
-document.getElementById('closeOffline').addEventListener('click', () => {
-  document.getElementById('offlineModal').classList.remove('open');
-});
+document.getElementById('closeOffline').addEventListener('click', () => closeModal('offlineModal'));
 
 document.getElementById('startBtn').addEventListener('click', () => {
   const save = loadSave();
