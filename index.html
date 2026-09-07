@@ -770,7 +770,7 @@
       <div id="saveCodePanel">
         <h2>💾 기기 간 캐릭터 이어하기</h2>
         <div id="saveCodeScroll">
-          <div class="scDesc">두 기기를 동시에 켜고 화면에 뜨는 번호를 주고받으면,<br>복사·붙여넣기 없이 캐릭터가 그대로 옮겨가요.</div>
+          <div class="scDesc">두 기기를 동시에 켜고 화면에 뜨는 번호를 주고받으면<br>캐릭터가 <b>통째로 이동</b>해요 (복사 아님 — <b>보낸 기기엔 캐릭터가 남지 않아요</b>).</div>
 
           <div class="scTabs">
             <button id="scTabSend" class="scTab">📤 보내기</button>
@@ -778,13 +778,13 @@
           </div>
 
           <div id="scSendPane">
-            <div class="scDesc">다른 기기에서 <b>📥 받기</b> 탭을 열고<br>아래 번호를 입력하게 해주세요.</div>
+            <div class="scDesc">다른 기기에서 <b>📥 받기</b> 탭을 열고<br>아래 번호를 입력하게 해주세요.<br>상대가 받으면 <b>이 기기의 캐릭터는 삭제</b>돼요.</div>
             <div id="syncSendCode" class="syncCodeDisplay">------</div>
             <div id="syncSendStatus" class="scStatus"></div>
           </div>
 
           <div id="scReceivePane" style="display:none">
-            <div class="scDesc">보내는 기기의 <b>📤 보내기</b> 탭에 뜬<br>6자리 번호를 입력하세요.</div>
+            <div class="scDesc">보내는 기기의 <b>📤 보내기</b> 탭에 뜬<br>6자리 번호를 입력하세요.<br>불러오면 <b>보내는 기기의 캐릭터는 삭제</b>돼요.</div>
             <input id="syncReceiveInput" type="text" inputmode="numeric" maxlength="6" placeholder="123456">
             <button id="syncReceiveBtn">연결해서 불러오기</button>
             <div id="syncReceiveStatus" class="scStatus"></div>
@@ -792,6 +792,7 @@
 
           <div id="scFallbackToggleWrap"><span id="scFallbackToggle" class="scLinkLike">연결이 잘 안 되나요? 텍스트 코드로 대신하기</span></div>
           <div id="scFallbackPane" style="display:none">
+            <div class="scDesc">이 방식은 원본을 자동으로 지우지 않아요 — 두 기기에 같은 캐릭터가 남을 수 있으니, 코드를 불러온 뒤엔 원래 기기에서 "새로 시작"으로 직접 정리해주세요.</div>
             <div class="scLabel">📤 내보내기 (복사해서 보관하세요)</div>
             <textarea id="exportCodeArea" readonly placeholder="진행 중인 저장이 없어요."></textarea>
             <button id="copyExportCode">코드 복사하기</button>
@@ -929,7 +930,7 @@
 // affect saves or game logic at all — it only powers the "새 버전이 있어요"
 // banner below, so someone who already had the tab open when you deployed
 // finds out without having to guess-and-refresh.
-const BUILD_VERSION = '2026-09-07.2';
+const BUILD_VERSION = '2026-09-07.3';
 let updateAvailable = false;
 async function checkForUpdate() {
   if (updateAvailable) return; // already showing the banner, no need to re-check
@@ -4670,11 +4671,19 @@ function setSaveCodeMsg(text, ok) {
 // autosave / beforeunload / pagehide handlers (all gated on `running`) would
 // fire during the reload that follows and silently overwrite the import with
 // whatever OLD character is still sitting in memory.
-function applyImportedSaveData(data) {
+function applyImportedSaveData(data, opts) {
+  opts = opts || {};
   const hasExisting = running || !!loadSave();
+  // The P2P path (movePeerDelete=true) actually deletes the source device's
+  // character once this succeeds — the confirm text must say so plainly,
+  // since this is the one destructive step the player can't undo from here.
+  // The text-code fallback can't make that same promise (no return channel
+  // to know whether the source device ever deletes itself), so it gets the
+  // older, narrower wording instead.
+  const deletionNote = opts.movePeerDelete ? ' 보내는 기기의 캐릭터는 삭제돼요.' : '';
   const message = hasExisting
-    ? '현재 진행 상황을 덮어쓰고 이 캐릭터를 불러올까요? 되돌릴 수 없어요.'
-    : '이 캐릭터를 이 기기에 불러올까요?';
+    ? `현재 진행 상황을 덮어쓰고 이 캐릭터를 불러올까요?${deletionNote} 되돌릴 수 없어요.`
+    : `이 캐릭터를 이 기기로 가져올까요?${deletionNote}`;
   suppressAwayTracking = true;
   const confirmed = confirm(message);
   suppressAwayTracking = false;
@@ -4692,11 +4701,22 @@ function applyImportedSaveData(data) {
 // of our own). Deliberately its own Peer instance (`syncPeer`), separate from
 // the co-op multiplayer `peer`/`connections` above — the two features are
 // unrelated and keeping them decoupled means neither can break the other.
-// Flow: the sending device opens a Peer under a short 6-digit room id and
-// waits; the receiving device connects to that id and gets the save payload
-// pushed to it once, then tears the connection down. No account, no relay
-// server of ours, no data left behind anywhere once both sides close. ----------
+//
+// This is a MOVE, not a copy: the character should only ever exist on one
+// device. Protocol (all messages are {type, ...}):
+//   1. sender opens a Peer under a short 6-digit room id and waits
+//   2. receiver connects and gets {type:'save', payload} pushed to it once
+//   3. receiver shows the overwrite confirm; if accepted, writes it to
+//      localStorage and replies {type:'ack'} — if declined, replies
+//      {type:'declined'} instead
+//   4. ONLY on receiving {type:'ack'} does the sender clear its own save.
+// Deleting the original before step 4 (or without waiting for it at all)
+// risks wiping a character that never actually arrived — e.g. the receiver
+// canceled the confirm, or the connection dropped mid-transfer. Waiting for
+// the ack means the failure mode is "both devices briefly have it" (annoying
+// but recoverable) instead of "neither does" (unrecoverable). ----------
 const SYNC_PREFIX = 'forest-tale-sync-';
+const SYNC_ACK_TIMEOUT_MS = 10000;
 let syncPeer = null;
 let syncConn = null;
 function teardownSync() {
@@ -4728,12 +4748,42 @@ function startSyncSend(attempt) {
   p.on('connection', c => {
     if (syncPeer !== p) { try { c.close(); } catch (e) {} return; }
     syncConn = c;
+    let ackTimeoutId = null;
     c.on('open', () => {
-      try { c.send(payload); } catch (e) {}
-      statusEl.textContent = '✅ 전송했어요! 상대 기기 화면을 확인해주세요.';
-      setTimeout(() => { if (syncPeer === p) teardownSync(); }, 2000);
+      try { c.send({ type: 'save', payload }); } catch (e) {}
+      statusEl.textContent = '전송했어요! 상대 기기의 확인을 기다리는 중...';
+      ackTimeoutId = setTimeout(() => {
+        if (syncConn !== c) return;
+        // No response in time — leave the original alone. Could mean the
+        // player is still staring at the confirm dialog, or the connection
+        // died in transit; either way, deleting here on a guess is the one
+        // mistake we can't take back, so we don't.
+        statusEl.textContent = '상대 기기의 응답을 받지 못했어요. 혹시 몰라 이 기기의 캐릭터는 지우지 않았어요 — 상대 화면에서 정상적으로 불러와졌는지 확인해주세요.';
+        teardownSync();
+      }, SYNC_ACK_TIMEOUT_MS);
     });
-    c.on('error', () => { statusEl.textContent = '전송 중 오류가 발생했어요. 다시 시도해주세요.'; });
+    c.on('data', msg => {
+      if (syncConn !== c || !msg) return;
+      if (msg.type === 'ack') {
+        clearTimeout(ackTimeoutId);
+        clearSave();
+        // Same reasoning as the receive-side import: stop autosave/beforeunload
+        // from resurrecting the just-deleted save from the still-in-memory
+        // `player` before the reload below actually happens.
+        running = false;
+        statusEl.textContent = '✅ 이동 완료! 이 기기의 캐릭터는 삭제됐어요. 잠시 후 새로고침됩니다...';
+        teardownSync();
+        setTimeout(() => location.reload(), 1200);
+      } else if (msg.type === 'declined') {
+        clearTimeout(ackTimeoutId);
+        statusEl.textContent = '상대가 받기를 취소했어요. 이 기기의 캐릭터는 그대로 있어요.';
+        teardownSync();
+      }
+    });
+    c.on('error', () => {
+      clearTimeout(ackTimeoutId);
+      statusEl.textContent = '전송 중 오류가 발생했어요. 이 기기의 캐릭터는 그대로 있어요.';
+    });
   });
   p.on('error', err => {
     if (syncPeer !== p) return;
@@ -4766,14 +4816,32 @@ function startSyncReceive() {
     try { c = p.connect(SYNC_PREFIX + code, { reliable: true }); } catch (e) { statusEl.textContent = '연결할 수 없어요.'; return; }
     syncConn = c;
     c.on('open', () => { statusEl.textContent = '연결됐어요! 캐릭터를 받는 중...'; });
-    c.on('data', payload => {
+    c.on('data', msg => {
       clearTimeout(timeoutId);
+      if (!msg || msg.type !== 'save') { statusEl.textContent = '받은 데이터가 올바르지 않아요.'; teardownSync(); return; }
       let data;
-      try { data = parseTransferPayload(payload); } catch (e) { statusEl.textContent = '받은 데이터가 올바르지 않아요.'; teardownSync(); return; }
-      teardownSync();
-      if (!applyImportedSaveData(data)) { statusEl.textContent = '취소했어요.'; return; }
+      try {
+        data = parseTransferPayload(msg.payload);
+      } catch (e) {
+        statusEl.textContent = '받은 데이터가 올바르지 않아요.';
+        try { c.send({ type: 'declined' }); } catch (e2) {}
+        setTimeout(() => teardownSync(), 400);
+        return;
+      }
+      // movePeerDelete: true — this is the P2P move path, so the confirm
+      // dialog must tell the player the sending device is about to lose its
+      // copy. ack/declined are sent back over `c` BEFORE teardownSync() runs,
+      // with a short delay after each send so the data channel has time to
+      // actually flush before the connection closes.
+      if (!applyImportedSaveData(data, { movePeerDelete: true })) {
+        statusEl.textContent = '취소했어요. 상대 기기의 캐릭터는 그대로 유지돼요.';
+        try { c.send({ type: 'declined' }); } catch (e) {}
+        setTimeout(() => teardownSync(), 400);
+        return;
+      }
+      try { c.send({ type: 'ack' }); } catch (e) {}
       statusEl.textContent = '불러왔어요! 잠시 후 새로고침됩니다...';
-      setTimeout(() => location.reload(), 700);
+      setTimeout(() => { teardownSync(); location.reload(); }, 700);
     });
     c.on('error', () => { statusEl.textContent = '연결 중 오류가 발생했어요.'; });
   });
