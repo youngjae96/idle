@@ -761,7 +761,7 @@
     </div>
   </div>
   <div id="msg"></div>
-  <div id="controls">폰: 하단 버튼 · PC: ←→ 이동, 스페이스 점프, F 공격, D 스킬, Q 자동사냥 · 포탈에 들어가면 다음 맵으로 이동!</div>
+  <div id="controls">폰: 하단 버튼 · PC: ←→ 이동, 스페이스 점프, F 공격, D 스킬, Q 자동사냥 · 포탈에 들어가면 다음 맵으로 이동! · 🤖 자동사냥은 앱을 꺼도 계속돼요</div>
   <button id="startBtn">게임 시작</button>
   <div id="newGameLink" style="display:none; text-align:center; font-size:11px; color:#a89ac0; margin-top:4px; text-decoration:underline;">새 캐릭터로 시작하기 (기존 저장 삭제)</div>
 </div>
@@ -1626,7 +1626,15 @@ function setAutoHunt(on) {
 }
 function toggleAutoHunt() {
   if (currentMap === 'town') { showMsg('마을에는 몬스터가 없어서 자동사냥을 쓸 수 없어요.', 1400); return; }
-  setAutoHunt(!autoHunt);
+  const turningOn = !autoHunt;
+  setAutoHunt(turningOn);
+  // First time ever turning it on, teach the offline-farming angle — this is
+  // the single biggest thing new players miss about this button, since
+  // nothing else in the UI mentions it.
+  if (turningOn && lsGet('forestTaleSeenOfflineTip_v1') !== '1') {
+    lsSet('forestTaleSeenOfflineTip_v1', '1');
+    setTimeout(() => showMsg('💤 자동사냥은 앱을 꺼도 계속돼요! 나중에 다시 열면 그동안의 골드·경험치를 받아요.', 4200), 1300);
+  }
 }
 
 // Finds the platform the player is currently standing on (if any), so auto-hunt
