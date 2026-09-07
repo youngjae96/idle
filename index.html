@@ -884,7 +884,7 @@
 // affect saves or game logic at all — it only powers the "새 버전이 있어요"
 // banner below, so someone who already had the tab open when you deployed
 // finds out without having to guess-and-refresh.
-const BUILD_VERSION = '2026-09-07.1';
+const BUILD_VERSION = '2026-09-07.2';
 let updateAvailable = false;
 async function checkForUpdate() {
   if (updateAvailable) return; // already showing the banner, no need to re-check
@@ -4761,6 +4761,8 @@ document.getElementById('startBtn').addEventListener('click', () => {
   else openModal('jobSelectModal');
 });
 document.getElementById('newGameLink').addEventListener('click', () => {
+  const confirmed = confirm('기존 캐릭터를 삭제하고 새로 시작할까요? 되돌릴 수 없어요.');
+  if (!confirmed) return;
   clearSave();
   document.getElementById('newGameLink').style.display = 'none';
   openModal('jobSelectModal');
