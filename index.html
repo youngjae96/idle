@@ -1307,8 +1307,11 @@ const ARMORS = [
 // swapping to a new weapon/armor never resets it. Success chance drops and
 // cost rises each level; failure just does nothing (no downgrade, no loss
 // of the item) to keep this casual/idle-friendly.
-const ENHANCE_MAX = 10;
-const ENHANCE_RATES = [0.95, 0.85, 0.75, 0.65, 0.55, 0.45, 0.35, 0.25, 0.15, 0.08]; // index = current level -> level+1
+const ENHANCE_MAX = 99;
+// 레벨이 오를수록 완만하게 감소하는 성공확률. level 0 -> 95%, level 98(마지막 강화, +98->+99) -> 약 8%가
+// 되도록 지수 감소 비율(0.975)을 역산해서 고정한 값. 배열을 99개 채우는 대신 공식으로 계산해서
+// ENHANCE_MAX를 나중에 또 바꿔도 자동으로 맞춰지게 함. 최저 확률은 3%로 바닥을 둠(0을 만들지 않기 위함).
+function enhanceRate(level) { return Math.max(0.03, 0.95 * Math.pow(0.975, level)); }
 const ENHANCE_ATK_PER_LEVEL = 2;   // weapon slot: +2 atk per enhance level
 const ENHANCE_HP_PER_LEVEL = 7;    // armor slot: +7 max hp per enhance level
 const ENHANCE_DEF_PER_LEVEL = 1.2; // armor slot: +1.2 def per enhance level
@@ -1357,8 +1360,8 @@ const GAME_BALANCE = Object.freeze({
   // them route through addGold, so this one knob halves the lot without
   // touching exp or shop prices). Kept separate from goldDropMultiplier above
   // so the two can be tuned independently later.
-  goldGainMultiplier: 1,
-  deathGoldLossRate: 0.15,
+  goldGainMultiplier: 0.75,
+  deathGoldLossRate: 0, // 사망해도 골드 손실 없음 (죽어도 골드는 그대로 유지)
   offlineMaxHours: 8,
   offlineEfficiency: 0.7,          // offline-farm gold/exp are worth this fraction of live-play rates
   autoPotionHpThreshold: 0.3,      // auto-hunt/offline-farm drink a potion when HP falls below this fraction
@@ -1614,6 +1617,8 @@ function setAutoHunt(on) {
   autoHunt = on;
   autoHuntTarget = null;
   autoHuntDescending = null;
+  autoHuntStuckFrames = 0;
+  autoHuntStuckX = null;
   const btn = document.getElementById('btnAutoHunt');
   btn.textContent = autoHunt ? '🤖 자동사냥 ON' : '🤖 자동사냥 OFF';
   btn.classList.toggle('on', autoHunt);
@@ -1642,6 +1647,17 @@ const AUTO_HUNT_SWITCH_MARGIN = 40; // px a new candidate must beat the current 
 // Sticky "descending off a platform edge" state — see the comment where it's
 // used inside autoHuntStep.
 let autoHuntDescending = null; // { plat, dir } while actively walking off a platform edge, else null
+
+// Anti-stall watchdog: some target/geometry combos (e.g. the sticky target sitting
+// just barely out of the normal "needs to descend" or "can attack" bands) could
+// leave the bot camped at the very edge of a floating platform — not attacking,
+// not falling, not switching targets. Rather than chase every possible edge case
+// in the logic above, track how long the player has gone without making real
+// horizontal progress or landing a hit; if that stretches too long while standing
+// on an elevated platform, force a descent regardless of what the normal rules say.
+let autoHuntStuckFrames = 0;
+let autoHuntStuckX = null;
+const AUTO_HUNT_STUCK_LIMIT = 50; // ~0.8s at 60fps before we consider it "stuck"
 
 // Prefer targets we can actually reach; only fall back to an out-of-reach one
 // (e.g. a bat flying high above) if nothing reachable exists, so the bot
@@ -1713,6 +1729,18 @@ function autoHuntStep(map) {
   const canAttack = Math.abs(dy) < 60;
   let moving = false;
 
+  // Anti-stall watchdog: if we haven't moved and haven't been able to land a
+  // hit for a while, something about the normal rules below left us camped in
+  // place — most commonly right at the tip of a floating platform. Force the
+  // issue rather than staying frozen there.
+  if (player.onGround && Math.abs(player.x - (autoHuntStuckX ?? player.x)) < 1.5 && !canAttack) {
+    autoHuntStuckFrames++;
+  } else {
+    autoHuntStuckFrames = 0;
+  }
+  autoHuntStuckX = player.x;
+  const forceDescend = autoHuntStuckFrames >= AUTO_HUNT_STUCK_LIMIT;
+
   // If we're standing on a floating platform and the target is down below (out
   // of attack reach from up here), walk off the nearest edge to drop back down
   // instead of freezing in place directly above it.
@@ -1728,10 +1756,11 @@ function autoHuntStep(map) {
   if (autoHuntDescending && (!plat || plat !== autoHuntDescending.plat)) {
     autoHuntDescending = null; // actually left the platform (or lost footing elsewhere) — done
   }
-  if (!autoHuntDescending && plat && plat.y < GROUND_Y - 4 && dy > 40) {
+  if (!autoHuntDescending && plat && plat.y < GROUND_Y - 4 && (dy > 40 || forceDescend)) {
     const leftGap = player.x - plat.x;
     const rightGap = (plat.x + plat.w) - (player.x + player.w);
     autoHuntDescending = { plat, dir: leftGap <= rightGap ? -1 : 1 };
+    autoHuntStuckFrames = 0;
   }
   const needDescend = !!autoHuntDescending;
 
@@ -1779,9 +1808,7 @@ function playerTakeDamage(dmg) {
   spawnFloatText(player.x + player.w/2, player.y, '-' + mitigated, '#ff6a6a');
   if (player.hp <= 0) {
     player.hp = 0;
-    const goldLoss = Math.floor(player.gold * GAME_BALANCE.deathGoldLossRate);
-    spendGold(goldLoss, 'death_loss');
-    showMsg(`쓰러졌습니다... 골드 ${goldLoss} 손실. 마을로 이동합니다.`, 2200);
+    showMsg('쓰러졌습니다... 마을로 이동합니다.', 2200);
     switchMap('town');
     player.hp = player.maxHp;
   }
@@ -4166,7 +4193,7 @@ function renderEnhanceList() {
       btn.disabled = true;
       row.appendChild(btn);
     } else {
-      const rate = Math.round(ENHANCE_RATES[level] * 100);
+      const rate = Math.round(enhanceRate(level) * 100);
       const cost = enhanceCost(level);
       info.innerHTML = `<span class="n">${slot.label} +${level} → +${level + 1}</span>성공확률 ${rate}% · ${slot.bonusLabel} +${slot.bonusPerLevel} · 실패해도 아이템은 그대로`;
       row.appendChild(info);
@@ -4175,7 +4202,7 @@ function renderEnhanceList() {
       btn.disabled = player.gold < cost;
       btn.addEventListener('click', () => {
         if (!spendGold(cost, 'enhance')) return;
-        const success = Math.random() < ENHANCE_RATES[level];
+        const success = Math.random() < enhanceRate(level);
         if (success) {
           player[slot.enhanceField] = level + 1;
           sfxLevelUp();
@@ -4663,7 +4690,6 @@ function computeOfflineProgress(save) {
 
     if (hp <= 0) {
       deaths = 1;
-      gold = Math.round(gold * (1 - GAME_BALANCE.deathGoldLossRate));
       break;
     } else if (hp < maxHp * GAME_BALANCE.autoPotionHpThreshold) {
       // Out of potions but still earning gold: auto-restock at the shop
