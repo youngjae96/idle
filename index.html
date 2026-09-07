@@ -561,6 +561,29 @@
   #saveCodePanel button { width:100%; padding:9px; font-weight:bold; border:none; border-radius:8px; font-size:12px; margin-top:6px; flex-shrink:0; }
   #copyExportCode, #applyImportCode { background:linear-gradient(180deg,#8adf9a,#4a9a5a); color:#0a2a10; }
   #saveCodeMsg { min-height:14px; text-align:center; font-size:11px; margin-top:4px; }
+
+  /* ---- P2P 기기 간 전송 (보내기/받기 탭) ---- */
+  .scTabs { display:flex; gap:6px; margin:4px 0 8px; }
+  .scTab {
+    flex:1; padding:8px 4px; font-size:11.5px; font-weight:bold; border-radius:8px;
+    border:2px solid #4a6a50; background:rgba(0,0,0,0.25); color:#a8c8ae;
+  }
+  .scTab.active { background:linear-gradient(180deg,#8adf9a,#4a9a5a); color:#0a2a10; border-color:#8adf9a; }
+  .syncCodeDisplay {
+    text-align:center; font-family:monospace; font-size:30px; font-weight:bold; letter-spacing:4px;
+    color:#e8ffe8; background:rgba(0,0,0,0.35); border:2px dashed #4a6a50; border-radius:10px;
+    padding:12px 4px; margin:6px 0;
+  }
+  .scStatus { min-height:14px; text-align:center; font-size:11px; margin-top:6px; color:#cdf5dc; }
+  #syncReceiveInput {
+    width:100%; padding:10px; font-size:20px; font-family:monospace; text-align:center; letter-spacing:4px;
+    background:rgba(0,0,0,0.35); border:2px solid #4a6a50; border-radius:8px; color:#e8ffe8; margin-top:2px;
+  }
+  #syncReceiveInput:focus { outline:none; border-color:#8adf9a; }
+  #scFallbackToggleWrap { text-align:center; margin-top:12px; }
+  .scLinkLike { color:#7ec8e0; font-size:10.5px; text-decoration:underline; }
+  #scFallbackPane { margin-top:6px; padding-top:6px; border-top:1px dashed #4a6a50; }
+
   #closeSaveCode {
     background:linear-gradient(180deg,#7ae0a8,#3a9a6a); color:#0a2a1a;
     flex-shrink:0; margin-top:10px; border-radius:10px;
@@ -745,15 +768,37 @@
     </div>
     <div id="saveCodeModal">
       <div id="saveCodePanel">
-        <h2>💾 저장 코드</h2>
+        <h2>💾 기기 간 캐릭터 이어하기</h2>
         <div id="saveCodeScroll">
-          <div class="scDesc">기기를 바꾸거나 브라우저 데이터가 지워질 걱정 없이<br>진행 상황을 코드로 백업/복원할 수 있어요.</div>
-          <div class="scLabel">📤 내보내기 (복사해서 보관하세요)</div>
-          <textarea id="exportCodeArea" readonly placeholder="진행 중인 저장이 없어요."></textarea>
-          <button id="copyExportCode">코드 복사하기</button>
-          <div class="scLabel">📥 불러오기 (코드를 붙여넣으세요)</div>
-          <textarea id="importCodeArea" placeholder="여기에 저장 코드를 붙여넣으세요"></textarea>
-          <button id="applyImportCode">이 코드로 불러오기</button>
+          <div class="scDesc">두 기기를 동시에 켜고 화면에 뜨는 번호를 주고받으면,<br>복사·붙여넣기 없이 캐릭터가 그대로 옮겨가요.</div>
+
+          <div class="scTabs">
+            <button id="scTabSend" class="scTab">📤 보내기</button>
+            <button id="scTabReceive" class="scTab">📥 받기</button>
+          </div>
+
+          <div id="scSendPane">
+            <div class="scDesc">다른 기기에서 <b>📥 받기</b> 탭을 열고<br>아래 번호를 입력하게 해주세요.</div>
+            <div id="syncSendCode" class="syncCodeDisplay">------</div>
+            <div id="syncSendStatus" class="scStatus"></div>
+          </div>
+
+          <div id="scReceivePane" style="display:none">
+            <div class="scDesc">보내는 기기의 <b>📤 보내기</b> 탭에 뜬<br>6자리 번호를 입력하세요.</div>
+            <input id="syncReceiveInput" type="text" inputmode="numeric" maxlength="6" placeholder="123456">
+            <button id="syncReceiveBtn">연결해서 불러오기</button>
+            <div id="syncReceiveStatus" class="scStatus"></div>
+          </div>
+
+          <div id="scFallbackToggleWrap"><span id="scFallbackToggle" class="scLinkLike">연결이 잘 안 되나요? 텍스트 코드로 대신하기</span></div>
+          <div id="scFallbackPane" style="display:none">
+            <div class="scLabel">📤 내보내기 (복사해서 보관하세요)</div>
+            <textarea id="exportCodeArea" readonly placeholder="진행 중인 저장이 없어요."></textarea>
+            <button id="copyExportCode">코드 복사하기</button>
+            <div class="scLabel">📥 불러오기 (코드를 붙여넣으세요)</div>
+            <textarea id="importCodeArea" placeholder="여기에 저장 코드를 붙여넣으세요"></textarea>
+            <button id="applyImportCode">이 코드로 불러오기</button>
+          </div>
           <div id="saveCodeMsg"></div>
         </div>
         <button id="closeSaveCode">닫기</button>
@@ -4578,14 +4623,24 @@ function decodeSaveCode(codeStr) {
   const json = decodeURIComponent(escape(atob(codeStr)));
   return JSON.parse(json);
 }
-function buildSaveCode(saveObj) {
-  const json = JSON.stringify(saveObj);
-  return SAVE_CODE_PREFIX + encodeSaveCode({ data: json, chk: signPayload(json) });
+// Builds the {data, chk} payload shared by BOTH transfer paths below (the
+// P2P send and the text-code export): a single place that decides what
+// actually gets sent, so the two paths can't quietly drift out of sync.
+// economyLog is an internal anti-cheat audit trail (up to 1000 chained,
+// hashed entries) — it's never read for anything the player can see, only
+// re-validated on load, and it's by far the biggest part of a save. Leaving
+// it out keeps every transfer method small no matter how long someone's
+// played; sanitizeSaveData already treats a missing economyLog as an empty
+// (valid) log on import.
+function buildTransferPayload(saveObj) {
+  const { economyLog, ...exportable } = saveObj;
+  const json = JSON.stringify(exportable);
+  return { data: json, chk: signPayload(json) };
 }
-function parseSaveCode(codeStr) {
-  const trimmed = (codeStr || '').trim();
-  if (!trimmed.startsWith(SAVE_CODE_PREFIX)) throw new Error('bad-format');
-  const wrapper = decodeSaveCode(trimmed.slice(SAVE_CODE_PREFIX.length));
+// Inverse of buildTransferPayload: validates + migrates + sanitizes a
+// {data, chk} payload from either transfer path into a save object ready to
+// write to localStorage. Throws on anything not shaped like a real payload.
+function parseTransferPayload(wrapper) {
   if (!wrapper || typeof wrapper.data !== 'string' || typeof wrapper.chk !== 'string') throw new Error('bad-data');
   if (signPayload(wrapper.data) !== wrapper.chk) throw new Error('bad-checksum');
   const data = migrateSaveData(JSON.parse(wrapper.data));
@@ -4593,22 +4648,175 @@ function parseSaveCode(codeStr) {
   if (!clean || !clean.player || !clean.player.job) throw new Error('bad-data');
   return clean;
 }
+function buildSaveCode(saveObj) {
+  return SAVE_CODE_PREFIX + encodeSaveCode(buildTransferPayload(saveObj));
+}
+function parseSaveCode(codeStr) {
+  const trimmed = (codeStr || '').trim();
+  if (!trimmed.startsWith(SAVE_CODE_PREFIX)) throw new Error('bad-format');
+  const wrapper = decodeSaveCode(trimmed.slice(SAVE_CODE_PREFIX.length));
+  return parseTransferPayload(wrapper);
+}
 function setSaveCodeMsg(text, ok) {
   const el = document.getElementById('saveCodeMsg');
   el.textContent = text;
   el.style.color = ok ? '#8adf9a' : '#ff8a8a';
 }
-function openSaveCodeModal() {
+// Applies a sanitized incoming save (from either the P2P transfer below or
+// the text-code fallback) to THIS device: confirms with the player, writes
+// it to localStorage, and stops treating the current session as `running`.
+// That last part matters — see the long comment that used to sit on this
+// line in the old text-only import handler: without it, the periodic
+// autosave / beforeunload / pagehide handlers (all gated on `running`) would
+// fire during the reload that follows and silently overwrite the import with
+// whatever OLD character is still sitting in memory.
+function applyImportedSaveData(data) {
+  const hasExisting = running || !!loadSave();
+  const message = hasExisting
+    ? '현재 진행 상황을 덮어쓰고 이 캐릭터를 불러올까요? 되돌릴 수 없어요.'
+    : '이 캐릭터를 이 기기에 불러올까요?';
+  suppressAwayTracking = true;
+  const confirmed = confirm(message);
+  suppressAwayTracking = false;
+  if (!confirmed) return false;
+  data.savedAt = Date.now(); // treat "import" as happening right now — a save
+                              // from days ago shouldn't be replayable to farm
+                              // repeated offline-progress rewards
+  const json = JSON.stringify(data);
+  lsSet(SAVE_KEY, JSON.stringify({ data: json, chk: signPayload(json) }));
+  running = false;
+  return true;
+}
+
+// ---------- P2P 기기 간 전송 (WebRTC via PeerJS's public broker — no server
+// of our own). Deliberately its own Peer instance (`syncPeer`), separate from
+// the co-op multiplayer `peer`/`connections` above — the two features are
+// unrelated and keeping them decoupled means neither can break the other.
+// Flow: the sending device opens a Peer under a short 6-digit room id and
+// waits; the receiving device connects to that id and gets the save payload
+// pushed to it once, then tears the connection down. No account, no relay
+// server of ours, no data left behind anywhere once both sides close. ----------
+const SYNC_PREFIX = 'forest-tale-sync-';
+let syncPeer = null;
+let syncConn = null;
+function teardownSync() {
+  if (syncConn) { try { syncConn.close(); } catch (e) {} }
+  if (syncPeer && !syncPeer.destroyed) { try { syncPeer.destroy(); } catch (e) {} }
+  syncConn = null;
+  syncPeer = null;
+}
+function startSyncSend(attempt) {
+  attempt = attempt || 0;
+  const codeEl = document.getElementById('syncSendCode');
+  const statusEl = document.getElementById('syncSendStatus');
+  if (typeof Peer === 'undefined') { codeEl.textContent = '------'; statusEl.textContent = '연결 기능을 불러올 수 없어요 (인터넷 연결 확인)'; return; }
+  const saveObj = running ? serializeSave() : loadSave();
+  if (!saveObj) { codeEl.textContent = '------'; statusEl.textContent = '보낼 캐릭터가 없어요. 먼저 게임을 시작해주세요.'; return; }
+  if (attempt > 6) { codeEl.textContent = '------'; statusEl.textContent = '번호를 받지 못했어요. 모달을 닫았다 다시 열어보세요.'; return; }
+  const payload = buildTransferPayload(saveObj);
+  const code = randomRoomCode();
+  codeEl.textContent = '⋯';
+  statusEl.textContent = '';
+  let p;
+  try { p = new Peer(SYNC_PREFIX + code, { config: peerIceConfig() }); } catch (e) { statusEl.textContent = '연결 기능을 사용할 수 없어요'; return; }
+  syncPeer = p;
+  p.on('open', () => {
+    if (syncPeer !== p) return; // superseded (tab switched / modal reopened) while connecting
+    codeEl.textContent = code;
+    statusEl.textContent = '다른 기기에서 이 번호를 입력하기를 기다리는 중...';
+  });
+  p.on('connection', c => {
+    if (syncPeer !== p) { try { c.close(); } catch (e) {} return; }
+    syncConn = c;
+    c.on('open', () => {
+      try { c.send(payload); } catch (e) {}
+      statusEl.textContent = '✅ 전송했어요! 상대 기기 화면을 확인해주세요.';
+      setTimeout(() => { if (syncPeer === p) teardownSync(); }, 2000);
+    });
+    c.on('error', () => { statusEl.textContent = '전송 중 오류가 발생했어요. 다시 시도해주세요.'; });
+  });
+  p.on('error', err => {
+    if (syncPeer !== p) return;
+    if (err && err.type === 'unavailable-id') {
+      // extremely unlikely (1-in-900,000ish), but just try another code
+      try { p.destroy(); } catch (e) {}
+      startSyncSend(attempt + 1);
+      return;
+    }
+    statusEl.textContent = '연결 오류: ' + (err && err.type ? err.type : '알 수 없음');
+  });
+}
+function startSyncReceive() {
+  const input = document.getElementById('syncReceiveInput');
+  const statusEl = document.getElementById('syncReceiveStatus');
+  const code = (input.value || '').trim();
+  if (!/^\d{6}$/.test(code)) { statusEl.textContent = '6자리 번호를 정확히 입력해주세요.'; return; }
+  if (typeof Peer === 'undefined') { statusEl.textContent = '연결 기능을 불러올 수 없어요 (인터넷 연결 확인)'; return; }
+  teardownSync();
+  statusEl.textContent = '연결하는 중...';
+  let p;
+  try { p = new Peer(undefined, { config: peerIceConfig() }); } catch (e) { statusEl.textContent = '연결 기능을 사용할 수 없어요'; return; }
+  syncPeer = p;
+  const timeoutId = setTimeout(() => {
+    if (syncPeer === p) { statusEl.textContent = '연결 시간이 초과됐어요. 번호와 상대 화면을 확인해주세요.'; teardownSync(); }
+  }, 15000);
+  p.on('open', () => {
+    if (syncPeer !== p) return;
+    let c;
+    try { c = p.connect(SYNC_PREFIX + code, { reliable: true }); } catch (e) { statusEl.textContent = '연결할 수 없어요.'; return; }
+    syncConn = c;
+    c.on('open', () => { statusEl.textContent = '연결됐어요! 캐릭터를 받는 중...'; });
+    c.on('data', payload => {
+      clearTimeout(timeoutId);
+      let data;
+      try { data = parseTransferPayload(payload); } catch (e) { statusEl.textContent = '받은 데이터가 올바르지 않아요.'; teardownSync(); return; }
+      teardownSync();
+      if (!applyImportedSaveData(data)) { statusEl.textContent = '취소했어요.'; return; }
+      statusEl.textContent = '불러왔어요! 잠시 후 새로고침됩니다...';
+      setTimeout(() => location.reload(), 700);
+    });
+    c.on('error', () => { statusEl.textContent = '연결 중 오류가 발생했어요.'; });
+  });
+  p.on('error', err => {
+    if (syncPeer !== p) return;
+    clearTimeout(timeoutId);
+    if (err && err.type === 'peer-unavailable') statusEl.textContent = '그 번호로 열린 연결을 찾을 수 없어요. 번호를 확인해주세요.';
+    else statusEl.textContent = '연결 오류: ' + (err && err.type ? err.type : '알 수 없음');
+  });
+}
+function switchSyncTab(tab) {
+  teardownSync();
+  document.getElementById('scTabSend').classList.toggle('active', tab === 'send');
+  document.getElementById('scTabReceive').classList.toggle('active', tab === 'receive');
+  document.getElementById('scSendPane').style.display = tab === 'send' ? '' : 'none';
+  document.getElementById('scReceivePane').style.display = tab === 'receive' ? '' : 'none';
+  document.getElementById('syncReceiveStatus').textContent = '';
+  if (tab === 'send') startSyncSend();
+}
+document.getElementById('scTabSend').addEventListener('click', () => switchSyncTab('send'));
+document.getElementById('scTabReceive').addEventListener('click', () => switchSyncTab('receive'));
+document.getElementById('syncReceiveBtn').addEventListener('click', startSyncReceive);
+document.getElementById('scFallbackToggle').addEventListener('click', () => {
+  const pane = document.getElementById('scFallbackPane');
+  const show = pane.style.display === 'none';
+  pane.style.display = show ? '' : 'none';
+  if (show) refreshFallbackExportArea();
+});
+function refreshFallbackExportArea() {
   const exportArea = document.getElementById('exportCodeArea');
-  const importArea = document.getElementById('importCodeArea');
-  document.getElementById('saveCodeMsg').textContent = '';
-  importArea.value = '';
   const currentSave = running ? serializeSave() : loadSave();
   exportArea.value = currentSave ? buildSaveCode(currentSave) : '';
+}
+function openSaveCodeModal() {
+  document.getElementById('saveCodeMsg').textContent = '';
+  document.getElementById('importCodeArea').value = '';
+  document.getElementById('syncReceiveInput').value = '';
+  document.getElementById('scFallbackPane').style.display = 'none';
+  switchSyncTab('send');
   openModal('saveCodeModal');
 }
 document.getElementById('btnSaveCode').addEventListener('click', openSaveCodeModal);
-document.getElementById('closeSaveCode').addEventListener('click', () => closeModal('saveCodeModal'));
+document.getElementById('closeSaveCode').addEventListener('click', () => { teardownSync(); closeModal('saveCodeModal'); });
 document.getElementById('copyExportCode').addEventListener('click', () => {
   const area = document.getElementById('exportCodeArea');
   if (!area.value) { setSaveCodeMsg('내보낼 저장 데이터가 없어요. 먼저 게임을 시작해주세요.', false); return; }
@@ -4634,14 +4842,7 @@ document.getElementById('applyImportCode').addEventListener('click', () => {
     setSaveCodeMsg('올바른 저장 코드가 아니에요. 코드 전체를 정확히 붙여넣었는지 확인해주세요.', false);
     return;
   }
-  suppressAwayTracking = true;
-  const confirmed = confirm('현재 진행 상황을 덮어쓰고 이 저장 코드를 불러올까요? 되돌릴 수 없어요.');
-  suppressAwayTracking = false;
-  if (!confirmed) return;
-  data.savedAt = Date.now(); // treat "import" as happening right now — a code from days ago
-                              // shouldn't be replayable to farm repeated offline-progress rewards
-  const json = JSON.stringify(data);
-  lsSet(SAVE_KEY, JSON.stringify({ data: json, chk: signPayload(json) }));
+  if (!applyImportedSaveData(data)) return;
   setSaveCodeMsg('불러왔어요! 잠시 후 새로고침됩니다...', true);
   setTimeout(() => location.reload(), 700);
 });
