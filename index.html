@@ -1389,11 +1389,15 @@ function rarityForEnhance(level) {
   for (const tier of RARITY_TIERS) { if ((level || 0) >= tier.min) result = tier; }
   return result;
 }
-// The player's overall gear rarity — the higher of the two slots. Used by
+// The overall gear rarity for any character-like object (the local player,
+// or a remote player's synced state) — the higher of the two slots. Used by
 // every visual-flair function below so combat effects and the ambient aura
 // can never disagree about "what rarity is this character right now".
+function rarityOf(entity) {
+  return rarityForEnhance(Math.max(entity.weaponEnhance || 0, entity.armorEnhance || 0));
+}
 function playerRarity() {
-  return rarityForEnhance(Math.max(player.weaponEnhance || 0, player.armorEnhance || 0));
+  return rarityOf(player);
 }
 function rarityTierIndex(rarity) { return RARITY_TIERS.indexOf(rarity); }
 // Scaling factors so every combat effect visibly escalates one tier at a
@@ -1429,12 +1433,10 @@ const RARITY_AURA_CFG = [
   { sparkles:3, orbitR:25, speed:1.8, size:2.6, aura:true, glowR:38, pulse:0.65 }, // 3 영웅
   { sparkles:5, orbitR:30, speed:2.4, size:3.2, aura:true, glowR:48, pulse:0.75, glow:true }, // 4 전설
 ];
-function drawRarityAura() {
-  const rarity = playerRarity();
+function drawRarityAura(cx, cy, rarity) {
   const idx = rarityTierIndex(rarity);
   const cfg = RARITY_AURA_CFG[idx];
   if (!cfg) return;
-  const cx = player.x + player.w/2, cy = player.y + player.h/2 + 4;
   const t = Date.now() / 1000;
 
   if (cfg.aura) {
@@ -3405,7 +3407,7 @@ function draw() {
   ctx.beginPath(); ctx.ellipse(player.x+player.w/2, player.y+player.h+3, 13, 4, 0, 0, Math.PI*2); ctx.fill();
   ctx.restore();
 
-  drawRarityAura();
+  drawRarityAura(player.x + player.w/2, player.y + player.h/2 + 4, playerRarity());
   drawPlayer();
   drawRemotePlayers();
   drawParticles();
@@ -4342,6 +4344,11 @@ function drawRemotePlayer(rp) {
   const bodyColors = rp.job === 'mage' ? ['#9a6fe0','#6a3fb8']
     : rp.job === 'archer' ? ['#6fbf5f','#3f8a3a']
     : ['#4d9bf0','#2f6fc9'];
+  // Same ambient rarity aura the local player gets, driven by the
+  // weaponEnhance/armorEnhance already included in every synced state
+  // packet (see sanitize + getLocalPlayerState) — so teammates' 영웅+ gear
+  // is visibly flashy to everyone in the room, not just to themselves.
+  drawRarityAura(rp.x + 14, rp.y + 20 + 4, rarityOf(rp));
   ctx.save();
   ctx.globalAlpha = 0.9;
   ctx.beginPath(); ctx.ellipse(rp.x+14, rp.y+42, 13, 4, 0, 0, Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fill();
@@ -5171,7 +5178,6 @@ function startCommon() {
   document.getElementById('msg').textContent = '';
   updateHUD();
   fitCanvas();
-  applyTestRarityFromUrl();
   loop();
 }
 
@@ -5231,29 +5237,6 @@ document.querySelectorAll('.jobCard').forEach(card => {
     beginGame(card.dataset.job, result.value);
   });
 });
-
-// ---------- Dev/test helper: rarity preview (URL param, no console needed) ----------
-// Not surfaced anywhere in the normal game UI — real players never see a way
-// to skip enhance grinding. Meant purely for previewing how each rarity
-// tier's effects look without actually grinding to +85 enhance, and works
-// on mobile where opening devtools isn't an option.
-// Usage: add ?testRarity=3 (or ?testRarity=전설) to the page URL and
-// (re)load, then start/continue the game as normal — it applies itself
-// once play begins. Index list: 0=일반 1=고급 2=희귀 3=영웅 4=전설.
-// This only touches the in-memory session, not the save file — reload
-// without the param (or just without triggering an autosave) and it's gone.
-function applyTestRarityFromUrl() {
-  let val;
-  try { val = new URLSearchParams(location.search).get('testRarity'); } catch (e) { return; }
-  if (val === null) return;
-  const tier = /^\d+$/.test(val) ? RARITY_TIERS[Number(val)] : RARITY_TIERS.find(t => t.name === val);
-  if (!tier) { showMsg('⚠️ testRarity 값이 올바르지 않아요 (0~4 또는 등급 이름)', 2000); return; }
-  player.weaponEnhance = tier.min;
-  player.armorEnhance = tier.min;
-  refreshStats();
-  updateHUD();
-  showMsg(`🧪 테스트: [${tier.name}] 등급 적용됨 (강화 +${tier.min})`, 2200);
-}
 
 // auto-save periodically and whenever the tab/app is about to lose focus
 // NOTE: skip this periodic tick while the tab is actually hidden. Otherwise,
