@@ -2150,7 +2150,13 @@ function trySkill(showInsufficientMessage = true) {
 
 function killMonster(map, m) {
   m.dead = true;
-  const droppedGold = Math.round(m.goldReward * GOLD_DROP_MULTIPLIER);
+  // m.goldReward already has GOLD_DROP_MULTIPLIER baked in at monster-creation
+  // time (see makeMonster/makeBoss/etc.) — don't multiply by it again here.
+  // Doing so previously halved live-kill gold on top of the intended 0.7x
+  // (0.7 * 0.7 = 0.49x), silently earning noticeably less than the
+  // offline-farm estimate and hunt-rate forecast, which both read
+  // m.goldReward directly with no second multiplication.
+  const droppedGold = Math.round(m.goldReward);
   addGold(droppedGold, 'kill');
   addExp(m.expReward, 'kill');
   sfxKill();
@@ -5164,7 +5170,7 @@ document.getElementById('newGameLink').addEventListener('click', () => {
 });
 
 function startCommon() {
-  [MAPS.field, MAPS.dungeon, MAPS.beach, MAPS.lava, MAPS.frost, MAPS.abyss, MAPS.sky, MAPS.ruins, MAPS.throne].forEach(map => map.monsters.forEach(m => {
+  [MAPS.field, MAPS.dungeon, MAPS.beach, MAPS.lava, MAPS.frost, MAPS.abyss, MAPS.sky, MAPS.ruins, MAPS.throne, MAPS.voidrift, MAPS.ashwaste, MAPS.genesis].forEach(map => map.monsters.forEach(m => {
     m.dead = false; m.hp = m.maxHp; m.x = m.startX; if (m.type==='bat') m.y = m.baseY;
     if (m.type === 'boss') { m.state = 'chase'; m.actionCooldown = 90; m.engaged = false; }
   }));
