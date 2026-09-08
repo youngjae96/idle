@@ -1709,6 +1709,7 @@ function updatePlayer() {
   if (autoHunt) {
     moving = autoHuntStep(map);
   } else {
+    tryAutoDrinkPotion();
     if (keys['ArrowLeft']) { player.vx = -MOVE_SPEED; player.facing = -1; moving = true; }
     else if (keys['ArrowRight']) { player.vx = MOVE_SPEED; player.facing = 1; moving = true; }
     else player.vx *= 0.72;
@@ -1851,8 +1852,12 @@ function pickAutoHuntCandidate(map, maxChaseUp) {
   return best ? { candidate: best, dist: bestDist } : { candidate: fallback, dist: fallbackDist };
 }
 
-// Returns true if the character is actively trying to move this frame (for walk animation).
-function autoHuntStep(map) {
+// Auto-heal from the potion stock when HP falls below the threshold — used
+// to live only inside autoHuntStep (so manual play never benefited from
+// owned potions at all, despite the shop UI advertising "HP 30% 이하 시
+// 자동 사용" with no auto-hunt-only caveat). Pulled out so updatePlayer can
+// call it every frame regardless of autoHunt, matching what the UI promises.
+function tryAutoDrinkPotion() {
   if (player.potions > 0 && player.hp < player.maxHp * GAME_BALANCE.autoPotionHpThreshold) {
     player.potions--;
     player.hp = player.maxHp;
@@ -1860,6 +1865,11 @@ function autoHuntStep(map) {
     spawnFloatText(player.x + player.w/2, player.y - 10, '🧪 자동 회복!', '#5ae0a8');
     updateHUD();
   }
+}
+
+// Returns true if the character is actively trying to move this frame (for walk animation).
+function autoHuntStep(map) {
+  tryAutoDrinkPotion();
 
   if (!map.monsters || map.monsters.length === 0) { player.vx *= 0.72; return false; }
 
