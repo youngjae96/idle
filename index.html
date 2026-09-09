@@ -5166,19 +5166,40 @@ function clearSave() { lsRemove(SAVE_KEY); }
 // (valid) log on import.
 function buildTransferPayload(saveObj) {
   const { economyLog, ...exportable } = saveObj;
-  const json = JSON.stringify(exportable);
+  // dungeonUsage를 함께 실어 보낸다 — 이걸 안 보내면 캐릭터를 다른 기기로
+  // 옮겨도(아래는 원래 기기 캐릭터를 지우는 MOVE지만) 새 기기의 일일던전
+  // 사용량 키는 비어 있어서, 기기만 바꿔가며 하루 한도를 매번 새로 받는
+  // 구멍이 생긴다. 받는 쪽(parseTransferPayload/mergeIncomingDungeonUsage)
+  // 에서 이 값과 자기 기기 값 중 큰 쪽을 채택해서 병합한다.
+  const json = JSON.stringify({ ...exportable, dungeonUsage: loadDungeonUsage() });
   return { data: json, chk: signPayload(json) };
 }
 // Inverse of buildTransferPayload: validates + migrates + sanitizes a
 // {data, chk} payload from either transfer path into a save object ready to
 // write to localStorage. Throws on anything not shaped like a real payload.
+// Returns { save, dungeonUsage } — dungeonUsage is handled separately by the
+// caller (see mergeIncomingDungeonUsage) since it isn't part of the
+// character save itself.
 function parseTransferPayload(wrapper) {
   if (!wrapper || typeof wrapper.data !== 'string' || typeof wrapper.chk !== 'string') throw new Error('bad-data');
   if (signPayload(wrapper.data) !== wrapper.chk) throw new Error('bad-checksum');
-  const data = migrateSaveData(JSON.parse(wrapper.data));
+  const raw = JSON.parse(wrapper.data);
+  const { dungeonUsage, ...saveFields } = raw;
+  const data = migrateSaveData(saveFields);
   const clean = sanitizeSaveData(data);
   if (!clean || !clean.player || !clean.player.job) throw new Error('bad-data');
-  return clean;
+  return { save: clean, dungeonUsage };
+}
+// 넘어온 "오늘 일일던전 사용량"을 이 기기의 사용량과 그룹별로 병합한다(큰
+// 쪽 채택). dateKey가 오늘 것이 아니면(보낸 기기 시계가 다르거나 하루
+// 지난 값이면) 통째로 무시 — 어제 값으로 오늘 한도를 건드리면 안 된다.
+function mergeIncomingDungeonUsage(incoming) {
+  if (!incoming || typeof incoming.usage !== 'object' || incoming.dateKey !== todayKey()) return;
+  const local = loadDungeonUsage();
+  for (const key in incoming.usage) {
+    local.usage[key] = Math.max(local.usage[key] || 0, incoming.usage[key] || 0);
+  }
+  lsSet(DUNGEON_USAGE_KEY, JSON.stringify(local));
 }
 function setSaveCodeMsg(text, ok) {
   const el = document.getElementById('saveCodeMsg');
@@ -5197,7 +5218,7 @@ function setSaveCodeMsg(text, ok) {
 // This is always a move (the sender's character is deleted once the P2P ack
 // goes through), so the confirm text says so plainly — this is the one
 // destructive step the player can't undo from here.
-function applyImportedSaveData(data) {
+function applyImportedSaveData(data, dungeonUsage) {
   const hasExisting = running || !!loadSave();
   const message = hasExisting
     ? '현재 진행 상황을 덮어쓰고 이 캐릭터를 불러올까요? 보내는 기기의 캐릭터는 삭제돼요. 되돌릴 수 없어요.'
@@ -5211,6 +5232,7 @@ function applyImportedSaveData(data) {
                               // repeated offline-progress rewards
   const json = JSON.stringify(data);
   lsSet(SAVE_KEY, JSON.stringify({ data: json, chk: signPayload(json) }));
+  mergeIncomingDungeonUsage(dungeonUsage);
   running = false;
   return true;
 }
@@ -5337,9 +5359,9 @@ function startSyncReceive() {
     c.on('data', msg => {
       clearTimeout(timeoutId);
       if (!msg || msg.type !== 'save') { statusEl.textContent = '받은 데이터가 올바르지 않아요.'; teardownSync(); return; }
-      let data;
+      let parsed;
       try {
-        data = parseTransferPayload(msg.payload);
+        parsed = parseTransferPayload(msg.payload);
       } catch (e) {
         statusEl.textContent = '받은 데이터가 올바르지 않아요.';
         try { c.send({ type: 'declined' }); } catch (e2) {}
@@ -5349,7 +5371,7 @@ function startSyncReceive() {
       // ack/declined are sent back over `c` BEFORE teardownSync() runs, with
       // a short delay after each send so the data channel has time to
       // actually flush before the connection closes.
-      if (!applyImportedSaveData(data)) {
+      if (!applyImportedSaveData(parsed.save, parsed.dungeonUsage)) {
         statusEl.textContent = '취소했어요. 상대 기기의 캐릭터는 그대로 유지돼요.';
         try { c.send({ type: 'declined' }); } catch (e) {}
         setTimeout(() => teardownSync(), 400);
