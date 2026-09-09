@@ -641,8 +641,8 @@
 </head>
 <body>
 <div id="updateBanner">
-  <span>🔄 새 버전이 있어요</span>
-  <button id="updateBannerBtn">새로고침</button>
+  <span id="updateBannerText">🔄 새 버전이 있어요</span>
+  <button id="updateBannerBtn">지금 새로고침</button>
 </div>
 <div id="wrap">
   <h1>엔드리스 리얼름</h1>
@@ -784,6 +784,11 @@
 
           <div id="saveCodeMsg"></div>
         </div>
+        <!-- 배포 확인용 — checkForUpdate가 "새 버전 있음"만 알려줄 뿐 지금 뜬
+             페이지가 정확히 어느 빌드인지는 안 보여준다. 전송이 이상하게
+             동작할 때 "이게 최신 코드가 맞나?"를 눈으로 바로 확인할 수 있게
+             BUILD_VERSION을 여기 작게 찍어둔다. -->
+        <div id="buildVersionTag" style="text-align:center; font-size:9px; opacity:0.35; margin-top:4px;"></div>
         <button id="closeSaveCode">닫기</button>
       </div>
     </div>
@@ -926,8 +931,41 @@ const $ = {};
 // affect saves or game logic at all — it only powers the "새 버전이 있어요"
 // banner below, so someone who already had the tab open when you deployed
 // finds out without having to guess-and-refresh.
-const BUILD_VERSION = '2026-09-07.3';
+const BUILD_VERSION = '2026-09-07.4-dungeon-sync-visible';
+// 기기 간 전송 모달에도 이 값을 그대로 찍어둔다 — updateBanner는 "새 버전이
+// 있다"만 알려줄 뿐, 지금 이 탭이 정확히 어느 빌드인지는 안 보여준다. 전송이
+// 이상하게 동작할 때 "이게 최신 코드가 맞나?"를 눈으로 바로 확인할 수 있게.
+{
+  const buildTag = document.getElementById('buildVersionTag');
+  if (buildTag) buildTag.textContent = 'build ' + BUILD_VERSION;
+}
 let updateAvailable = false;
+// 배너를 띄우고 그냥 무시당하면 아무 일도 안 일어나던 기존 방식 대신, 일정
+// 시간 뒤엔 강제로 새로고침한다. 데이터 손실 걱정은 없다 — location.reload()도
+// beforeunload/pagehide를 정상적으로 발생시키고, 그 안에서 flushDungeonTracking()
+// + saveGame()이 이미 돈다(위쪽 두 addEventListener 참고). 사냥 도중 갑자기
+// 끊기면 불쾌할 수 있어서, 0초로 바로 끊지 않고 30초 카운트다운을 보여줘
+// 최소한 "곧 끊긴다"는 걸 눈치채고 정리할 시간을 준다.
+const FORCE_RELOAD_AFTER_SEC = 30;
+let forceReloadTimer = null;
+function startForceReloadCountdown() {
+  if (forceReloadTimer !== null) return; // already counting down
+  let remaining = FORCE_RELOAD_AFTER_SEC;
+  const textEl = document.getElementById('updateBannerText');
+  const tick = () => {
+    if (textEl) textEl.textContent = `🔄 새 버전이 있어요 (${remaining}초 후 자동 새로고침)`;
+    if (remaining <= 0) {
+      clearInterval(forceReloadTimer);
+      flushDungeonTracking();
+      saveGame();
+      location.reload();
+      return;
+    }
+    remaining -= 1;
+  };
+  tick();
+  forceReloadTimer = setInterval(tick, 1000);
+}
 async function checkForUpdate() {
   if (updateAvailable) return; // already showing the banner, no need to re-check
   try {
@@ -940,6 +978,7 @@ async function checkForUpdate() {
     if (match && match[1] && match[1] !== BUILD_VERSION) {
       updateAvailable = true;
       document.getElementById('updateBanner').classList.add('show');
+      startForceReloadCountdown();
     }
   } catch (e) {
     // offline or network hiccup — just try again next interval, no need to
@@ -5213,13 +5252,23 @@ function parseTransferPayload(wrapper) {
 // 넘어온 "오늘 일일던전 사용량"을 이 기기의 사용량과 그룹별로 병합한다(큰
 // 쪽 채택). dateKey가 오늘 것이 아니면(보낸 기기 시계가 다르거나 하루
 // 지난 값이면) 통째로 무시 — 어제 값으로 오늘 한도를 건드리면 안 된다.
+// 반환값은 "이 병합으로 실제로 무언가 넘어왔는지"를 호출자가 화면에 그대로
+// 보여줄 수 있도록 하기 위한 것 — 이게 없으면 병합이 조용히 일어나서(혹은
+// dateKey가 달라 조용히 무시돼서) 유저 입장에선 "됐는지 안 됐는지" 확인할
+// 방법이 없다. applyImportedSaveData가 이 결과를 그대로 메시지로 띄운다.
 function mergeIncomingDungeonUsage(incoming) {
-  if (!incoming || typeof incoming.usage !== 'object' || incoming.dateKey !== todayKey()) return;
+  if (!incoming || typeof incoming.usage !== 'object') return { applied: false, reason: 'no-data' };
+  if (incoming.dateKey !== todayKey()) return { applied: false, reason: 'stale-date' };
   const local = loadDungeonUsage();
+  let carried = 0;
   for (const key in incoming.usage) {
-    local.usage[key] = Math.max(local.usage[key] || 0, incoming.usage[key] || 0);
+    const before = local.usage[key] || 0;
+    const merged = Math.max(before, incoming.usage[key] || 0);
+    if (merged > before) carried += (merged - before);
+    local.usage[key] = merged;
   }
   lsSet(DUNGEON_USAGE_KEY, JSON.stringify(local));
+  return { applied: true, carriedSeconds: carried };
 }
 function setSaveCodeMsg(text, ok) {
   const el = $.saveCodeMsg;
@@ -5252,9 +5301,9 @@ function applyImportedSaveData(data, dungeonUsage) {
                               // repeated offline-progress rewards
   const json = JSON.stringify(data);
   lsSet(SAVE_KEY, JSON.stringify({ data: json, chk: signPayload(json) }));
-  mergeIncomingDungeonUsage(dungeonUsage);
+  const mergeResult = mergeIncomingDungeonUsage(dungeonUsage);
   running = false;
-  return true;
+  return mergeResult;
 }
 
 // ---------- P2P 기기 간 전송 (WebRTC via PeerJS's public broker — no server
@@ -5391,15 +5440,27 @@ function startSyncReceive() {
       // ack/declined are sent back over `c` BEFORE teardownSync() runs, with
       // a short delay after each send so the data channel has time to
       // actually flush before the connection closes.
-      if (!applyImportedSaveData(parsed.save, parsed.dungeonUsage)) {
+      const mergeResult = applyImportedSaveData(parsed.save, parsed.dungeonUsage);
+      if (!mergeResult) {
         statusEl.textContent = '취소했어요. 상대 기기의 캐릭터는 그대로 유지돼요.';
         try { c.send({ type: 'declined' }); } catch (e) {}
         setTimeout(() => teardownSync(), 400);
         return;
       }
       try { c.send({ type: 'ack' }); } catch (e) {}
-      statusEl.textContent = '불러왔어요! 잠시 후 새로고침됩니다...';
-      setTimeout(() => { teardownSync(); location.reload(); }, 700);
+      // 일일던전 사용량이 실제로 얼마나 넘어왔는지 여기서 바로 보여준다 —
+      // "됐는지 안 됐는지 모르겠다"를 없애기 위한 것. carriedSeconds > 0이면
+      // 상대 기기에서 쓴 시간이 이 기기 한도에도 정확히 반영됐다는 뜻이고,
+      // reason:'stale-date'면 넘어온 값이 오늘 것이 아니라서 의도적으로
+      // 버려졌다는 뜻이다(둘 다 정상 동작이며 버그가 아니다).
+      let extra = '';
+      if (mergeResult.applied && mergeResult.carriedSeconds > 0) {
+        extra = ` (일일던전 사용시간 ${fmtDuration(mergeResult.carriedSeconds)} 반영됨)`;
+      } else if (mergeResult.reason === 'stale-date') {
+        extra = ' (일일던전 사용시간은 날짜가 달라 반영 안 됨)';
+      }
+      statusEl.textContent = '불러왔어요!' + extra + ' 잠시 후 새로고침됩니다...';
+      setTimeout(() => { teardownSync(); location.reload(); }, 1400);
     });
     c.on('error', () => { statusEl.textContent = '연결 중 오류가 발생했어요.'; });
   });
