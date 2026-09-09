@@ -651,6 +651,7 @@
       <div style="display:flex; gap:8px; align-items:center;">
         <span>📍 <b id="mapName">마을</b></span>
         <span id="dungeonTimer" style="display:none; color:#ffd166;"></span>
+        <span id="dungeonOfflineNotice" style="display:none; color:#ff9a9a; font-size:10px;" title="이 던전은 앱을 꺼두거나 화면을 벗어나도 사냥이 진행되지 않아요.">🚫오프라인 불가</span>
         <span>Lv.<b id="lvl">1</b></span>
         <span>🪙 <b id="gold">0</b></span>
       </div>
@@ -1203,6 +1204,9 @@ const BGM_THEMES = {
   abyss: { tempo: 68, wave:'sawtooth', vol:0.068,
     melody: [['C4',1.5],[null,0.5],['Eb4',1],[null,0.5],['Gb4',1.5],[null,0.5],['D4',1],['C4',1.5],[null,1]],
     bass:   [['C2',2],['Gb1',2],['Eb2',2],['B1',2]] },
+  moonshrine: { tempo: 66, wave:'sine', vol:0.07,
+    melody: [['B3',2],[null,0.5],['D4',1.5],['F4',2],[null,0.5],['D4',1],['C4',2],[null,1]],
+    bass:   [['B1',4],['F2',4]] },
   boss: { tempo: 150, wave:'square', vol:0.085,
     melody: [['E4',0.5],['E4',0.5],['G4',0.5],['E4',0.5],['D4',0.5],['D4',0.5],['F4',0.5],['D4',0.5],
               ['C4',0.5],['C4',0.5],['E4',0.5],['C4',0.5],['B3',0.5],['B3',0.5],['D4',0.5],['B3',0.5]],
@@ -1767,7 +1771,7 @@ function updatePlayer() {
         if (isDailyDungeon(pt.to) && dungeonSecondsRemaining(pt.to) <= 0) {
           showMsg('⏳ 오늘은 이 던전의 사냥 시간을 다 썼어요. 내일 다시 와주세요!', 2200);
         } else {
-          switchMap(pt.to, pt.arriveSide);
+          switchMap(resolveDailyDungeonTarget(pt.to), pt.arriveSide);
         }
         break;
       }
@@ -1781,9 +1785,16 @@ function updatePlayer() {
     promptBox.textContent = '💬 상점 열기 (탭하세요)';
     map.npcNear = true;
   } else if (map.dailyPortal && Math.abs((player.x + player.w/2) - (map.dailyPortal.x + map.dailyPortal.w/2)) < 60 && player.onGround) {
-    const remain = dungeonSecondsRemaining(map.dailyPortal.to);
+    const targetId = resolveDailyDungeonTarget(map.dailyPortal.to);
+    const targetMap = MAPS[targetId];
     promptBox.style.display = 'block';
-    promptBox.textContent = remain > 0 ? `⏳ 일일 던전 입장 (오늘 남은시간 ${fmtDuration(remain)})` : '⏳ 오늘 사냥 시간을 모두 썼어요';
+    if (targetMap && targetMap.minLevel && player.level < targetMap.minLevel) {
+      promptBox.textContent = `⏳ 일일 던전 (Lv.${targetMap.minLevel} 이상 입장 가능)`;
+    } else {
+      const remain = dungeonSecondsRemaining(map.dailyPortal.to);
+      const tierLabel = targetMap ? ` · Lv.${targetMap.minLevel} 구간` : '';
+      promptBox.textContent = remain > 0 ? `⏳ 일일 던전 입장${tierLabel} (오늘 남은시간 ${fmtDuration(remain)} · 🚫오프라인 불가)` : '⏳ 오늘 사냥 시간을 모두 썼어요';
+    }
     map.npcNear = false;
   } else {
     promptBox.style.display = 'none';
@@ -1813,7 +1824,10 @@ function toggleAutoHunt() {
   // nothing else in the UI mentions it.
   if (turningOn && lsGet('forestTaleSeenOfflineTip_v1') !== '1') {
     lsSet('forestTaleSeenOfflineTip_v1', '1');
-    setTimeout(() => showMsg('💤 자동사냥은 앱을 꺼도 계속돼요! 나중에 다시 열면 그동안의 골드·경험치를 받아요.', 4200), 1300);
+    const tip = isDailyDungeon(currentMap)
+      ? '💤 자동사냥은 보통 앱을 꺼도 계속되지만, 이 던전은 예외라 접속해 있는 동안만 진행돼요.'
+      : '💤 자동사냥은 앱을 꺼도 계속돼요! 나중에 다시 열면 그동안의 골드·경험치를 받아요.';
+    setTimeout(() => showMsg(tip, 4200), 1300);
   }
 }
 
@@ -2916,14 +2930,50 @@ function nowTrusted() {
 }
 
 // ---------- 일일 던전 (하루 N분만 사냥 가능한 특수 던전) ----------
-// mapKey: 아래 MAPS의 키, limitSec: 하루에 허용되는 사냥 시간(초). 던전을 더
+// 키: 아래 MAPS에서 이 던전을 대표하는 id (마을 포탈의 to도 이 값을 가리킴).
+// limitSec: 하루에 허용되는 사냥 시간(초). tiers: 레벨 구간 목록 — 있으면
+// 실제 맵은 `${key}${tier}` 형태(예: moonshrine10/20/30)로 나뉘어 있고,
+// dailyDungeonMapForLevel()이 플레이어 레벨에 맞는 구간으로 자동 연결한다.
+// 구간을 나누더라도 "하루 예산"은 이 그룹 전체가 공유 — 하루 도중 레벨업으로
+// 상위 구간으로 넘어가도 시간이 리셋되며 우회되지 않는다. 던전을 더
 // 추가하려면 이 객체에 항목만 늘리면 된다 — 시간 추적/오프라인 파밍 차단/
 // 시간 초과 시 강제 퇴장 로직은 전부 이 레지스트리 하나만 참조하므로 새 항목에
 // 자동으로 똑같이 적용된다.
 const DAILY_DUNGEONS = {
-  moonshrine: { limitSec: 3600 },
+  moonshrine: { limitSec: 3600, tiers: [10, 20, 30] },
 };
-function isDailyDungeon(mapKey) { return !!DAILY_DUNGEONS[mapKey]; }
+// 실제 맵 id(대표 id 자체이든, 그 밑의 개별 티어 맵이든)를 레지스트리의
+// 대표(그룹) id로 되돌린다 — 하루 사용량 집계/제한 체크가 전부 이 값을
+// 기준으로 이뤄지므로, 티어가 몇 개로 나뉘어 있든 항상 그룹 하나로 합산된다.
+function dailyDungeonGroupKey(mapKey) {
+  if (DAILY_DUNGEONS[mapKey]) return mapKey;
+  for (const key in DAILY_DUNGEONS) {
+    const tiers = DAILY_DUNGEONS[key].tiers;
+    if (tiers && tiers.some(t => `${key}${t}` === mapKey)) return key;
+  }
+  return null;
+}
+function isDailyDungeon(mapKey) { return !!dailyDungeonGroupKey(mapKey); }
+// 대표 id + 플레이어 레벨 -> 실제로 입장할 티어 맵 id. 구간이 없는 (tiers
+// 미지정) 던전은 대표 id를 그대로 실제 맵으로 쓴다. 가장 낮은 구간보다
+// 레벨이 낮아도 일단 가장 낮은 구간 id를 돌려주고(입장 가능 여부는 그
+// 맵의 minLevel 체크가 별도로 막는다), 최고 구간을 넘는 레벨은 최고
+// 구간으로 고정된다.
+function dailyDungeonMapForLevel(groupKey, level) {
+  const def = DAILY_DUNGEONS[groupKey];
+  if (!def || !def.tiers || !def.tiers.length) return groupKey;
+  let chosen = def.tiers[0];
+  for (const t of def.tiers) if (level >= t) chosen = t;
+  return `${groupKey}${chosen}`;
+}
+// 포탈의 to 값(대표 id일 수도, 이미 특정 티어 맵 id일 수도 있음)을 플레이어의
+// 현재 레벨에 맞는 실제 입장 맵으로 변환한다. 일일 던전이 아닌 평범한
+// 포탈이면 원래 값 그대로 돌려준다 — 포탈 자체의 좌표/색/동작은 전혀
+// 건드리지 않고, 실제로 어느 맵으로 들어갈지만 자동으로 정해준다.
+function resolveDailyDungeonTarget(to) {
+  const group = dailyDungeonGroupKey(to);
+  return group ? dailyDungeonMapForLevel(group, player.level) : to;
+}
 
 // 캐릭터 세이브(SAVE_KEY)와는 완전히 분리된 별도 로컬스토리지 키 — 기기 단위
 // 제한이라 "새로 시작"으로 캐릭터를 지우거나 저장 코드로 다른 캐릭터를
@@ -2937,16 +2987,22 @@ function loadDungeonUsage() {
   } catch (e) {}
   return { dateKey: todayKey(), usage: {} }; // 날짜가 바뀌었거나 처음이면 전부 리셋
 }
-function dungeonSecondsUsedToday(mapKey) { return loadDungeonUsage().usage[mapKey] || 0; }
+function dungeonSecondsUsedToday(mapKey) {
+  const group = dailyDungeonGroupKey(mapKey);
+  if (!group) return 0;
+  return loadDungeonUsage().usage[group] || 0;
+}
 function dungeonSecondsRemaining(mapKey) {
-  const def = DAILY_DUNGEONS[mapKey];
-  if (!def) return Infinity;
-  return Math.max(0, def.limitSec - dungeonSecondsUsedToday(mapKey));
+  const group = dailyDungeonGroupKey(mapKey);
+  if (!group) return Infinity;
+  return Math.max(0, DAILY_DUNGEONS[group].limitSec - dungeonSecondsUsedToday(mapKey));
 }
 function addDungeonUsage(mapKey, seconds) {
   if (!(seconds > 0)) return;
+  const group = dailyDungeonGroupKey(mapKey);
+  if (!group) return;
   const data = loadDungeonUsage();
-  data.usage[mapKey] = (data.usage[mapKey] || 0) + seconds;
+  data.usage[group] = (data.usage[group] || 0) + seconds;
   lsSet(DUNGEON_USAGE_KEY, JSON.stringify(data));
 }
 function fmtDuration(sec) {
@@ -2973,10 +3029,16 @@ function stopDungeonTracking() {
 }
 function updateDungeonTimerHUD() {
   const el = document.getElementById('dungeonTimer');
+  const noticeEl = document.getElementById('dungeonOfflineNotice');
   if (!el) return;
-  if (!isDailyDungeon(currentMap)) { el.style.display = 'none'; return; }
+  if (!isDailyDungeon(currentMap)) {
+    el.style.display = 'none';
+    if (noticeEl) noticeEl.style.display = 'none';
+    return;
+  }
   el.style.display = 'inline';
   el.textContent = `⏳ ${fmtDuration(dungeonSecondsRemaining(currentMap))}`;
+  if (noticeEl) noticeEl.style.display = 'inline';
 }
 // 1초마다 체류 시간을 확정 기록하고 남은 시간을 확인 — 시간이 다 되면 자동사냥을
 // 끄고 마을로 강제 퇴장시킨다. dungeonSessionStart가 실시간 기준이라 이 타이머
@@ -3036,19 +3098,46 @@ const MAPS = {
   },
   // ---------- 일일 던전 (하루 1시간 제한, DAILY_DUNGEONS 레지스트리 참고) ----------
   // 메인 진행 루트에서 벗어난 별도 지역이라 portalBack만 있고 portalForward는
-  // 없음 — 나가는 길은 항상 마을뿐. 보상은 같은 티어의 일반 사냥터보다
-  // 1.35배 후하게(setupMapMonsters의 applyRewardMult) 줘서 "굳이 하루 한 번,
-  // 시간 맞춰 들를 가치"를 만든다.
-  moonshrine: {
-    name: '달빛 봉인 유적',
+  // 없음 — 나가는 길은 항상 마을뿐. 레벨 10/20/30 세 구간으로 나뉘어 있고,
+  // 마을의 dailyPortal은 항상 'moonshrine'(대표 id)를 가리킨 채 그대로 두고
+  // moonshrineMapForLevel()이 실제 입장 시점에 플레이어 레벨에 맞는 구간으로
+  // 자동 변환한다(포탈 좌표/색은 안 바뀜). 세 구간 모두 레이아웃은 동일하고
+  // 몬스터 티어·이름의 레벨 표기만 다르다. 보상은 같은 구간의 일반
+  // 사냥터보다 1.6배 후하게(setupMapMonsters의 applyRewardMult) 줘서 "굳이
+  // 하루 한 번, 시간 맞춰 들를 가치"를 확실히 만든다 — 다만 과하지 않게, 시간
+  // 제한(하루 1시간)을 감안한 수준으로만.
+  moonshrine10: {
+    name: '달빛 봉인 유적 (Lv.10)',
     width: 1200,
     groundColor: '#241a3a',
     platforms: [ {x:0,y:GROUND_Y,w:1200,h:60}, {x:420,y:GROUND_Y-100,w:130,h:20}, {x:800,y:GROUND_Y-150,w:130,h:20} ],
     portalBack: { x: 20, y: GROUND_Y-70, w:36, h:70, to:'town', arriveSide:'dailyPortal' },
     npc: null,
-    decor: 'dungeon',
+    decor: 'moonshrine',
     monsters: [],
-    minLevel: 8,
+    minLevel: 10,
+  },
+  moonshrine20: {
+    name: '달빛 봉인 유적 (Lv.20)',
+    width: 1200,
+    groundColor: '#241a3a',
+    platforms: [ {x:0,y:GROUND_Y,w:1200,h:60}, {x:420,y:GROUND_Y-100,w:130,h:20}, {x:800,y:GROUND_Y-150,w:130,h:20} ],
+    portalBack: { x: 20, y: GROUND_Y-70, w:36, h:70, to:'town', arriveSide:'dailyPortal' },
+    npc: null,
+    decor: 'moonshrine',
+    monsters: [],
+    minLevel: 20,
+  },
+  moonshrine30: {
+    name: '달빛 봉인 유적 (Lv.30)',
+    width: 1200,
+    groundColor: '#241a3a',
+    platforms: [ {x:0,y:GROUND_Y,w:1200,h:60}, {x:420,y:GROUND_Y-100,w:130,h:20}, {x:800,y:GROUND_Y-150,w:130,h:20} ],
+    portalBack: { x: 20, y: GROUND_Y-70, w:36, h:70, to:'town', arriveSide:'dailyPortal' },
+    npc: null,
+    decor: 'moonshrine',
+    monsters: [],
+    minLevel: 30,
   },
   beach: {
     name: '조개껍질 해변',
@@ -3205,13 +3294,25 @@ function setupMapMonsters() {
     .concat([ makeGoblin(300, 3), makeGoblin(660, 4), makeGoblin(980, 4), makeEliteGoblin(1080, 5) ])
     .concat([ makeMushroom(560, 3), makeMushroom(820, 4) ])
     .concat([ makeBoss(1180) ]);
-  MAPS.moonshrine.monsters = applyRewardMult(
-    [200,500,850,1150].map((x,i) => makeGoblin(x, 7 + Math.floor(i/2)))
-      .concat([ makeBat(420, GROUND_Y-220, 8), makeBat(950, GROUND_Y-190, 8) ])
-      .concat([ makeMushroom(300, 7), makeMushroom(1000, 8) ])
-      .concat([ makeEliteGoblin(1080, 9) ]),
-    1.35
-  );
+  // 세 구간 모두 같은 "봉인석 수호자" 라인업(고블린/박쥐/버섯 + 정예 고블린)을
+  // 쓰고 baseTier만 레벨대에 맞춰 올린다 — Lv10 구간은 해변~용암 협곡 사이,
+  // Lv20 구간은 얼어붙은 정상과 비슷, Lv30 구간은 멸망의 균열과 천공의 성채
+  // 사이 정도로 살짝 더 도전적이게 잡았다. 거기에 보상 1.6배(applyRewardMult)
+  // 를 더해 "하루 1시간, 그 레벨대 일반 사냥터보다 확실히 낫다"를 만들되,
+  // 과하게 세지 않도록(같은 레벨대 사냥터의 최상단 몬스터 tier 수준) 눌러뒀다.
+  const MOONSHRINE_REWARD_MULT = 1.6;
+  function moonshrineMonsters(baseTier) {
+    return applyRewardMult(
+      [200,500,850,1150].map((x,i) => makeGoblin(x, baseTier + Math.floor(i/2)))
+        .concat([ makeBat(420, GROUND_Y-220, baseTier+1), makeBat(950, GROUND_Y-190, baseTier+1) ])
+        .concat([ makeMushroom(300, baseTier), makeMushroom(1000, baseTier+1) ])
+        .concat([ makeEliteGoblin(1080, baseTier+2) ]),
+      MOONSHRINE_REWARD_MULT
+    );
+  }
+  MAPS.moonshrine10.monsters = moonshrineMonsters(8);
+  MAPS.moonshrine20.monsters = moonshrineMonsters(16);
+  MAPS.moonshrine30.monsters = moonshrineMonsters(23);
   MAPS.beach.monsters = [200,500,900,1300].map((x,i) => makeCrab(x, 5 + Math.floor(i/2)))
     .concat([ makeSnail(350, 5), makeSnail(1100, 6), makeShellCrab(750, 7) ])
     .concat([ makeBat(650, GROUND_Y-200, 6), makeBat(1150, GROUND_Y-180, 6) ]);
@@ -3283,7 +3384,15 @@ function switchMap(id, arriveSide) {
   // "on" while parked in town is exactly what let offline farming trigger
   // without actually hunting anything. Force it off on arrival.
   if (id === 'town' && autoHunt) setAutoHunt(false);
-  if (isDailyDungeon(id)) startDungeonTracking(id);
+  if (isDailyDungeon(id)) {
+    startDungeonTracking(id);
+    // 이 지역은 자동사냥은 켜지지만 오프라인 파밍은 안 되게 설계돼 있으므로
+    // (computeOfflineProgress 참고), 최초 입장 시 딱 한 번 명확히 알려준다.
+    if (lsGet('forestTaleSeenDungeonOfflineTip_v1') !== '1') {
+      lsSet('forestTaleSeenDungeonOfflineTip_v1', '1');
+      setTimeout(() => showMsg('🚫 이 던전은 오프라인 자동사냥이 적용되지 않아요. 접속해 있는 동안만 사냥이 진행돼요.', 3600), 500);
+    }
+  }
   updateDungeonTimerHUD();
   sfxPortal();
   const pt = arriveSide ? map[arriveSide] : null;
@@ -3406,11 +3515,33 @@ function drawGround(map) {
     else if (map.decor === 'lava') { grassGrad.addColorStop(0,'#ff8a3a'); grassGrad.addColorStop(1,'#8a2a10'); }
     else if (map.decor === 'frost') { grassGrad.addColorStop(0,'#f0fbff'); grassGrad.addColorStop(1,'#a8cfe8'); }
     else if (map.decor === 'abyss') { grassGrad.addColorStop(0,'#c65aff'); grassGrad.addColorStop(1,'#3a1a5a'); }
+    else if (map.decor === 'moonshrine') { grassGrad.addColorStop(0,'#a8bcff'); grassGrad.addColorStop(1,'#4a4aa0'); }
     else { grassGrad.addColorStop(0,'#c9a86a'); grassGrad.addColorStop(1,'#a9884a'); }
     ctx.fillStyle = grassGrad;
     ctx.fillRect(p.x, p.y, p.w, 10);
   }
   if (map.decor === 'abyss') drawAbyssCracks(map);
+  if (map.decor === 'moonshrine') drawMoonshrinePillars(map);
+}
+// 달빛 봉인 유적 전용 장식 — 바닥에서 솟은 부서진 봉인석 기둥들이 은은한
+// 룬빛으로 맥동한다. 일반 그림자 던전(decor:'dungeon')과 한눈에 구분되도록
+// 다른 모든 던전류 지역과는 별개의 실루엣/색을 사용한다.
+function drawMoonshrinePillars(map) {
+  const t = Date.now() / 900;
+  for (const p of map.platforms) {
+    for (let x = p.x + 46; x < p.x + p.w - 46; x += 170) {
+      const glow = 0.4 + Math.sin(t + x * 0.02) * 0.25;
+      ctx.save();
+      ctx.fillStyle = '#241f4a';
+      ctx.fillRect(x, p.y - 34, 15, 34);
+      ctx.fillStyle = '#2e295c';
+      ctx.fillRect(x - 5, p.y - 34, 25, 7);
+      ctx.fillStyle = `rgba(180,200,255,${glow})`;
+      ctx.fillRect(x + 4, p.y - 26, 7, 5);
+      ctx.fillRect(x + 4, p.y - 14, 7, 5);
+      ctx.restore();
+    }
+  }
 }
 // Abyss terrain reads as broken obsidian shot through with glowing rifts —
 // distinct from every other map's flat grass/sand/ice strip.
@@ -3496,6 +3627,7 @@ function drawBackgroundDepth(map) {
     : map.decor === 'lava' ? '#32131a'
     : map.decor === 'frost' ? '#79a8c4'
     : map.decor === 'abyss' ? '#160b2b'
+    : map.decor === 'moonshrine' ? '#211c48'
     : '#9b704e';
   for (let i=-1; i<6; i++) {
     const x = i * 320 - drift;
@@ -3526,6 +3658,7 @@ function draw() {
   else if (map.decor === 'lava') { sky.addColorStop(0,'#3a1810'); sky.addColorStop(0.55,'#6a2410'); sky.addColorStop(1,'#2a0e08'); }
   else if (map.decor === 'frost') { sky.addColorStop(0,'#eafbff'); sky.addColorStop(0.55,'#bfe4f5'); sky.addColorStop(1,'#8fc0e0'); }
   else if (map.decor === 'abyss') { sky.addColorStop(0,'#0a0414'); sky.addColorStop(0.55,'#1e0f38'); sky.addColorStop(1,'#100822'); }
+  else if (map.decor === 'moonshrine') { sky.addColorStop(0,'#131030'); sky.addColorStop(0.55,'#241f52'); sky.addColorStop(1,'#161339'); }
   else { sky.addColorStop(0,'#ffe6b8'); sky.addColorStop(0.6,'#ffc98a'); sky.addColorStop(1,'#e8a860'); }
   ctx.fillStyle = sky; ctx.fillRect(0,0,W,H);
 
@@ -3560,12 +3693,32 @@ function draw() {
     }
   }
 
+  if (map.decor === 'moonshrine') {
+    // 화면에 고정된 커다란 보름달 + 은은하게 반짝이는 별 — 일반 던전(보라색
+    // 동굴)과 확실히 구분되는 "밤하늘 봉인 유적" 분위기를 만든다.
+    if (!map._moonStars) { map._moonStars = []; for (let i=0;i<40;i++) map._moonStars.push({x:Math.random()*map.width, y:Math.random()*H*0.55, s:Math.random()*1.4+0.5, tw:Math.random()*10}); }
+    ctx.save();
+    const moonX = W - 86, moonY = 66;
+    const moonGlow = ctx.createRadialGradient(moonX,moonY,4,moonX,moonY,74);
+    moonGlow.addColorStop(0,'rgba(232,228,255,0.85)'); moonGlow.addColorStop(0.45,'rgba(180,190,255,0.3)'); moonGlow.addColorStop(1,'rgba(180,190,255,0)');
+    ctx.fillStyle = moonGlow; ctx.beginPath(); ctx.arc(moonX,moonY,74,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#eef0ff'; ctx.beginPath(); ctx.arc(moonX,moonY,25,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(190,200,235,0.5)'; ctx.beginPath(); ctx.arc(moonX-8,moonY-6,4,0,Math.PI*2); ctx.arc(moonX+6,moonY+8,3,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    for (const s of map._moonStars) {
+      ctx.save(); ctx.globalAlpha = 0.3 + Math.sin(Date.now()/650 + s.tw)*0.28;
+      ctx.fillStyle = '#cfe0ff'; ctx.beginPath(); ctx.arc(s.x - camX*0.15, s.y, s.s, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
   const mistColor = map.decor === 'field' ? 'rgba(110,150,140,0.5)'
     : map.decor === 'dungeon' ? 'rgba(20,10,30,0.6)'
     : map.decor === 'beach' ? 'rgba(120,190,200,0.4)'
     : map.decor === 'lava' ? 'rgba(60,20,10,0.7)'
     : map.decor === 'frost' ? 'rgba(200,230,245,0.55)'
     : map.decor === 'abyss' ? 'rgba(60,20,90,0.6)'
+    : map.decor === 'moonshrine' ? 'rgba(70,70,160,0.55)'
     : 'rgba(150,110,80,0.35)';
   ctx.fillStyle = mistColor;
 
@@ -5363,7 +5516,7 @@ document.getElementById('newGameLink').addEventListener('click', () => {
 });
 
 function startCommon() {
-  [MAPS.field, MAPS.dungeon, MAPS.moonshrine, MAPS.beach, MAPS.lava, MAPS.frost, MAPS.abyss, MAPS.sky, MAPS.ruins, MAPS.throne, MAPS.voidrift, MAPS.ashwaste, MAPS.genesis].forEach(map => map.monsters.forEach(m => {
+  [MAPS.field, MAPS.dungeon, MAPS.moonshrine10, MAPS.moonshrine20, MAPS.moonshrine30, MAPS.beach, MAPS.lava, MAPS.frost, MAPS.abyss, MAPS.sky, MAPS.ruins, MAPS.throne, MAPS.voidrift, MAPS.ashwaste, MAPS.genesis].forEach(map => map.monsters.forEach(m => {
     m.dead = false; m.hp = m.maxHp; m.x = m.startX; if (m.type==='bat') m.y = m.baseY;
     if (m.type === 'boss') { m.state = 'chase'; m.actionCooldown = 90; m.engaged = false; }
   }));
