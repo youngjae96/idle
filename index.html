@@ -855,6 +855,20 @@
  * section that owns it, and keep DOM event binding at the end of that section.
  */
 
+// Elements looked up by id more than once anywhere in this file — fetched
+// once here instead of re-querying the DOM at every call site. Each entry's
+// underlying DOM node never gets replaced (containers like #chatMessages have
+// their *contents* replaced via innerHTML, not the container itself), so the
+// cached reference stays valid for the life of the page. Ids used only once
+// are left as plain document.getElementById() calls at their call site —
+// caching those wouldn't save anything.
+const $ = {};
+['myPeerId','chatModal','newGameLink','btnAutoHunt','startBtn','itemList','chatInput','btnSkill',
+ 'toggleFriendPanel','syncReceiveStatus','syncReceiveInput','scTabSend','scTabReceive','saveCodeMsg',
+ 'randomMatchBtn','msg','mapName','friendsView','copyPeerId','comboText','chatUnreadBadge','chatMessages',
+ 'buyPotion5','buyPotion10','buyPotion','btnTownWarp','btnStatus','btnMute','btnChat',
+].forEach(id => { $[id] = document.getElementById(id); });
+
 // Show runtime errors on the page so mobile testing does not require DevTools.
 (function installMobileErrorPanel() {
   const panel = document.createElement('div');
@@ -1036,7 +1050,7 @@ bindTouchBtn(document.getElementById('btnLeft'), 'ArrowLeft');
 bindTouchBtn(document.getElementById('btnRight'), 'ArrowRight');
 bindTouchBtn(document.getElementById('btnJump'), 'Space');
 bindTouchBtn(document.getElementById('btnAttack'), null, () => tryAttack());
-bindTouchBtn(document.getElementById('btnSkill'), null, () => trySkill());
+bindTouchBtn($.btnSkill, null, () => trySkill());
 
 function rectsOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -1088,18 +1102,18 @@ document.addEventListener('keydown', ensureAudio, { once:true });
 
 let soundOn = lsGet('forestTaleSound') !== '0';
 function updateMuteBtn() {
-  const btn = document.getElementById('btnMute');
+  const btn = $.btnMute;
   btn.textContent = soundOn ? '🔊' : '🔇';
   btn.classList.toggle('off', !soundOn);
 }
-document.getElementById('btnMute').addEventListener('click', () => {
+$.btnMute.addEventListener('click', () => {
   soundOn = !soundOn;
   lsSet('forestTaleSound', soundOn ? '1' : '0');
   updateMuteBtn();
 });
 updateMuteBtn();
 
-document.getElementById('btnTownWarp').addEventListener('click', () => {
+$.btnTownWarp.addEventListener('click', () => {
   if (!running) return;
   if (currentMap === 'town') { showMsg('이미 마을에 있어요.', 900); return; }
   if (townWarpCooldown > 0) { showMsg('잠시 후 다시 사용할 수 있어요.', 900); return; }
@@ -1810,7 +1824,7 @@ function setAutoHunt(on) {
   autoHuntDescending = null;
   autoHuntStuckFrames = 0;
   autoHuntStuckX = null;
-  const btn = document.getElementById('btnAutoHunt');
+  const btn = $.btnAutoHunt;
   btn.textContent = autoHunt ? '🤖 자동사냥 ON' : '🤖 자동사냥 OFF';
   btn.classList.toggle('on', autoHunt);
   showMsg(autoHunt ? '🤖 자동사냥을 시작합니다' : '🤖 자동사냥을 해제합니다', 1200);
@@ -2008,7 +2022,7 @@ function autoHuntStep(map) {
   return moving;
 }
 
-document.getElementById('btnAutoHunt').addEventListener('click', toggleAutoHunt);
+$.btnAutoHunt.addEventListener('click', toggleAutoHunt);
 
 function playerTakeDamage(dmg) {
   if (player.invuln > 0) return;
@@ -2053,7 +2067,7 @@ let combo = 0, comboTimer = 0;
 function registerHit() {
   combo++;
   comboTimer = 90;
-  const el = document.getElementById('comboText');
+  const el = $.comboText;
   el.textContent = combo >= 2 ? `${combo} 콤보!` : '';
   el.classList.remove('combo-hot', 'combo-fire');
   if (combo >= 2) {
@@ -2071,7 +2085,7 @@ function updateCombo() {
     comboTimer--;
     if (comboTimer <= 0) {
       combo = 0;
-      const el = document.getElementById('comboText');
+      const el = $.comboText;
       el.classList.remove('show', 'combo-hot', 'combo-fire');
     }
   }
@@ -3417,7 +3431,7 @@ function switchMap(id, arriveSide) {
   player.y = GROUND_Y - player.h;
   player.vy = 0;
   player.portalCooldown = 40;
-  document.getElementById('mapName').textContent = map.name;
+  $.mapName.textContent = map.name;
   showMsg(`${map.name}(으)로 이동했습니다.`, 1200);
 }
 
@@ -3454,17 +3468,17 @@ function updateHUD() {
   ui.width('questBar', (quest.count/quest.target*100) + '%');
 
   document.getElementById('potionCount').textContent = player.potions || 0;
-  document.getElementById('btnTownWarp').classList.toggle('cooling', townWarpCooldown > 0 || currentMap === 'town');
-  document.getElementById('btnAutoHunt').classList.toggle('cooling', currentMap === 'town');
+  $.btnTownWarp.classList.toggle('cooling', townWarpCooldown > 0 || currentMap === 'town');
+  $.btnAutoHunt.classList.toggle('cooling', currentMap === 'town');
   const shopOpen = document.getElementById('shopModal').classList.contains('open');
   if (shopOpen) {
-    document.getElementById('buyPotion').disabled = player.gold < GAME_BALANCE.potionPrice;
-    document.getElementById('buyPotion5').disabled = player.gold < GAME_BALANCE.potionPrice * 5;
-    document.getElementById('buyPotion10').disabled = player.gold < GAME_BALANCE.potionPrice * 10;
+    $.buyPotion.disabled = player.gold < GAME_BALANCE.potionPrice;
+    $.buyPotion5.disabled = player.gold < GAME_BALANCE.potionPrice * 5;
+    $.buyPotion10.disabled = player.gold < GAME_BALANCE.potionPrice * 10;
   }
 
   // skill cooldown ring
-  const skillBtn = document.getElementById('btnSkill');
+  const skillBtn = $.btnSkill;
   const ring = skillBtn.querySelector('.cdRing');
   if (player.skillCooldown > 0) {
     skillBtn.classList.add('cooling');
@@ -3488,7 +3502,7 @@ function updateHUD() {
   }
   updateBgmForState();
 
-  const statusBtn = document.getElementById('btnStatus');
+  const statusBtn = $.btnStatus;
   statusBtn.textContent = player.statPoints > 0 ? `📊 상태 (${player.statPoints})` : '📊 상태';
 
   if (document.getElementById('statusModal').classList.contains('open')) renderStatusPanel();
@@ -3506,7 +3520,7 @@ function update() {
   camX = Math.max(0, Math.min(player.x - W/2, map.width - W));
   if (townWarpCooldown > 0) townWarpCooldown--;
   sendStateThrottled();
-  if (msgTimer > 0) { msgTimer -= 16; if (msgTimer <= 0) document.getElementById('msg').textContent = ''; }
+  if (msgTimer > 0) { msgTimer -= 16; if (msgTimer <= 0) $.msg.textContent = ''; }
   updateHUD();
 }
 
@@ -3886,7 +3900,7 @@ function allocateStat(key) {
   renderStatusPanel();
   sfxCoin();
 }
-document.getElementById('btnStatus').addEventListener('click', openStatus);
+$.btnStatus.addEventListener('click', openStatus);
 document.getElementById('btnInventory').addEventListener('click', openShop);
 document.getElementById('closeStatus').addEventListener('click', closeStatus);
 
@@ -4015,7 +4029,7 @@ function handleIncomingConnection(c) {
     }
     if (setupConnection(c)) {
       addChatMessage('system', '🎲 낯선 모험가가 매칭되어 들어왔어요!');
-      if (!document.getElementById('chatModal').classList.contains('open')) bumpChatUnread();
+      if (!$.chatModal.classList.contains('open')) bumpChatUnread();
     }
     return;
   }
@@ -4024,7 +4038,7 @@ function handleIncomingConnection(c) {
   // it isn't invisible: a system message (seen next time chat is opened) and
   // an unread badge on the chat button, so the player knows to open chat and
   // have their friend try again.
-  const modalOpen = document.getElementById('chatModal').classList.contains('open');
+  const modalOpen = $.chatModal.classList.contains('open');
   if (!modalOpen) {
     try { c.close(); } catch (e) {}
     addChatMessage('system', `📡 ${roomCodeOf(c.peer)} 님이 연결을 시도했어요 (채팅창이 닫혀있어 자동으로 거절됨). 채팅을 열어두면 수락할 수 있어요.`);
@@ -4072,7 +4086,7 @@ function showConnectionRequest(c) {
 // minutes so the room code stops being a live target at all.
 function checkPeerIdle() {
   if (!peer) { peerIdleSince = null; return; }
-  const modalOpen = document.getElementById('chatModal').classList.contains('open');
+  const modalOpen = $.chatModal.classList.contains('open');
   const hasConns = Object.keys(connections).length > 0;
   if (!modalOpen && !hasConns) {
     if (peerIdleSince === null) peerIdleSince = Date.now();
@@ -4081,7 +4095,7 @@ function checkPeerIdle() {
       peer = null;
       peerIdleSince = null;
       matchingLobbyId = null;
-      document.getElementById('myPeerId').textContent = '방 번호 받는 중...';
+      $.myPeerId.textContent = '방 번호 받는 중...';
     }
   } else {
     peerIdleSince = null;
@@ -4092,16 +4106,16 @@ setInterval(checkPeerIdle, 15000);
 let chatUnread = 0;
 function bumpChatUnread() {
   // Only worth flagging if the player isn't already looking at the chat panel.
-  const modalOpen = document.getElementById('chatModal').classList.contains('open');
+  const modalOpen = $.chatModal.classList.contains('open');
   if (modalOpen) return;
   chatUnread++;
-  const badge = document.getElementById('chatUnreadBadge');
+  const badge = $.chatUnreadBadge;
   badge.textContent = chatUnread > 9 ? '9+' : String(chatUnread);
   badge.classList.add('show');
 }
 function clearChatUnread() {
   chatUnread = 0;
-  document.getElementById('chatUnreadBadge').classList.remove('show');
+  $.chatUnreadBadge.classList.remove('show');
 }
 function removeRemotePlayersForConnection(connectionPeerId) {
   for (const id in remotePlayers) {
@@ -4119,7 +4133,7 @@ function closeAllConnections() {
 }
 const CHAT_HISTORY_MAX = 200; // a spammy or malicious peer shouldn't be able to grow this DOM list without bound
 function addChatMessage(kind, text, nickname) {
-  const list = document.getElementById('chatMessages');
+  const list = $.chatMessages;
   const div = document.createElement('div');
   div.className = 'chatMsg chatMsg-' + kind;
   div.textContent = kind === 'system' ? text : `${nickname || '?'}: ${text}`;
@@ -4134,7 +4148,7 @@ function updateChatStatus() {
   const n = Object.keys(connections).length;
   peerConnected = n > 0;
   document.getElementById('chatStatus').textContent = n > 0 ? `🟢 ${n}명과 연결됨` : '⚪ 연결 안 됨';
-  document.getElementById('btnChat').classList.toggle('hasConn', peerConnected);
+  $.btnChat.classList.toggle('hasConn', peerConnected);
   renderRoomMembers();
 }
 function playerJobLabel(job) {
@@ -4395,18 +4409,18 @@ function peerIceConfig() {
 function initPeer(attempt) {
   attempt = attempt || 0;
   if (typeof Peer === 'undefined') {
-    document.getElementById('myPeerId').textContent = '연결 기능을 불러올 수 없어요 (인터넷 연결 확인)';
+    $.myPeerId.textContent = '연결 기능을 불러올 수 없어요 (인터넷 연결 확인)';
     return;
   }
   if (attempt > 6) {
-    document.getElementById('myPeerId').textContent = '방 번호를 받지 못했어요 — 🔄 버튼으로 다시 시도해보세요';
+    $.myPeerId.textContent = '방 번호를 받지 못했어요 — 🔄 버튼으로 다시 시도해보세요';
     return;
   }
   const code = randomRoomCode();
   try {
     const p = new Peer(ROOM_PREFIX + code, { config: peerIceConfig() });
     peer = p;
-    p.on('open', () => { document.getElementById('myPeerId').textContent = code; });
+    p.on('open', () => { $.myPeerId.textContent = code; });
     p.on('connection', c => { handleIncomingConnection(c); });
     p.on('error', err => {
       if (err && err.type === 'unavailable-id') {
@@ -4427,10 +4441,10 @@ function initPeer(attempt) {
       addChatMessage('system', '연결 오류: ' + (err && err.type ? err.type : '알 수 없음'));
     });
     p.on('disconnected', () => {
-      document.getElementById('myPeerId').textContent = '⏳ 서버와 연결이 끊겼어요 (탭 전환 등) — 이 화면을 다시 열면 자동 재시도';
+      $.myPeerId.textContent = '⏳ 서버와 연결이 끊겼어요 (탭 전환 등) — 이 화면을 다시 열면 자동 재시도';
     });
   } catch (e) {
-    document.getElementById('myPeerId').textContent = '연결 기능을 사용할 수 없어요';
+    $.myPeerId.textContent = '연결 기능을 사용할 수 없어요';
   }
 }
 function makeNewRoom() {
@@ -4440,7 +4454,7 @@ function makeNewRoom() {
   matchingLobbyId = null;
   setMatchUI('done', '');
   updateChatStatus();
-  document.getElementById('myPeerId').textContent = '방 번호 받는 중...';
+  $.myPeerId.textContent = '방 번호 받는 중...';
   initPeer();
 }
 document.getElementById('newRoomBtn').addEventListener('click', makeNewRoom);
@@ -4456,7 +4470,7 @@ function shuffledLobbyOrder() {
 }
 function setMatchUI(state, text) {
   // state: 'searching' | 'done'
-  const btn = document.getElementById('randomMatchBtn');
+  const btn = $.randomMatchBtn;
   const status = document.getElementById('matchStatus');
   isMatching = state === 'searching';
   btn.disabled = isMatching;
@@ -4523,7 +4537,7 @@ function becomeLobbyHost(order, idx) {
   peer = p;
   p.on('open', () => {
     matchingLobbyId = lobbyId;
-    document.getElementById('myPeerId').textContent = roomCodeOf(lobbyId);
+    $.myPeerId.textContent = roomCodeOf(lobbyId);
     setMatchUI('done', '🔎 공용 로비에서 다른 모험가를 기다리고 있어요. (자동으로 연결돼요)');
   });
   p.on('connection', c => handleIncomingConnection(c));
@@ -4538,7 +4552,7 @@ function becomeLobbyHost(order, idx) {
     setMatchUI('done', '연결 오류: ' + (err && err.type ? err.type : '알 수 없음'));
   });
   p.on('disconnected', () => {
-    document.getElementById('myPeerId').textContent = '⏳ 서버와 연결이 끊겼어요 — 채팅창을 다시 열면 재시도돼요';
+    $.myPeerId.textContent = '⏳ 서버와 연결이 끊겼어요 — 채팅창을 다시 열면 재시도돼요';
   });
 }
 function startRandomMatch() {
@@ -4570,7 +4584,7 @@ function startRandomMatch() {
     peer.once ? peer.once('open', go) : peer.on('open', go);
   }
 }
-document.getElementById('randomMatchBtn').addEventListener('click', startRandomMatch);
+$.randomMatchBtn.addEventListener('click', startRandomMatch);
 
 // Backgrounding the tab (e.g. switching apps to paste a friend's code) can
 // drop the WebSocket to PeerJS's signaling server on some mobile browsers.
@@ -4582,7 +4596,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 function openChat() {
-  const modal = document.getElementById('chatModal');
+  const modal = $.chatModal;
   if (modal.classList.contains('open')) { closeChat(); return; }
   openModal('chatModal');
   clearChatUnread();
@@ -4592,19 +4606,19 @@ function openChat() {
   // player actually wants it, instead of it shoving the messages out of view
   // before a connection exists.
   setFriendPanel(false);
-  const messages = document.getElementById('chatMessages');
+  const messages = $.chatMessages;
   messages.scrollTop = messages.scrollHeight;
-  if (peerConnected) setTimeout(() => document.getElementById('chatInput').focus(), 50);
+  if (peerConnected) setTimeout(() => $.chatInput.focus(), 50);
 }
 function setFriendPanel(open) {
-  document.getElementById('friendsView').classList.toggle('open', open);
-  document.getElementById('toggleFriendPanel').classList.toggle('open', open);
+  $.friendsView.classList.toggle('open', open);
+  $.toggleFriendPanel.classList.toggle('open', open);
 }
-document.getElementById('toggleFriendPanel').addEventListener('click', () => {
-  setFriendPanel(!document.getElementById('friendsView').classList.contains('open'));
+$.toggleFriendPanel.addEventListener('click', () => {
+  setFriendPanel(!$.friendsView.classList.contains('open'));
 });
 function closeChat() { closeModal('chatModal'); }
-document.getElementById('btnChat').addEventListener('click', openChat);
+$.btnChat.addEventListener('click', openChat);
 document.getElementById('closeChat').addEventListener('click', closeChat);
 // navigator.clipboard needs a secure (https) context, which a page opened from
 // a local content://file:// URI usually isn't — so it silently does nothing
@@ -4634,10 +4648,10 @@ function selectTextManually(el) {
     sel.addRange(range);
   } catch (e) {}
 }
-document.getElementById('copyPeerId').addEventListener('click', () => {
-  const idEl = document.getElementById('myPeerId');
+$.copyPeerId.addEventListener('click', () => {
+  const idEl = $.myPeerId;
   const id = idEl.textContent;
-  const btn = document.getElementById('copyPeerId');
+  const btn = $.copyPeerId;
   const done = ok => {
     btn.textContent = ok ? '✅' : '길게눌러';
     setTimeout(() => { btn.textContent = '복사'; }, 1400);
@@ -4663,7 +4677,7 @@ document.getElementById('connectPeerBtn').addEventListener('click', () => {
   }
 });
 function sendChatMessage() {
-  const input = document.getElementById('chatInput');
+  const input = $.chatInput;
   const text = input.value.trim();
   if (!text) return;
   addChatMessage('me', text, player.nickname || '나');
@@ -4671,7 +4685,7 @@ function sendChatMessage() {
   input.value = '';
 }
 document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
-document.getElementById('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendChatMessage(); });
+$.chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChatMessage(); });
 ['chatInput', 'friendIdInput'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('focus', () => {
@@ -4744,9 +4758,9 @@ function buyPotions(count, cost, reason) {
   sfxCoin(); updateHUD();
   spawnFloatText(player.x+player.w/2, player.y, `🧪 +${count}`, '#5ae0a8');
 }
-document.getElementById('buyPotion').addEventListener('click', () => buyPotions(1, GAME_BALANCE.potionPrice, 'potion'));
-document.getElementById('buyPotion5').addEventListener('click', () => buyPotions(5, GAME_BALANCE.potionPrice * 5, 'potion_bundle'));
-document.getElementById('buyPotion10').addEventListener('click', () => buyPotions(10, GAME_BALANCE.potionPrice * 10, 'potion_bundle10'));
+$.buyPotion.addEventListener('click', () => buyPotions(1, GAME_BALANCE.potionPrice, 'potion'));
+$.buyPotion5.addEventListener('click', () => buyPotions(5, GAME_BALANCE.potionPrice * 5, 'potion_bundle'));
+$.buyPotion10.addEventListener('click', () => buyPotions(10, GAME_BALANCE.potionPrice * 10, 'potion_bundle10'));
 
 document.querySelectorAll('.shopTabBtn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -4758,7 +4772,7 @@ document.querySelectorAll('.shopTabBtn').forEach(btn => {
 });
 
 function renderEnhanceList() {
-  const list = document.getElementById('itemList');
+  const list = $.itemList;
   list.innerHTML = '';
   const slots = [
     { key:'weapon', label:'⚔️ 무기 슬롯', enhanceField:'weaponEnhance', bonusPerLevel:ENHANCE_ATK_PER_LEVEL, bonusLabel:'공격력' },
@@ -4813,7 +4827,7 @@ function renderEnhanceList() {
 }
 
 function renderPassiveList() {
-  const list = document.getElementById('itemList');
+  const list = $.itemList;
   list.innerHTML = '';
   if (!player.passives) player.passives = { atk:0, hp:0, gold:0, exp:0 };
   for (const key of Object.keys(PASSIVES)) {
@@ -4859,7 +4873,7 @@ function equipShopItem(item, owned, price = 0) {
 function renderShopList() {
   if (shopTab === 'enhance') { renderEnhanceList(); return; }
   if (shopTab === 'passive') { renderPassiveList(); return; }
-  const list = document.getElementById('itemList');
+  const list = $.itemList;
   list.innerHTML = '';
   const items = shopTab === 'weapon' ? WEAPONS : ARMORS;
   const owned = shopTab === 'weapon' ? player.ownedWeapons : player.ownedArmors;
@@ -5208,7 +5222,7 @@ function mergeIncomingDungeonUsage(incoming) {
   lsSet(DUNGEON_USAGE_KEY, JSON.stringify(local));
 }
 function setSaveCodeMsg(text, ok) {
-  const el = document.getElementById('saveCodeMsg');
+  const el = $.saveCodeMsg;
   el.textContent = text;
   el.style.color = ok ? '#8adf9a' : '#ff8a8a';
 }
@@ -5343,8 +5357,8 @@ function startSyncSend(attempt) {
   });
 }
 function startSyncReceive() {
-  const input = document.getElementById('syncReceiveInput');
-  const statusEl = document.getElementById('syncReceiveStatus');
+  const input = $.syncReceiveInput;
+  const statusEl = $.syncReceiveStatus;
   const code = (input.value || '').trim();
   if (!/^\d{6}$/.test(code)) { statusEl.textContent = '6자리 번호를 정확히 입력해주세요.'; return; }
   if (typeof Peer === 'undefined') { statusEl.textContent = '연결 기능을 불러올 수 없어요 (인터넷 연결 확인)'; return; }
@@ -5398,19 +5412,19 @@ function startSyncReceive() {
 }
 function switchSyncTab(tab) {
   teardownSync();
-  document.getElementById('scTabSend').classList.toggle('active', tab === 'send');
-  document.getElementById('scTabReceive').classList.toggle('active', tab === 'receive');
+  $.scTabSend.classList.toggle('active', tab === 'send');
+  $.scTabReceive.classList.toggle('active', tab === 'receive');
   document.getElementById('scSendPane').style.display = tab === 'send' ? '' : 'none';
   document.getElementById('scReceivePane').style.display = tab === 'receive' ? '' : 'none';
-  document.getElementById('syncReceiveStatus').textContent = '';
+  $.syncReceiveStatus.textContent = '';
   if (tab === 'send') startSyncSend();
 }
-document.getElementById('scTabSend').addEventListener('click', () => switchSyncTab('send'));
-document.getElementById('scTabReceive').addEventListener('click', () => switchSyncTab('receive'));
+$.scTabSend.addEventListener('click', () => switchSyncTab('send'));
+$.scTabReceive.addEventListener('click', () => switchSyncTab('receive'));
 document.getElementById('syncReceiveBtn').addEventListener('click', startSyncReceive);
 function openSaveCodeModal() {
-  document.getElementById('saveCodeMsg').textContent = '';
-  document.getElementById('syncReceiveInput').value = '';
+  $.saveCodeMsg.textContent = '';
+  $.syncReceiveInput.value = '';
   switchSyncTab('send');
   openModal('saveCodeModal');
 }
@@ -5530,16 +5544,16 @@ function showOfflineModal(result) {
 }
 document.getElementById('closeOffline').addEventListener('click', () => closeModal('offlineModal'));
 
-document.getElementById('startBtn').addEventListener('click', () => {
+$.startBtn.addEventListener('click', () => {
   const save = loadSave();
   if (save) continueGame(save);
   else openModal('jobSelectModal');
 });
-document.getElementById('newGameLink').addEventListener('click', () => {
+$.newGameLink.addEventListener('click', () => {
   const confirmed = confirm('기존 캐릭터를 삭제하고 새로 시작할까요? 되돌릴 수 없어요.');
   if (!confirmed) return;
   clearSave();
-  document.getElementById('newGameLink').style.display = 'none';
+  $.newGameLink.style.display = 'none';
   openModal('jobSelectModal');
 });
 
@@ -5549,13 +5563,13 @@ function startCommon() {
     if (m.type === 'boss') { m.state = 'chase'; m.actionCooldown = 90; m.engaged = false; }
   }));
   initClouds(MAPS.town.width);
-  document.getElementById('mapName').textContent = MAPS[currentMap].name;
-  document.getElementById('btnSkill').firstChild.textContent = JOBS[player.job].skillEmoji;
+  $.mapName.textContent = MAPS[currentMap].name;
+  $.btnSkill.firstChild.textContent = JOBS[player.job].skillEmoji;
   document.getElementById('jobSelectModal').classList.remove('open');
   running = true;
-  document.getElementById('startBtn').style.display = 'none';
-  document.getElementById('newGameLink').style.display = 'none';
-  document.getElementById('msg').textContent = '';
+  $.startBtn.style.display = 'none';
+  $.newGameLink.style.display = 'none';
+  $.msg.textContent = '';
   updateHUD();
   fitCanvas();
   loop();
@@ -5594,7 +5608,7 @@ function continueGame(save) {
   // 않으면 매번 OFF로 초기화된다 — 마을에는 몬스터가 없어 자동사냥을 못
   // 켜는 규칙(toggleAutoHunt 참고)과 동일하게 마을이면 강제로 꺼둔다.
   autoHunt = !!save.autoHunt && currentMap !== 'town';
-  const autoHuntBtn = document.getElementById('btnAutoHunt');
+  const autoHuntBtn = $.btnAutoHunt;
   autoHuntBtn.textContent = autoHunt ? '🤖 자동사냥 ON' : '🤖 자동사냥 OFF';
   autoHuntBtn.classList.toggle('on', autoHunt);
   startCommon();
@@ -5694,8 +5708,8 @@ document.addEventListener('visibilitychange', () => {
 (function initStartScreen() {
   const save = loadSave();
   if (save) {
-    document.getElementById('startBtn').textContent = '이어하기';
-    document.getElementById('newGameLink').style.display = 'block';
+    $.startBtn.textContent = '이어하기';
+    $.newGameLink.style.display = 'block';
   }
 })();
 
