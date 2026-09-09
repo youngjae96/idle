@@ -5563,6 +5563,15 @@ function continueGame(save) {
   refreshStats();
   player.hp = player.maxHp; player.mp = player.maxMp;
   startCommon();
+  // 새로고침(또는 세이브 코드 복원)으로 이 함수를 거쳐 다시 시작할 때, 로드된
+  // currentMap이 일일 던전이면 여기서도 시간 추적을 다시 걸어줘야 한다. 이걸
+  // 빼먹으면 switchMap()을 거치지 않고 곧장 currentMap을 대입하는 이 경로
+  // 특성상 dungeonSessionStart가 계속 null로 남아 flushDungeonTracking()이
+  // 매초 아무 것도 안 하고 리턴 — 새로고침 이후로는 아무리 사냥해도 하루
+  // 사용량이 더 이상 늘지 않는 구멍(사실상 시간 제한 무력화)이 생긴다. 이미
+  // 예산을 다 썼다면 여기서 굳이 막지 않아도 뒤이은 1초 간격 타이머가 바로
+  // 감지해서 마을로 내보낸다.
+  if (isDailyDungeon(currentMap)) startDungeonTracking(currentMap);
 
   const offline = computeOfflineProgress(save);
   if (offline) {
