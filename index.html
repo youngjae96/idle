@@ -11,7 +11,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>고요숲 이야기</title>
+<title>엔드리스 리얼름</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Gowun+Dodum&display=swap" rel="stylesheet">
@@ -645,7 +645,7 @@
   <button id="updateBannerBtn">새로고침</button>
 </div>
 <div id="wrap">
-  <h1>🌲 고요숲 이야기 🌲</h1>
+  <h1>엔드리스 리얼름</h1>
   <div id="hud">
     <div class="hud-top">
       <div style="display:flex; gap:8px; align-items:center;">
@@ -5118,7 +5118,7 @@ function sanitizeSaveData(data) {
 function serializeSave() {
   return {
     schemaVersion: SAVE_SCHEMA_VERSION,
-    savedAt: Date.now(),
+    savedAt: nowTrusted(),
     currentMap,
     autoHunt,
     quest,
@@ -5227,7 +5227,7 @@ function applyImportedSaveData(data, dungeonUsage) {
   const confirmed = confirm(message);
   suppressAwayTracking = false;
   if (!confirmed) return false;
-  data.savedAt = Date.now(); // treat "import" as happening right now — a save
+  data.savedAt = nowTrusted(); // treat "import" as happening right now — a save
                               // from days ago shouldn't be replayable to farm
                               // repeated offline-progress rewards
   const json = JSON.stringify(data);
@@ -5431,7 +5431,7 @@ function computeOfflineProgress(save) {
   // (markBack)했을 때나 동일하게 적용된다(둘 다 이 함수를 거침).
   if (isDailyDungeon(save.currentMap)) return null;
 
-  const elapsedMs = Math.min(Date.now() - save.savedAt, GAME_BALANCE.offlineMaxHours * 3600 * 1000);
+  const elapsedMs = Math.min(nowTrusted() - save.savedAt, GAME_BALANCE.offlineMaxHours * 3600 * 1000);
   if (elapsedMs < 30000) return null;
 
   const avg = averageMonsterStats(savedMap);
@@ -5584,6 +5584,13 @@ function continueGame(save) {
   economyLog = save.economyLog || [];
   refreshStats();
   player.hp = player.maxHp; player.mp = player.maxMp;
+  // autoHunt는 serializeSave/sanitizeSaveData에는 있지만 여기서 복원해주지
+  // 않으면 매번 OFF로 초기화된다 — 마을에는 몬스터가 없어 자동사냥을 못
+  // 켜는 규칙(toggleAutoHunt 참고)과 동일하게 마을이면 강제로 꺼둔다.
+  autoHunt = !!save.autoHunt && currentMap !== 'town';
+  const autoHuntBtn = document.getElementById('btnAutoHunt');
+  autoHuntBtn.textContent = autoHunt ? '🤖 자동사냥 ON' : '🤖 자동사냥 OFF';
+  autoHuntBtn.classList.toggle('on', autoHunt);
   startCommon();
   // 새로고침(또는 세이브 코드 복원)으로 이 함수를 거쳐 다시 시작할 때, 로드된
   // currentMap이 일일 던전이면 여기서도 시간 추적을 다시 걸어줘야 한다. 이걸
@@ -5654,7 +5661,7 @@ let awayAt = null;
 let suppressAwayTracking = false;
 function markAway() {
   if (!running || awayAt !== null || suppressAwayTracking) return;
-  awayAt = Date.now();
+  awayAt = nowTrusted();
 }
 function markBack() {
   if (!running || awayAt === null) return;
