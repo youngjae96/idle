@@ -650,6 +650,7 @@
     <div class="hud-top">
       <div style="display:flex; gap:8px; align-items:center;">
         <span>📍 <b id="mapName">마을</b></span>
+        <span id="dungeonTimer" style="display:none; color:#ffd166;"></span>
         <span>Lv.<b id="lvl">1</b></span>
         <span>🪙 <b id="gold">0</b></span>
       </div>
@@ -1759,10 +1760,17 @@ function updatePlayer() {
   if (player.portalCooldown > 0) player.portalCooldown--;
 
   // portal check
-  const portalsHere = [map.portalBack, map.portalForward].filter(Boolean);
+  const portalsHere = [map.portalBack, map.portalForward, map.dailyPortal].filter(Boolean);
   if (!autoHunt && player.portalCooldown <= 0) {
     for (const pt of portalsHere) {
-      if (rectsOverlap(player, pt)) { switchMap(pt.to, pt.arriveSide); break; }
+      if (rectsOverlap(player, pt)) {
+        if (isDailyDungeon(pt.to) && dungeonSecondsRemaining(pt.to) <= 0) {
+          showMsg('⏳ 오늘은 이 던전의 사냥 시간을 다 썼어요. 내일 다시 와주세요!', 2200);
+        } else {
+          switchMap(pt.to, pt.arriveSide);
+        }
+        break;
+      }
     }
   }
 
@@ -1772,6 +1780,11 @@ function updatePlayer() {
     promptBox.style.display = 'block';
     promptBox.textContent = '💬 상점 열기 (탭하세요)';
     map.npcNear = true;
+  } else if (map.dailyPortal && Math.abs((player.x + player.w/2) - (map.dailyPortal.x + map.dailyPortal.w/2)) < 60 && player.onGround) {
+    const remain = dungeonSecondsRemaining(map.dailyPortal.to);
+    promptBox.style.display = 'block';
+    promptBox.textContent = remain > 0 ? `⏳ 일일 던전 입장 (오늘 남은시간 ${fmtDuration(remain)})` : '⏳ 오늘 사냥 시간을 모두 썼어요';
+    map.npcNear = false;
   } else {
     promptBox.style.display = 'none';
     map.npcNear = false;
@@ -2873,6 +2886,114 @@ function drawPlayer() {
   }
 }
 
+// ---------- 실시간 보정 (기기 시계 조작으로 일일 던전 리셋을 속이는 것 방지) ----------
+// 서버가 없는 순수 클라이언트 게임이라 완벽한 방지는 불가능하다. 아래 두 겹으로
+// "설정 앱에서 시계를 앞뒤로 돌리는" 흔한 방식만 우선 막는다.
+// 1) 페이지를 열 때 외부 시간 API로 실제 UTC 시각과 기기 시계의 오차(offset)를
+//    한 번 구해둔다. 네트워크가 없거나 요청이 막히면 오프셋 0으로 조용히
+//    폴백한다 — 이 경우엔 기기 시계를 그대로 믿을 수밖에 없다.
+// 2) 지금까지 관측된 "가장 늦은 보정 시각"을 워터마크로 저장해두고, 이후 매번
+//    계산하는 현재시각은 이 워터마크보다 과거로 내려가지 않도록 clamp한다.
+//    기기 시계를 과거로 되돌려도 워터마크 아래로는 못 내려가므로 "하루 지난
+//    척 되돌려서 다시 초기화"가 통하지 않는다.
+const TIME_WATERMARK_KEY = 'forestTaleTimeWatermark_v1';
+let timeOffsetMs = 0;
+async function syncTimeOffset() {
+  try {
+    const res = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { cache: 'no-store' });
+    const data = await res.json();
+    const serverMs = Date.parse(data.utc_datetime);
+    if (Number.isFinite(serverMs)) timeOffsetMs = serverMs - Date.now();
+  } catch (e) { /* 오프라인/차단 시 기기 시계로 폴백 */ }
+}
+syncTimeOffset();
+function nowTrusted() {
+  const raw = Date.now() + timeOffsetMs;
+  const watermark = Number(lsGet(TIME_WATERMARK_KEY)) || 0;
+  const effective = Math.max(raw, watermark);
+  lsSet(TIME_WATERMARK_KEY, String(effective));
+  return effective;
+}
+
+// ---------- 일일 던전 (하루 N분만 사냥 가능한 특수 던전) ----------
+// mapKey: 아래 MAPS의 키, limitSec: 하루에 허용되는 사냥 시간(초). 던전을 더
+// 추가하려면 이 객체에 항목만 늘리면 된다 — 시간 추적/오프라인 파밍 차단/
+// 시간 초과 시 강제 퇴장 로직은 전부 이 레지스트리 하나만 참조하므로 새 항목에
+// 자동으로 똑같이 적용된다.
+const DAILY_DUNGEONS = {
+  moonshrine: { limitSec: 3600 },
+};
+function isDailyDungeon(mapKey) { return !!DAILY_DUNGEONS[mapKey]; }
+
+// 캐릭터 세이브(SAVE_KEY)와는 완전히 분리된 별도 로컬스토리지 키 — 기기 단위
+// 제한이라 "새로 시작"으로 캐릭터를 지우거나 저장 코드로 다른 캐릭터를
+// 불러와도 하루 사용량은 그대로 유지되어 우회할 수 없다.
+const DUNGEON_USAGE_KEY = 'forestTaleDungeonUsage_v1';
+function todayKey() { return new Date(nowTrusted()).toDateString(); }
+function loadDungeonUsage() {
+  try {
+    const data = JSON.parse(lsGet(DUNGEON_USAGE_KEY) || 'null');
+    if (data && typeof data.usage === 'object' && data.dateKey === todayKey()) return data;
+  } catch (e) {}
+  return { dateKey: todayKey(), usage: {} }; // 날짜가 바뀌었거나 처음이면 전부 리셋
+}
+function dungeonSecondsUsedToday(mapKey) { return loadDungeonUsage().usage[mapKey] || 0; }
+function dungeonSecondsRemaining(mapKey) {
+  const def = DAILY_DUNGEONS[mapKey];
+  if (!def) return Infinity;
+  return Math.max(0, def.limitSec - dungeonSecondsUsedToday(mapKey));
+}
+function addDungeonUsage(mapKey, seconds) {
+  if (!(seconds > 0)) return;
+  const data = loadDungeonUsage();
+  data.usage[mapKey] = (data.usage[mapKey] || 0) + seconds;
+  lsSet(DUNGEON_USAGE_KEY, JSON.stringify(data));
+}
+function fmtDuration(sec) {
+  sec = Math.max(0, Math.round(sec));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+}
+
+// 현재 던전 체류를 실시간(nowTrusted 기준)으로 깎는다. 프레임 루프나 타이머
+// 정밀도에 기대지 않고 "마지막 flush 이후 실제로 지난 시간"만 매번 다시
+// 계산하므로, 탭이 백그라운드에서 스로틀링돼 타이머가 늦게 불려도 다음 호출
+// 때 정확히 따라잡는다.
+let dungeonSessionStart = null, dungeonSessionMap = null;
+function startDungeonTracking(mapKey) { dungeonSessionStart = nowTrusted(); dungeonSessionMap = mapKey; }
+function flushDungeonTracking() {
+  if (dungeonSessionStart === null) return;
+  addDungeonUsage(dungeonSessionMap, (nowTrusted() - dungeonSessionStart) / 1000);
+  dungeonSessionStart = nowTrusted();
+}
+function stopDungeonTracking() {
+  if (dungeonSessionStart === null) return;
+  flushDungeonTracking();
+  dungeonSessionStart = null;
+  dungeonSessionMap = null;
+}
+function updateDungeonTimerHUD() {
+  const el = document.getElementById('dungeonTimer');
+  if (!el) return;
+  if (!isDailyDungeon(currentMap)) { el.style.display = 'none'; return; }
+  el.style.display = 'inline';
+  el.textContent = `⏳ ${fmtDuration(dungeonSecondsRemaining(currentMap))}`;
+}
+// 1초마다 체류 시간을 확정 기록하고 남은 시간을 확인 — 시간이 다 되면 자동사냥을
+// 끄고 마을로 강제 퇴장시킨다. dungeonSessionStart가 실시간 기준이라 이 타이머
+// 자체가 백그라운드에서 늦게 불려도(브라우저 스로틀링) 정확도에 문제없다.
+setInterval(() => {
+  if (!running) return;
+  updateDungeonTimerHUD();
+  if (!isDailyDungeon(currentMap)) return;
+  flushDungeonTracking();
+  updateDungeonTimerHUD();
+  if (dungeonSecondsRemaining(currentMap) <= 0) {
+    setAutoHunt(false);
+    showMsg('⏳ 오늘 이 던전의 사냥 시간이 끝났어요. 마을로 돌아갑니다.', 2600);
+    switchMap('town', 'dailyPortal');
+  }
+}, 1000);
+
 // ---------- Maps ----------
 const MAPS = {
   town: {
@@ -2881,6 +3002,9 @@ const MAPS = {
     groundColor: '#8a5a2e',
     platforms: [ {x:0,y:GROUND_Y,w:900,h:60} ],
     portalForward: { x: 830, y: GROUND_Y-70, w:36, h:70, to:'field', arriveSide:'portalBack' },
+    // 일일 던전 입구 — 메인 진행 루트(portalBack/portalForward)와는 별개의
+    // 세 번째 포탈이라 updatePlayer의 portalsHere 배열에도 따로 추가돼 있음.
+    dailyPortal: { x: 500, y: GROUND_Y-70, w:36, h:70, to:'moonshrine', arriveSide:'portalBack' },
     npc: { x: 300, y: GROUND_Y, emoji:'🧙', name:'상점 주인' },
     decor: 'town',
     monsters: null,
@@ -2909,6 +3033,22 @@ const MAPS = {
     decor: 'dungeon',
     monsters: [],
     minLevel: 5,
+  },
+  // ---------- 일일 던전 (하루 1시간 제한, DAILY_DUNGEONS 레지스트리 참고) ----------
+  // 메인 진행 루트에서 벗어난 별도 지역이라 portalBack만 있고 portalForward는
+  // 없음 — 나가는 길은 항상 마을뿐. 보상은 같은 티어의 일반 사냥터보다
+  // 1.35배 후하게(setupMapMonsters의 applyRewardMult) 줘서 "굳이 하루 한 번,
+  // 시간 맞춰 들를 가치"를 만든다.
+  moonshrine: {
+    name: '달빛 봉인 유적',
+    width: 1200,
+    groundColor: '#241a3a',
+    platforms: [ {x:0,y:GROUND_Y,w:1200,h:60}, {x:420,y:GROUND_Y-100,w:130,h:20}, {x:800,y:GROUND_Y-150,w:130,h:20} ],
+    portalBack: { x: 20, y: GROUND_Y-70, w:36, h:70, to:'town', arriveSide:'dailyPortal' },
+    npc: null,
+    decor: 'dungeon',
+    monsters: [],
+    minLevel: 8,
   },
   beach: {
     name: '조개껍질 해변',
@@ -3050,6 +3190,11 @@ const MAPS = {
     npc: null, decor: 'abyss', monsters: [], minLevel: 92,
   }
 };
+// 일일 던전처럼 "일반 사냥터보다 후한 보상"을 줄 때 쓰는 헬퍼 — 몬스터 hp/atk는
+// 그대로 두고 goldReward/expReward만 배율을 곱한다.
+function applyRewardMult(monsters, mult) {
+  return monsters.map(m => { m.goldReward = Math.round(m.goldReward * mult); m.expReward = Math.round(m.expReward * mult); return m; });
+}
 function setupMapMonsters() {
   MAPS.field.monsters = [200,400,800,1200].map((x,i) => makeMonster(x, Math.floor(i/2)))
     .concat([ makeBat(550, GROUND_Y-220, 1), makeBat(950, GROUND_Y-180, 1) ])
@@ -3060,6 +3205,13 @@ function setupMapMonsters() {
     .concat([ makeGoblin(300, 3), makeGoblin(660, 4), makeGoblin(980, 4), makeEliteGoblin(1080, 5) ])
     .concat([ makeMushroom(560, 3), makeMushroom(820, 4) ])
     .concat([ makeBoss(1180) ]);
+  MAPS.moonshrine.monsters = applyRewardMult(
+    [200,500,850,1150].map((x,i) => makeGoblin(x, 7 + Math.floor(i/2)))
+      .concat([ makeBat(420, GROUND_Y-220, 8), makeBat(950, GROUND_Y-190, 8) ])
+      .concat([ makeMushroom(300, 7), makeMushroom(1000, 8) ])
+      .concat([ makeEliteGoblin(1080, 9) ]),
+    1.35
+  );
   MAPS.beach.monsters = [200,500,900,1300].map((x,i) => makeCrab(x, 5 + Math.floor(i/2)))
     .concat([ makeSnail(350, 5), makeSnail(1100, 6), makeShellCrab(750, 7) ])
     .concat([ makeBat(650, GROUND_Y-200, 6), makeBat(1150, GROUND_Y-180, 6) ]);
@@ -3116,6 +3268,14 @@ function switchMap(id, arriveSide) {
     showMsg(`⚠️ 레벨 ${destMap.minLevel} 이상만 입장할 수 있어요.`, 1800);
     return;
   }
+  // 일일 던전은 하루 예산이 남아있을 때만 입장 허용 — updatePlayer의 포탈
+  // 접촉 체크에서도 미리 걸러주지만, switchMap이 다른 경로로 직접 호출될
+  // 가능성까지 대비한 2차 방어선.
+  if (isDailyDungeon(id) && dungeonSecondsRemaining(id) <= 0) {
+    showMsg('⏳ 오늘은 이 던전의 사냥 시간을 다 썼어요. 내일 다시 와주세요!', 2200);
+    return;
+  }
+  if (isDailyDungeon(currentMap)) stopDungeonTracking();
   currentMap = id;
   const map = destMap;
   initClouds(map.width);
@@ -3123,6 +3283,8 @@ function switchMap(id, arriveSide) {
   // "on" while parked in town is exactly what let offline farming trigger
   // without actually hunting anything. Force it off on arrival.
   if (id === 'town' && autoHunt) setAutoHunt(false);
+  if (isDailyDungeon(id)) startDungeonTracking(id);
+  updateDungeonTimerHUD();
   sfxPortal();
   const pt = arriveSide ? map[arriveSide] : null;
   if (pt) {
@@ -3293,6 +3455,19 @@ function drawPortal(pt) {
   ctx.restore();
 }
 
+// portalBack/portalForward(보라색)과 구분되도록 금색 계열로 렌더링 — "일반
+// 이동 포탈이 아니라 특별한 던전 입구"라는 걸 색으로도 알 수 있게.
+function drawDailyPortal(pt) {
+  const t = Date.now()/300;
+  ctx.save();
+  ctx.translate(pt.x + pt.w/2, pt.y + pt.h/2);
+  const grad = ctx.createRadialGradient(0,0,2,0,0,pt.w/1.4);
+  grad.addColorStop(0, '#fff2b8'); grad.addColorStop(0.6, '#e0a02a'); grad.addColorStop(1, 'rgba(224,160,42,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.ellipse(0, 0, pt.w/2 + Math.sin(t)*2, pt.h/2, 0, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
 function drawTownDecor(map) {
   // simple house shapes
   const houses = [ {x:80,y:GROUND_Y-90}, {x:560,y:GROUND_Y-100} ];
@@ -3416,6 +3591,7 @@ function draw() {
   if (map.decor === 'town') drawTownDecor(map);
   if (map.portalBack) drawPortal(map.portalBack);
   if (map.portalForward) drawPortal(map.portalForward);
+  if (map.dailyPortal) drawDailyPortal(map.dailyPortal);
   if (map.monsters) for (const m of map.monsters) drawMonster(m);
   drawProjectiles();
 
@@ -4765,7 +4941,10 @@ function sanitizeSaveData(data) {
   if (!p.ownedArmors.includes(p.armorId)) p.armorId = 'a0';
   if (typeof p.nickname !== 'string' || !p.nickname.trim()) p.nickname = '모험가';
   p.nickname = p.nickname.slice(0, 12);
-  if (!MAPS[data.currentMap]) data.currentMap = 'town';
+  // 일일 던전에 서 있던 채로 저장된 세이브는 항상 마을에서 다시 시작한다 —
+  // 서버 없이는 "앱이 꺼져 있던 동안"을 신뢰성 있게 판정할 수 없고, 어차피
+  // computeOfflineProgress에서도 이 지역은 보상 대상에서 빠진다.
+  if (!MAPS[data.currentMap] || isDailyDungeon(data.currentMap)) data.currentMap = 'town';
   data.autoHunt = !!data.autoHunt;
   const questTier = Math.round(clampNum(data.quest && data.quest.tier, 1, 10000, 1));
   const defaultTarget = questTargetForTier(questTier);
@@ -5072,6 +5251,10 @@ function computeOfflineProgress(save) {
   // just for closing and reopening the app.
   const savedMap = MAPS[save.currentMap];
   if (!save.autoHunt || !savedMap || !savedMap.monsters || !savedMap.monsters.length) return null;
+  // 일일 던전은 "자동사냥은 되지만 오프라인 파밍은 안 되게" 설계된 지역이라
+  // 여기서 무조건 컷 — 앱을 꺼뒀다 열거나(continueGame) 탭 전환 후 복귀
+  // (markBack)했을 때나 동일하게 적용된다(둘 다 이 함수를 거침).
+  if (isDailyDungeon(save.currentMap)) return null;
 
   const elapsedMs = Math.min(Date.now() - save.savedAt, GAME_BALANCE.offlineMaxHours * 3600 * 1000);
   if (elapsedMs < 30000) return null;
@@ -5180,7 +5363,7 @@ document.getElementById('newGameLink').addEventListener('click', () => {
 });
 
 function startCommon() {
-  [MAPS.field, MAPS.dungeon, MAPS.beach, MAPS.lava, MAPS.frost, MAPS.abyss, MAPS.sky, MAPS.ruins, MAPS.throne, MAPS.voidrift, MAPS.ashwaste, MAPS.genesis].forEach(map => map.monsters.forEach(m => {
+  [MAPS.field, MAPS.dungeon, MAPS.moonshrine, MAPS.beach, MAPS.lava, MAPS.frost, MAPS.abyss, MAPS.sky, MAPS.ruins, MAPS.throne, MAPS.voidrift, MAPS.ashwaste, MAPS.genesis].forEach(map => map.monsters.forEach(m => {
     m.dead = false; m.hp = m.maxHp; m.x = m.startX; if (m.type==='bat') m.y = m.baseY;
     if (m.type === 'boss') { m.state = 'chase'; m.actionCooldown = 90; m.engaged = false; }
   }));
@@ -5266,8 +5449,8 @@ document.querySelectorAll('.jobCard').forEach(card => {
 // right below already saves once, correctly, at the exact moment of hiding.
 setInterval(() => { if (running && !document.hidden) saveGame(); }, 5000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveGame(); });
-window.addEventListener('pagehide', () => saveGame());
-window.addEventListener('beforeunload', () => saveGame());
+window.addEventListener('pagehide', () => { flushDungeonTracking(); saveGame(); });
+window.addEventListener('beforeunload', () => { flushDungeonTracking(); saveGame(); });
 
 // ---------- Auto-hunt while backgrounded ----------
 // requestAnimationFrame (what loop() runs on) is throttled or fully paused by
