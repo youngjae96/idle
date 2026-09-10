@@ -81,6 +81,7 @@
   .bar-exp { background:linear-gradient(90deg,#5ac6e0,#5ae0a8); }
   .bar-quest { background:linear-gradient(90deg,#c65ae0,#ffd166); }
   .hud-row { display:flex; align-items:center; gap:6px; font-size:10.5px; color:#c8bce8; }
+  #hudPartyNames { color:#8adf9a; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .hud-row .bar-outer { flex:1; }
 
   #canvasWrap { position:relative; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; width:100%; overflow:hidden; touch-action:auto; }
@@ -155,22 +156,10 @@
   #btnAutoHunt:active { transform:scale(0.95); }
   #btnAutoHunt.cooling { opacity:0.4; }
 
-  #btnMute {
-    position:absolute; top:8px; left:8px; z-index:16; pointer-events:auto;
-    background:rgba(20,14,30,0.78); border:2px solid var(--border-purple); color:#c8bce8;
-    width:28px; height:28px; border-radius:50%; font-size:13px;
-    display:flex; align-items:center; justify-content:center;
-  }
-  #btnMute:active { transform:scale(0.9); }
+  /* btnMute/btnTownWarp used to float over the canvas as separate circular
+     icons; they now live as rows inside #menuModal (see .menuItemBtn below)
+     so only their state modifiers remain here. */
   #btnMute.off { opacity:0.55; }
-
-  #btnTownWarp {
-    position:absolute; top:8px; right:8px; z-index:16; pointer-events:auto;
-    background:rgba(20,14,30,0.78); border:2px solid var(--border-purple); color:#c8bce8;
-    width:28px; height:28px; border-radius:50%; font-size:13px;
-    display:flex; align-items:center; justify-content:center;
-  }
-  #btnTownWarp:active { transform:scale(0.9); }
   #btnTownWarp.cooling { opacity:0.4; }
 
   #bossBar {
@@ -360,38 +349,94 @@
   #teleportPanel h2 { color:#6fc7ff; font-size:15px; margin-bottom:8px; text-align:center; }
   #closeTeleport { width:100%; margin-top:10px; padding:8px; background:#3a5a70; color:#fff; border:none; border-radius:8px; font-weight:bold; }
 
-  #btnStatus {
-    background:rgba(255,255,255,0.1); border:1px solid #7aa8ff; color:#c8dcff;
-    font-size:13px; padding:3px 7px; border-radius:14px; line-height:1; pointer-events:auto;
+  /* btnStatus used to be a separate pill button too; it stays consolidated
+     inside #menuModal (only the state-modifier styling remains here).
+     btnInventory/btnTeleport/btnChat were pulled back out of the menu and
+     live as standalone .hudIconBtn buttons in the HUD top row instead. */
+  .hudIconBtn {
+    background:linear-gradient(180deg,#5a4a70,#3a2a4a); border:1px solid #c8bce8; color:#f0e8ff;
+    font-size:14px; padding:5px 9px; border-radius:14px; line-height:1;
+    pointer-events:auto; position:relative; flex-shrink:0;
   }
-  #btnStatus:active { transform:scale(0.92); }
-
-  #btnInventory {
-    background:rgba(255,255,255,0.1); border:1px solid #7ae0a8; color:#cdf5dc;
-    font-size:13px; padding:3px 7px; border-radius:14px; line-height:1; pointer-events:auto;
-  }
-  #btnInventory:active { transform:scale(0.92); }
-
-  #btnTeleport {
-    background:rgba(255,255,255,0.1); border:1px solid #6fc7ff; color:#cdeeff;
-    font-size:13px; padding:3px 7px; border-radius:14px; line-height:1; pointer-events:auto;
-  }
-  #btnTeleport:active { transform:scale(0.92); }
-
-  #btnChat {
-    position:absolute; top:84px; right:8px; z-index:16; pointer-events:auto;
-    background:rgba(20,14,30,0.78); border:2px solid #ffb27a; color:#ffe3cd;
-    width:28px; height:28px; border-radius:50%; font-size:13px;
-    display:flex; align-items:center; justify-content:center;
-  }
-  #btnChat:active { transform:scale(0.9); }
-  #btnChat.hasConn { border-color:#7ae0a8; box-shadow:0 0 6px rgba(122,224,168,0.6); }
+  .hudIconBtn:active { transform:scale(0.94); }
+  #btnChat.hasConn { border-color:#7ae0a8 !important; box-shadow:0 0 6px rgba(122,224,168,0.6); }
   .unreadBadge {
     display:none; position:absolute; top:-6px; right:-6px; min-width:16px; height:16px;
     padding:0 3px; border-radius:9px; background:#ff5a5a; color:#fff; font-size:10px;
     font-weight:bold; line-height:16px; text-align:center; box-shadow:0 0 0 2px #241a15;
   }
   .unreadBadge.show { display:block; }
+
+  /* ---------- Consolidated menu (☰) ---------- everything that isn't a
+     core in-combat control (movement/attack/skill/auto-hunt) lives behind
+     this one button instead of being scattered across the HUD and canvas. */
+  #btnMenu {
+    background:linear-gradient(180deg,#5a4a70,#3a2a4a); border:1px solid #c8bce8; color:#f0e8ff;
+    font-size:12.5px; font-weight:bold; padding:5px 11px; border-radius:14px; line-height:1;
+    pointer-events:auto; position:relative;
+  }
+  #btnMenu:active { transform:scale(0.94); }
+  #menuModal {
+    position:absolute; inset:0; background:rgba(7,5,14,0.78);
+    display:none; align-items:center; justify-content:center; z-index:20;
+    backdrop-filter:blur(4px) saturate(0.9);
+  }
+  #menuModal.open { display:flex; }
+  #menuPanel {
+    width:88%; max-width:340px; max-height:82%;
+    display:flex; flex-direction:column; gap:7px; overflow-y:auto;
+    background:linear-gradient(180deg,var(--panel-a),var(--panel-b));
+    border:3px solid #c8bce8; border-radius:14px; padding:14px;
+    animation:panelRise .22s ease-out both;
+  }
+  #menuPanel h2 { color:#e8dcff; font-size:15px; margin-bottom:2px; text-align:center; flex-shrink:0; }
+  .menuItemBtn {
+    display:flex; align-items:center; gap:10px; width:100%; flex-shrink:0;
+    background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#f0e8ff;
+    border-radius:10px; padding:10px 12px; font-size:12.5px; font-weight:bold; text-align:left;
+    position:relative; box-shadow:0 2px 0 rgba(0,0,0,0.35); transition:transform .08s, box-shadow .08s;
+  }
+  .menuItemBtn:active { box-shadow:0 0 0 rgba(0,0,0,0.35); transform:translateY(2px) scale(0.98); }
+  .menuItemBtn .miEmoji { font-size:16px; width:20px; text-align:center; flex-shrink:0; }
+  .menuItemBtn.off { opacity:0.6; }
+  .menuItemBtn.cooling { opacity:0.5; }
+  #closeMenu {
+    width:100%; margin-top:2px; padding:9px; background:#5a4a70; color:#fff;
+    border:none; border-radius:8px; font-weight:bold; flex-shrink:0;
+  }
+
+  /* ---------- Monster bestiary (몬스터 도감) ---------- */
+  #bestiaryModal {
+    position:absolute; inset:0; background:rgba(7,5,14,0.78);
+    display:none; align-items:center; justify-content:center; z-index:20;
+    backdrop-filter:blur(4px) saturate(0.9);
+  }
+  #bestiaryModal.open { display:flex; }
+  #bestiaryPanel {
+    width:90%; max-width:360px; max-height:84%;
+    display:flex; flex-direction:column;
+    background:linear-gradient(180deg,var(--panel-a),var(--panel-b));
+    border:3px solid #ffd166; border-radius:14px; padding:14px;
+    animation:panelRise .22s ease-out both;
+  }
+  #bestiaryPanel h2 { color:#ffd166; font-size:15px; margin-bottom:4px; text-align:center; flex-shrink:0; }
+  #bestiarySummary { font-size:11px; color:#c8bce8; text-align:center; margin-bottom:6px; flex-shrink:0; }
+  #bestiaryList { overflow-y:auto; margin-bottom:10px; min-height:0; }
+  .bestiaryTierLabel {
+    font-size:11px; font-weight:bold; color:#ffe9b0; margin:8px 0 3px;
+    padding-bottom:3px; border-bottom:1px solid rgba(255,255,255,0.15);
+  }
+  .bestiaryTierLabel:first-child { margin-top:0; }
+  .bestiaryEntry { display:flex; align-items:center; gap:10px; padding:7px 3px; border-bottom:1px dashed rgba(255,255,255,0.12); }
+  .bestiaryEntry:last-child { border-bottom:none; }
+  .bestiaryEntry .beEmoji { font-size:21px; width:28px; text-align:center; flex-shrink:0; }
+  .bestiaryEntry.undiscovered .beEmoji { filter:grayscale(1) brightness(0.6); opacity:0.7; }
+  .bestiaryEntry .beInfo { flex:1; min-width:0; }
+  .bestiaryEntry .beName { font-size:12px; font-weight:bold; color:#ffe9b0; }
+  .bestiaryEntry.undiscovered .beName { color:#8a7fa8; }
+  .bestiaryEntry .beMeta { font-size:10px; color:#c8bce8; margin-top:1px; }
+  .bestiaryEntry .beProgress { font-size:10px; color:#8fe0ff; margin-top:1px; }
+  #closeBestiary { width:100%; padding:9px; background:#5a4a70; color:#fff; border:none; border-radius:8px; font-weight:bold; flex-shrink:0; }
 
   /* Chat floats over the game as a lightweight panel, not a full modal — no
      dark backdrop here (see the shared modal-backdrop rule further down,
@@ -414,7 +459,7 @@
   #shopModal, #shopPanel, #statusModal, #statusPanel, #teleportModal, #teleportPanel,
   #chatModal, #chatPanel, #chatMessages, #jobSelectModal, #jobSelectPanel,
   #offlineModal, #offlinePanel, #saveCodeModal, #saveCodePanel, #saveCodeScroll,
-  #itemList, #teleportList, #errorPanel {
+  #itemList, #teleportList, #errorPanel, #menuModal, #menuPanel, #bestiaryModal, #bestiaryPanel, #bestiaryList {
     touch-action:auto; -webkit-overflow-scrolling:touch;
   }
   #chatPanel h2 { color:#ffb27a; font-size:15px; margin-bottom:8px; text-align:center; }
@@ -531,12 +576,6 @@
   }
   #closeOffline:active { box-shadow:0 1px 0 var(--gold-shadow); transform: translateY(2px); }
 
-  #btnSaveCode {
-    background:rgba(255,255,255,0.1); border:1px solid #8adf9a; color:#d8ffe0;
-    font-size:13px; padding:3px 7px; border-radius:14px; line-height:1; pointer-events:auto;
-  }
-  #btnSaveCode:active { transform:scale(0.92); }
-
   #saveCodeModal {
     position:fixed; inset:0; background:rgba(10,6,16,0.85);
     display:none; align-items:center; justify-content:center; z-index:9999;
@@ -589,18 +628,18 @@
     box-shadow: 0 1px 0 #362a4a; transform: translateY(2px);
   }
 
-  #shopModal, #statusModal, #teleportModal, #jobSelectModal, #offlineModal, #saveCodeModal {
+  #shopModal, #statusModal, #teleportModal, #jobSelectModal, #offlineModal, #saveCodeModal, #menuModal, #bestiaryModal {
     background:rgba(7,5,14,0.78);
     backdrop-filter:blur(4px) saturate(0.9);
   }
-  #shopPanel, #statusPanel, #teleportPanel, #chatPanel, #jobSelectPanel, #offlinePanel, #saveCodePanel {
+  #shopPanel, #statusPanel, #teleportPanel, #chatPanel, #jobSelectPanel, #offlinePanel, #saveCodePanel, #menuPanel, #bestiaryPanel {
     animation:panelRise .22s ease-out both;
   }
   @keyframes panelRise {
     from { opacity:0; transform:translateY(10px) scale(0.97); }
     to { opacity:1; transform:translateY(0) scale(1); }
   }
-  #shopPanel, #statusPanel, #teleportPanel, #chatPanel, #offlinePanel, #saveCodePanel {
+  #shopPanel, #statusPanel, #teleportPanel, #chatPanel, #offlinePanel, #saveCodePanel, #menuPanel, #bestiaryPanel {
     box-shadow:0 18px 38px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.12);
   }
   .shop-item button, .shopTabBtn, .jobCard, #closeOffline {
@@ -631,11 +670,8 @@
     margin-top:9px; padding:6px 10px; border:1px solid #ffaaaa; border-radius:7px;
     background:#7a2930; color:#fff; font:12px var(--font-body); touch-action:auto;
   }
-  #btnStatus, #btnInventory, #btnTeleport, #btnSaveCode, #btnMute, #btnTownWarp, #btnAutoHunt, #btnChat {
+  #btnAutoHunt {
     box-shadow: 0 2px 0 rgba(0,0,0,0.4); transition: transform .08s, box-shadow .08s;
-  }
-  #btnStatus:active, #btnInventory:active, #btnTeleport:active, #btnSaveCode:active {
-    box-shadow: 0 0px 0 rgba(0,0,0,0.4); transform: translateY(2px) scale(0.95);
   }
 </style>
 </head>
@@ -655,11 +691,11 @@
         <span>Lv.<b id="lvl">1</b></span>
         <span>🪙 <b id="gold">0</b></span>
       </div>
-      <div style="display:flex; gap:6px; align-items:center;">
-        <button id="btnStatus">📊</button>
-        <button id="btnInventory">🎒</button>
-        <button id="btnTeleport">🗺️</button>
-        <button id="btnSaveCode" title="저장 코드 백업/복원">💾</button>
+      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+        <button id="btnInventory" class="hudIconBtn" title="상점 / 장비">🎒</button>
+        <button id="btnTeleport" class="hudIconBtn" title="텔레포트">🗺️</button>
+        <button id="btnChat" class="hudIconBtn" title="채팅 / 친구 연결">💬<span id="chatUnreadBadge" class="unreadBadge"></span></button>
+        <button id="btnMenu">☰ 메뉴<span id="menuUnreadBadge" class="unreadBadge"></span></button>
       </div>
     </div>
     <div class="hud-row">HP <div class="bar-outer"><div class="bar-inner bar-hp" id="hpBar" style="width:100%"></div></div> <span id="hpText">30/30</span></div>
@@ -667,14 +703,15 @@
     <div class="hud-row">EXP <div class="bar-outer"><div class="bar-inner bar-exp" id="expBar" style="width:0%"></div></div></div>
     <div class="hud-row">🎯 <span id="questText">사냥터에서 몬스터 5마리 처치하기</span></div>
     <div class="hud-row"><div class="bar-outer"><div class="bar-inner bar-quest" id="questBar" style="width:0%"></div></div></div>
+    <!-- 방에 다른 사람이 접속돼 있을 때만 보임(솔로 플레이 중엔 숨김). 같은
+         맵에 없어도(다른 사냥터에 있어도) 누가 접속해 있는지 알 수 있게
+         닉네임만 항상 HUD에 띄워둔다. -->
+    <div class="hud-row" id="hudPartyRow" style="display:none;">👥 <span id="hudPartyNames"></span></div>
   </div>
   <div id="canvasWrap">
     <canvas id="gameCanvas" width="760" height="620"></canvas>
     <div id="promptBox"></div>
-    <button id="btnMute" title="소리 켜기/끄기">🔊</button>
-    <button id="btnTownWarp" title="마을로 귀환">🏠</button>
     <button id="btnAutoHunt">🤖 자동사냥 OFF</button>
-    <button id="btnChat" title="채팅 / 친구 연결">💬<span id="chatUnreadBadge" class="unreadBadge"></span></button>
     <div id="bossBar">
       <div class="bn"><span id="bossName">보스</span><span id="bossHpText">0/0</span></div>
       <div class="bbar-outer"><div class="bbar-inner" id="bossHpFill" style="width:100%"></div></div>
@@ -792,6 +829,28 @@
         <button id="closeSaveCode">닫기</button>
       </div>
     </div>
+    <!-- 상점/장비·텔레포트·채팅(친구연결)은 자주 쓰는 기능이라 HUD 상단에
+         별도 아이콘 버튼으로 다시 꺼내놓았다. 나머지 자잘한 기능들만 이
+         메뉴 하나로 모아둔다. -->
+    <div id="menuModal">
+      <div id="menuPanel">
+        <h2>☰ 메뉴</h2>
+        <button id="btnStatus" class="menuItemBtn"><span class="miEmoji">📊</span> 상태창</button>
+        <button id="btnBestiary" class="menuItemBtn"><span class="miEmoji">📖</span> 몬스터 도감</button>
+        <button id="btnTownWarp" class="menuItemBtn" title="마을로 귀환"><span class="miEmoji">🏠</span> 마을로 귀환</button>
+        <button id="btnMute" class="menuItemBtn" title="소리 켜기/끄기"><span class="miEmoji">🔊</span> 소리 켜기/끄기</button>
+        <button id="btnSaveCode" class="menuItemBtn" title="저장 코드 백업/복원"><span class="miEmoji">💾</span> 기기 간 이어하기</button>
+        <button id="closeMenu">닫기</button>
+      </div>
+    </div>
+    <div id="bestiaryModal">
+      <div id="bestiaryPanel">
+        <h2>📖 몬스터 도감</h2>
+        <div id="bestiarySummary"></div>
+        <div id="bestiaryList"></div>
+        <button id="closeBestiary">닫기</button>
+      </div>
+    </div>
   </div>
   <div id="msg"></div>
   <div id="controls">폰: 하단 버튼 · PC: ←→ 이동, 스페이스 점프, F 공격, D 스킬, Q 자동사냥 · 포탈에 들어가면 다음 맵으로 이동! · 🤖 자동사냥은 앱을 꺼도 계속돼요</div>
@@ -872,6 +931,7 @@ const $ = {};
  'toggleFriendPanel','syncReceiveStatus','syncReceiveInput','scTabSend','scTabReceive','saveCodeMsg',
  'randomMatchBtn','msg','mapName','friendsView','copyPeerId','comboText','chatUnreadBadge','chatMessages',
  'buyPotion5','buyPotion10','buyPotion','btnTownWarp','btnStatus','btnMute','btnChat',
+ 'btnMenu','menuUnreadBadge',
 ].forEach(id => { $[id] = document.getElementById(id); });
 
 // Show runtime errors on the page so mobile testing does not require DevTools.
@@ -1117,7 +1177,7 @@ document.addEventListener('keydown', ensureAudio, { once:true });
 let soundOn = lsGet('forestTaleSound') !== '0';
 function updateMuteBtn() {
   const btn = $.btnMute;
-  btn.textContent = soundOn ? '🔊' : '🔇';
+  btn.querySelector('.miEmoji').textContent = soundOn ? '🔊' : '🔇';
   btn.classList.toggle('off', !soundOn);
 }
 $.btnMute.addEventListener('click', () => {
@@ -1133,6 +1193,7 @@ $.btnTownWarp.addEventListener('click', () => {
   if (townWarpCooldown > 0) { showMsg('잠시 후 다시 사용할 수 있어요.', 900); return; }
   townWarpCooldown = 300;
   sfxPortal();
+  closeModal('menuModal');
   switchMap('town');
 });
 
@@ -2243,6 +2304,7 @@ function killMonster(map, m) {
   const droppedGold = Math.round(m.goldReward);
   addGold(droppedGold, 'kill');
   addExp(m.expReward, 'kill');
+  recordBestiaryKill(m.name, m.goldReward, 1);
   sfxKill();
   spawnParticles(m.x + m.w/2, m.y + m.h/2, m.type==='boss'?30:10, { color: m.type==='boss'?'#ffd166':'#7fe07f', size: m.type==='boss'?5:3, spread: m.type==='boss'?10:5 });
   spawnFloatText(m.x + m.w/2, m.y - 10, `+${fmtGold(droppedGold)}🪙`, '#ffd166');
@@ -2433,6 +2495,96 @@ function makeHighBoss(x, tier, name, theme, power) {
   boss.goldReward = Math.round((700 + tier * 28) * power * GOLD_DROP_MULTIPLIER);
   boss.expReward = Math.round((900 + tier * 45) * power);
   return boss;
+}
+
+// ---------- Monster bestiary (몬스터 도감) ----------
+// Keyed by display name (m.name) rather than m.type, since elites/bosses
+// share a base type with their normal-tier counterpart but have their own
+// distinct name — using name keeps every visually/narratively distinct
+// monster as its own dex entry. This list is a fixed enumeration of every
+// name any factory above can produce (checked against setupMapMonsters()).
+const BESTIARY = [
+  { id:'슬라임', emoji:'🟢', tier:'normal', mapHint:'달빛 사냥터' },
+  { id:'박쥐', emoji:'🦇', tier:'normal', mapHint:'달빛 사냥터' },
+  { id:'고블린', emoji:'👺', tier:'normal', mapHint:'달빛 사냥터 · 그림자 던전' },
+  { id:'독버섯', emoji:'🍄', tier:'normal', mapHint:'달빛 사냥터 · 그림자 던전' },
+  { id:'집게게', emoji:'🦀', tier:'normal', mapHint:'조개껍질 해변' },
+  { id:'소라고둥', emoji:'🐌', tier:'normal', mapHint:'조개껍질 해변' },
+  { id:'전갈', emoji:'🦂', tier:'normal', mapHint:'용암 협곡' },
+  { id:'얼음정령', emoji:'❄️', tier:'normal', mapHint:'얼어붙은 정상' },
+  { id:'서리늑대', emoji:'🐺', tier:'normal', mapHint:'얼어붙은 정상' },
+  { id:'그림자기사', emoji:'💀', tier:'normal', mapHint:'멸망의 균열 · 그 이후' },
+  { id:'심연박쥐', emoji:'🦉', tier:'normal', mapHint:'멸망의 균열 · 그 이후' },
+  { id:'균열정령', emoji:'👻', tier:'normal', mapHint:'멸망의 균열 · 그 이후' },
+  { id:'광전사 고블린', emoji:'👺', tier:'elite', mapHint:'달빛 사냥터' },
+  { id:'철갑 집게게', emoji:'🦀', tier:'elite', mapHint:'조개껍질 해변' },
+  { id:'용암 전갈', emoji:'🦂', tier:'elite', mapHint:'용암 협곡 · 타오르는 잔재' },
+  { id:'빙결 망령', emoji:'👻', tier:'elite', mapHint:'얼어붙은 정상' },
+  { id:'균열 기사', emoji:'⚔️', tier:'elite', mapHint:'멸망의 균열 · 그 이후' },
+  { id:'그림자 군주', emoji:'👹', tier:'boss', mapHint:'그림자 던전' },
+  { id:'용암 정령', emoji:'🌋', tier:'boss', mapHint:'용암 협곡' },
+  { id:'서리 군주', emoji:'👑', tier:'boss', mapHint:'얼어붙은 정상' },
+  { id:'멸망의 파수병', emoji:'🗿', tier:'boss', mapHint:'멸망의 균열' },
+  { id:'천공의 감시자', emoji:'👁️', tier:'boss', mapHint:'천공의 성채' },
+  { id:'성역의 수호자', emoji:'🛡️', tier:'boss', mapHint:'신성 유적' },
+  { id:'종말의 왕', emoji:'👑', tier:'boss', mapHint:'종말의 왕좌' },
+  { id:'차원의 파괴자', emoji:'🌌', tier:'boss', mapHint:'차원의 틈' },
+  { id:'잔재의 폭군', emoji:'🔥', tier:'boss', mapHint:'타오르는 잔재' },
+  { id:'태초의 그림자', emoji:'🌑', tier:'boss', mapHint:'만물의 종언' },
+];
+// Milestone rewards are a multiple of the monster's *own* current goldReward
+// per kill rather than a flat number — since the same monster name can show
+// up at very different power levels across the game's tier range, this keeps
+// the bonus feeling proportional everywhere (a few kills' worth of gold at
+// each milestone) instead of trivial late or absurd early.
+const BESTIARY_MILESTONES = {
+  normal: [ {c:10,mult:4}, {c:30,mult:8}, {c:100,mult:15}, {c:300,mult:25}, {c:800,mult:40} ],
+  elite:  [ {c:5,mult:5}, {c:20,mult:10}, {c:60,mult:20}, {c:150,mult:35} ],
+  boss:   [ {c:1,mult:3}, {c:3,mult:6}, {c:10,mult:12}, {c:25,mult:22} ],
+};
+function bestiaryDef(name) { return BESTIARY.find(b => b.id === name); }
+function bestiaryThresholds(tier) { return BESTIARY_MILESTONES[tier] || BESTIARY_MILESTONES.normal; }
+// count defaults to 1 for a single live kill; offline/away-farming batches
+// call this with count > 1 (see bestiaryBreakdownForMap) so a milestone
+// crossed entirely while the player was gone still pays out correctly.
+function recordBestiaryKill(name, goldRewardSample, count = 1) {
+  if (!name || count <= 0) return;
+  const def = bestiaryDef(name);
+  if (!def) return; // unknown/hand-edited name — ignore rather than crash
+  if (!player.bestiary) player.bestiary = {};
+  const thresholds = bestiaryThresholds(def.tier);
+  if (!player.bestiary[name]) player.bestiary[name] = { kills:0, claimed:0, lastGold:0 };
+  const entry = player.bestiary[name];
+  entry.kills += count;
+  if (goldRewardSample > 0) entry.lastGold = goldRewardSample;
+  let totalReward = 0;
+  while (entry.claimed < thresholds.length && entry.kills >= thresholds[entry.claimed].c) {
+    totalReward += Math.max(1, Math.round((entry.lastGold || 1) * thresholds[entry.claimed].mult));
+    entry.claimed++;
+  }
+  if (totalReward > 0) {
+    addGold(totalReward, 'bestiary');
+    showMsg(`📖 도감 보상! ${def.emoji} ${name} +${fmtGold(totalReward)}🪙`, 2200);
+    spawnFloatText(player.x + player.w/2, player.y - 46, `+${fmtGold(totalReward)}🪙 도감`, '#8fe0ff');
+    updateHUD();
+  }
+}
+// Offline/away farming only tracks an aggregate kill count for the map (see
+// computeOfflineProgress), not which specific monster died each cycle — this
+// distributes that total across the map's non-boss monster names in
+// proportion to how often each appears in the spawn list, so the bestiary
+// still fills in from offline hunting, just approximately rather than exactly.
+function bestiaryBreakdownForMap(map, totalKills) {
+  const pool = ((map && map.monsters) || []).filter(m => m.type !== 'boss');
+  if (!pool.length || totalKills <= 0) return [];
+  const counts = {}, golds = {};
+  pool.forEach(m => { counts[m.name] = (counts[m.name] || 0) + 1; golds[m.name] = m.goldReward; });
+  return Object.keys(counts)
+    .map(name => ({ name, goldReward: golds[name], kills: Math.round(totalKills * counts[name] / pool.length) }))
+    .filter(e => e.kills > 0);
+}
+function applyOfflineBestiary(map, totalKills) {
+  bestiaryBreakdownForMap(map, totalKills).forEach(e => recordBestiaryKill(e.name, e.goldReward, e.kills));
 }
 
 // ---------- Projectiles (ranged monster attacks + ranged job attacks) ----------
@@ -3828,7 +3980,7 @@ function loop() {
 // to be open, so tapping a different menu button doesn't leave two panels
 // stacked on top of each other — the player never has to close one by hand
 // before opening the next.
-const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal'];
+const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal'];
 function openModal(id) {
   for (const modalId of MODAL_IDS) {
     if (modalId !== id) document.getElementById(modalId).classList.remove('open');
@@ -3836,6 +3988,12 @@ function openModal(id) {
   document.getElementById(id).classList.add('open');
 }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ---------- Consolidated menu (☰) ---------- opening any item inside it
+// (status/shop/bestiary/teleport/save-code/chat) goes through openModal(),
+// which auto-closes menuModal for us — no extra bookkeeping needed here.
+$.btnMenu.addEventListener('click', () => openModal('menuModal'));
+document.getElementById('closeMenu').addEventListener('click', () => closeModal('menuModal'));
 
 // ---------- Shop ----------
 let shopTab = 'weapon';
@@ -3936,6 +4094,52 @@ function allocateStat(key) {
 $.btnStatus.addEventListener('click', openStatus);
 document.getElementById('btnInventory').addEventListener('click', openShop);
 document.getElementById('closeStatus').addEventListener('click', closeStatus);
+
+// ---------- Monster bestiary (몬스터 도감) ----------
+function openBestiary() { renderBestiaryPanel(); openModal('bestiaryModal'); }
+function closeBestiary() { closeModal('bestiaryModal'); }
+const BESTIARY_TIER_LABEL = { normal: '🟢 일반 몬스터', elite: '🔥 정예 몬스터', boss: '👑 보스' };
+function renderBestiaryPanel() {
+  const bestiary = player.bestiary || {};
+  const groups = { normal: [], elite: [], boss: [] };
+  let discoveredCount = 0;
+  BESTIARY.forEach(def => {
+    const entry = bestiary[def.id];
+    const discovered = !!entry && entry.kills > 0;
+    if (discovered) discoveredCount++;
+    groups[def.tier].push({ def, entry, discovered });
+  });
+  let html = '';
+  ['normal', 'elite', 'boss'].forEach(tier => {
+    if (!groups[tier].length) return;
+    html += `<div class="bestiaryTierLabel">${BESTIARY_TIER_LABEL[tier]}</div>`;
+    groups[tier].forEach(({ def, entry, discovered }) => {
+      const thresholds = bestiaryThresholds(def.tier);
+      const kills = entry ? entry.kills : 0;
+      const claimed = entry ? entry.claimed : 0;
+      let progressText;
+      if (!discovered) {
+        progressText = '아직 발견하지 못했어요';
+      } else if (claimed >= thresholds.length) {
+        progressText = `누적 ${kills}마리 처치 · 도감 보상 완료 ✅`;
+      } else {
+        progressText = `누적 ${kills}마리 처치 · 다음 보상까지 ${Math.max(0, thresholds[claimed].c - kills)}마리`;
+      }
+      html += `<div class="bestiaryEntry ${discovered ? '' : 'undiscovered'}">
+        <div class="beEmoji">${discovered ? def.emoji : '❔'}</div>
+        <div class="beInfo">
+          <div class="beName">${discovered ? def.id : '???'}</div>
+          <div class="beMeta">${discovered ? def.mapHint : '전투에서 처치하면 정보가 밝혀져요'}</div>
+          <div class="beProgress">${progressText}</div>
+        </div>
+      </div>`;
+    });
+  });
+  document.getElementById('bestiaryList').innerHTML = html;
+  document.getElementById('bestiarySummary').textContent = `도감 수집: ${discoveredCount} / ${BESTIARY.length}`;
+}
+document.getElementById('btnBestiary').addEventListener('click', openBestiary);
+document.getElementById('closeBestiary').addEventListener('click', closeBestiary);
 
 const TELEPORT_DESTS = [
   { id:'town', name:'🏘️ 마을' },
@@ -4142,18 +4346,26 @@ function bumpChatUnread() {
   const modalOpen = $.chatModal.classList.contains('open');
   if (modalOpen) return;
   chatUnread++;
-  const badge = $.chatUnreadBadge;
-  badge.textContent = chatUnread > 9 ? '9+' : String(chatUnread);
-  badge.classList.add('show');
+  const text = chatUnread > 9 ? '9+' : String(chatUnread);
+  // btnChat lives in the HUD top row now, so its own badge is already always
+  // visible — still mirror the count onto the ☰ menu button too, in case the
+  // player has the menu open and can't see the HUD row underneath it.
+  $.chatUnreadBadge.textContent = text;
+  $.chatUnreadBadge.classList.add('show');
+  $.menuUnreadBadge.textContent = text;
+  $.menuUnreadBadge.classList.add('show');
 }
 function clearChatUnread() {
   chatUnread = 0;
   $.chatUnreadBadge.classList.remove('show');
+  $.menuUnreadBadge.classList.remove('show');
 }
 function removeRemotePlayersForConnection(connectionPeerId) {
+  let changed = false;
   for (const id in remotePlayers) {
-    if (remotePlayers[id].connectionPeerId === connectionPeerId) delete remotePlayers[id];
+    if (remotePlayers[id].connectionPeerId === connectionPeerId) { delete remotePlayers[id]; changed = true; }
   }
+  if (changed) renderRoomMembers();
 }
 function closeAllConnections() {
   const activeConnections = Object.values(connections);
@@ -4236,7 +4448,21 @@ function renderPlayerDetail(member) {
   }
   detail.classList.add('show');
 }
+// Small always-on nickname strip in the HUD itself, separate from the full
+// "현재 방 멤버" list inside the chat panel — that one needs the chat panel
+// open to see, this one is meant to be visible during normal play so you can
+// tell who's connected even while off exploring a different map.
+function updateHudPartyList() {
+  const row = document.getElementById('hudPartyRow');
+  const namesEl = document.getElementById('hudPartyNames');
+  if (!row || !namesEl) return;
+  const remoteIds = Object.keys(remotePlayers);
+  if (remoteIds.length === 0) { row.style.display = 'none'; return; }
+  namesEl.textContent = remoteIds.map(id => `${remotePlayers[id].nickname || '모험가'} Lv.${remotePlayers[id].level || 1}`).join(', ');
+  row.style.display = 'flex';
+}
 function renderRoomMembers() {
+  updateHudPartyList();
   const list = document.getElementById('roomMembersList');
   if (!list) return;
   list.innerHTML = '';
@@ -5132,6 +5358,24 @@ function sanitizeSaveData(data) {
     cleanPassives[key] = Math.round(clampNum(p.passives && p.passives[key], 0, 300, 0));
   }
   p.passives = cleanPassives;
+  // Same rebuild-from-scratch approach as passives above: only known monster
+  // names from BESTIARY survive, and claimed can't exceed that monster's
+  // actual milestone count — closes off hand-editing kills/claimed to mint
+  // extra bestiary gold beyond what recordBestiaryKill would ever grant.
+  const cleanBestiary = {};
+  if (p.bestiary && typeof p.bestiary === 'object') {
+    for (const b of BESTIARY) {
+      const e = p.bestiary[b.id];
+      if (!e || typeof e !== 'object') continue;
+      const kills = Math.round(clampNum(e.kills, 0, 10_000_000, 0));
+      if (kills <= 0) continue;
+      const thresholds = BESTIARY_MILESTONES[b.tier] || BESTIARY_MILESTONES.normal;
+      const claimed = Math.round(clampNum(e.claimed, 0, thresholds.length, 0));
+      const lastGold = Math.round(clampNum(e.lastGold, 0, 5_000_000, 0));
+      cleanBestiary[b.id] = { kills, claimed, lastGold };
+    }
+  }
+  p.bestiary = cleanBestiary;
   p.potions = Math.round(clampNum(p.potions, 0, 999, 0));
   const cleanOwned = (owned, items, starterId) => {
     if (!Array.isArray(owned)) return [starterId];
@@ -5181,6 +5425,7 @@ function serializeSave() {
       ownedWeapons: player.ownedWeapons, ownedArmors: player.ownedArmors,
       weaponEnhance: player.weaponEnhance, armorEnhance: player.armorEnhance,
       potions: player.potions, nickname: player.nickname, passives: player.passives,
+      bestiary: player.bestiary || {},
     },
   };
 }
@@ -5636,7 +5881,7 @@ function beginGame(job, nickname) {
     level:1, exp:0, expNeeded:20, hp:30, maxHp:30, atk:5, mp:20, maxMp:20, crit:5, gold:10,
     job, stats:{str:0,dex:0,int:0,luk:0}, statPoints:0, potions:0, nickname, deviceId: DEVICE_ID,
     weaponId:'w0', armorId:'a0', ownedWeapons:['w0'], ownedArmors:['a0'],
-    weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0} };
+    weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0}, bestiary:{} };
   currentMap = 'town';
   quest = { count: 0, target: questTargetForTier(1), reward: questRewardForTier(1), tier: 1 };
   refreshStats();
@@ -5649,7 +5894,7 @@ function continueGame(save) {
     invuln:0, attackCooldown:0, attackAnim:0, portalCooldown:0, skillCooldown:0,
     hp:1, maxHp:1, atk:5, mp:1, maxMp:1, crit:5, potions:0,
     nickname: '모험가' + Math.floor(100 + Math.random()*900), deviceId: DEVICE_ID,
-    weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0},
+    weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0}, bestiary:{},
     ...save.player,
   };
   currentMap = MAPS[save.currentMap] ? save.currentMap : 'town';
@@ -5680,6 +5925,7 @@ function continueGame(save) {
     addGold(offline.gold, 'offline');
     player.potions = Math.max(0, (player.potions || 0) - offline.potionsFromStock);
     addExp(offline.exp, 'offline');
+    applyOfflineBestiary(MAPS[currentMap], offline.kills);
     saveGame();
     setTimeout(() => showOfflineModal(offline), 300);
   }
@@ -5746,6 +5992,7 @@ function markBack() {
     addGold(offline.gold, 'offline');
     player.potions = Math.max(0, (player.potions || 0) - offline.potionsFromStock);
     addExp(offline.exp, 'offline');
+    applyOfflineBestiary(MAPS[currentMap], offline.kills);
     saveGame();
     updateHUD();
     setTimeout(() => showOfflineModal(offline), 200);
