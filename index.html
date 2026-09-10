@@ -5449,83 +5449,6 @@ function spendGold(amount, reason='purchase') {
   recordEconomyEvent(reason, -value, 0);
   return true;
 }
-function validateEconomyLog(log) {
-  if (log == null) return [];
-  if (!Array.isArray(log) || log.length > 1000) return null;
-  let previous = 'GENESIS';
-  let previousId = 0;
-  for (const event of log) {
-    if (!event || event.prev !== previous || event.id !== previousId + 1) return null;
-    if (economyEventHash(event) !== event.hash) return null;
-    previous = event.hash;
-    previousId = event.id;
-  }
-  return log;
-}
-// Must match the starting gold in the `player` object literal (and in
-// newGame()'s equivalents) — every economyLog event is a *delta* recorded by
-// recordEconomyEvent, so replaying the whole log has to start from the same
-// baseline a brand-new character does.
-const ECONOMY_LOG_STARTING_GOLD = 10;
-// Replays a validated economyLog from a fresh character's baseline (10 gold,
-// level 1, 0 exp) and returns what gold/level/exp *should* be if every gold
-// and exp change on this save really did go through addGold/addExp/
-// spendGold. validateEconomyLog only confirms the log is internally
-// consistent (unbroken hash chain) — it says nothing about whether the
-// character's actual stats agree with it. This is that second check.
-function expectedStateFromEconomyLog(log) {
-  let gold = ECONOMY_LOG_STARTING_GOLD;
-  let totalExp = 0;
-  for (const event of log) {
-    gold += Number(event.gold) || 0;
-    totalExp += Math.max(0, Number(event.exp) || 0);
-  }
-  let level = 1;
-  let expNeeded = expNeededForLevel(level);
-  let remaining = totalExp;
-  while (remaining >= expNeeded && level < 999) {
-    remaining -= expNeeded;
-    level++;
-    expNeeded = expNeededForLevel(level);
-  }
-  return { gold, level, exp: remaining, expNeeded };
-}
-// Inverse of the leveling loop above: how much total exp it takes to reach
-// exactly `level`/`exp` from a level-1/0-exp start. Used only to build a
-// genesis event (see below) — never during normal reconciliation.
-function totalExpForLevelAndExp(level, exp) {
-  let total = Math.max(0, Number(exp) || 0);
-  for (let l = 1; l < level; l++) total += expNeededForLevel(l);
-  return total;
-}
-// Builds a single synthetic economyLog event that accounts for a save's
-// *entire* current gold/level/exp in one shot, so expectedStateFromEconomyLog
-// replays back to exactly (gold, level, exp). This is a one-time act of
-// trust for the two legitimate cases where a save has no log to check
-// against at all — an old save from before economyLog existed, or a P2P
-// transfer payload (buildTransferPayload always strips the log to keep
-// transfers small). After this event, every further change is recorded and
-// reconciled normally by the real check.
-function genesisEconomyEvent(gold, level, exp) {
-  const safeLevel = Math.max(1, Math.round(Number(level) || 1));
-  // expectedStateFromEconomyLog's replay loop only rolls a level over once
-  // remaining exp reaches expNeeded for that level (the same invariant
-  // gainExp keeps true during real play). A legacy/corrupt save could have
-  // exp >= expNeeded for its level with no such guarantee — clamp so the
-  // genesis event, once replayed, lands back on exactly `level` instead of
-  // silently leveling one further and failing reconciliation on the very
-  // next load.
-  const safeExp = Math.max(0, Math.min(Number(exp) || 0, expNeededForLevel(safeLevel) - 1));
-  const event = {
-    id: 1, kind: 'legacy_import',
-    gold: Math.round(Number(gold) || 0) - ECONOMY_LOG_STARTING_GOLD,
-    exp: totalExpForLevelAndExp(safeLevel, safeExp),
-    count: 1, at: Date.now(), prev: 'GENESIS',
-  };
-  event.hash = economyEventHash(event);
-  return event;
-}
-
 // ---------- Save schema migration ----------
 // Bump this whenever an update changes the *shape* of save data — a renamed
 // field, a new required field, a restructured `quest`/`player` object, etc.
@@ -5572,18 +5495,10 @@ function migrateSaveData(data) {
 // checksum above is ever bypassed — an edited save that "checks out" but has
 // impossible values (e.g. level 1 with 900000 gold) still gets corrected
 // instead of trusted outright.
-function sanitizeSaveData(data, { allowMissingLog = false } = {}) {
+function sanitizeSaveData(data) {
   if (!data || typeof data !== 'object' || !data.player || typeof data.player !== 'object') return null;
   const p = data.player;
   if (!JOBS[p.job]) return null;
-  // Captured before anything below clamps/rewrites p.gold/p.exp/p.level in
-  // place, so the economyLog reconciliation near the end of this function
-  // checks the save's original claimed values, not values this function has
-  // already coerced into range.
-  const economyLogProvided = data.economyLog != null;
-  const rawGold = Math.round(Number(p.gold)) || 0;
-  const rawExp = Math.round(Number(p.exp)) || 0;
-  const rawLevel = Math.round(Number(p.level)) || 0;
   const clampNum = (v, lo, hi, fallback) => {
     v = Number(v);
     if (!Number.isFinite(v)) return fallback;
@@ -5671,51 +5586,14 @@ function sanitizeSaveData(data, { allowMissingLog = false } = {}) {
     count: Math.round(clampNum(data.quest && data.quest.count, 0, defaultTarget - 1, 0)),
   };
   data.savedAt = Number.isFinite(Number(data.savedAt)) ? Number(data.savedAt) : Date.now();
-  let cleanEconomyLog = validateEconomyLog(data.economyLog);
-  if (cleanEconomyLog === null) return null;
-  // validateEconomyLog only proves the log wasn't tampered with *on its own
-  // terms* (unbroken hash chain) — it never actually checks the log against
-  // the character it's supposed to be auditing. Do that here.
-  if (economyLogProvided) {
-    // Replay the log and reject the whole load on any mismatch, rather than
-    // silently trusting whichever side (log vs. player.gold/exp/level)
-    // happens to look more plausible.
-    const expected = expectedStateFromEconomyLog(cleanEconomyLog);
-    if (expected.gold !== rawGold || expected.level !== rawLevel || expected.exp !== rawExp) {
-      return null;
-    }
-  } else if (allowMissingLog) {
-    // No log came with this save, and the caller has told us that's
-    // expected here (an old save from before economyLog existed, or a P2P
-    // transfer payload — buildTransferPayload always strips the log).
-    // Nothing to reconcile against yet, so anchor a genesis event to
-    // whatever this save currently claims; every change from here on is
-    // tracked and reconciled normally.
-    //
-    // level/exp get the same clamp genesisEconomyEvent applies internally,
-    // and it's applied here too (not just inside that helper) so p.exp/
-    // p.level on the save itself stay in sync with the log we're about to
-    // attach — otherwise a legacy save with exp >= expNeeded for its level
-    // (a state real play can never produce, but old/hand-edited data might)
-    // would pass this load only to fail reconciliation on the very next one.
-    const safeLevel = Math.min(999, Math.max(1, rawLevel));
-    const safeExp = Math.max(0, Math.min(rawExp, expNeededForLevel(safeLevel) - 1));
-    if (safeLevel !== p.level || safeExp !== p.exp) {
-      p.level = safeLevel;
-      p.exp = safeExp;
-      p.expNeeded = expNeededForLevel(safeLevel);
-    }
-    cleanEconomyLog = [genesisEconomyEvent(rawGold, safeLevel, safeExp)];
-  } else {
-    // A normal local save produced by this game's own saveGame() always
-    // includes an economyLog, even an empty array for a brand-new character
-    // — serializeSave() never omits the field. Missing here means the field
-    // was stripped by hand, almost certainly to dodge the check above, not
-    // by anything this game itself does. Treat that the same as a broken
-    // hash chain: reject the whole load instead of quietly trusting it.
-    return null;
-  }
-  data.economyLog = cleanEconomyLog;
+  // economyLog is kept only as a record/history field now — it's no longer
+  // replayed and checked against p.gold/p.exp/p.level, and a missing or
+  // broken log no longer rejects the whole load. That reconciliation was an
+  // anti-cheat measure, but any mismatch (legit or not — rounding drift,
+  // a passive-mult change between versions, whatever) meant losing the
+  // entire character on next load, which cost more in accidentally-deleted
+  // real saves than it ever stopped in tampering.
+  data.economyLog = Array.isArray(data.economyLog) ? data.economyLog : [];
   return data;
 }
 
@@ -5751,21 +5629,16 @@ function loadSave() {
   try { parsed = JSON.parse(raw); } catch (e) { return null; }
   // Back-compat: saves written before the integrity check was added won't
   // have {data, chk} — treat those as a plain save object (trusted once).
+  // The checksum is no longer enforced (a mismatch used to nuke the whole
+  // character on load, which is worse than just loading it) — still checked
+  // so we can warn in the console, but never used to reject the save.
   if (parsed && typeof parsed === 'object' && typeof parsed.data === 'string' && typeof parsed.chk === 'string') {
     if (signPayload(parsed.data) !== parsed.chk) {
-      console.warn('save checksum mismatch — ignoring edited save');
-      return null;
+      console.warn('save checksum mismatch — loading anyway');
     }
-    // Modern, checksum-wrapped format — this is exactly what saveGame()
-    // produces, and it always includes an economyLog. Missing log here is
-    // not a shape this game itself ever writes, so don't grandfather it in.
-    try { return sanitizeSaveData(migrateSaveData(JSON.parse(decodeSavePayload(parsed.data))), { allowMissingLog: false }); } catch (e) { return null; }
+    try { return sanitizeSaveData(migrateSaveData(JSON.parse(decodeSavePayload(parsed.data)))); } catch (e) { return null; }
   }
-  // Reached only for saves written before the {data, chk} wrapper (and, by
-  // extension, economyLog) existed at all — the one real "no log to check"
-  // case on the local-save path, as opposed to a modern save with the field
-  // stripped out.
-  return sanitizeSaveData(migrateSaveData(parsed), { allowMissingLog: true });
+  return sanitizeSaveData(migrateSaveData(parsed));
 }
 function clearSave() { lsRemove(SAVE_KEY); }
 
@@ -5801,7 +5674,7 @@ function parseTransferPayload(wrapper) {
   const data = migrateSaveData(saveFields);
   // Transfer payloads always exclude economyLog by design (see
   // buildTransferPayload) — that's expected here, not a sign of tampering.
-  const clean = sanitizeSaveData(data, { allowMissingLog: true });
+  const clean = sanitizeSaveData(data);
   if (!clean || !clean.player || !clean.player.job) throw new Error('bad-data');
   return { save: clean, dungeonUsage };
 }
