@@ -4126,10 +4126,44 @@ function draw() {
   ctx.restore();
 }
 
-function loop() {
+// ---------- Fixed-timestep loop ----------
+// update() treats every call as "one 60fps frame" (attackCooldown--,
+// hitCooldown--, etc. all through the file), but requestAnimationFrame
+// actually fires at whatever the screen's real refresh rate is — 144Hz on a
+// gaming monitor, 90-120Hz on a lot of phones now. Calling update() once
+// per rAF tick would melt every cooldown that many times faster on those
+// screens, i.e. free attack speed just for owning a nicer display. Instead
+// we accumulate real elapsed time and only run update() often enough to
+// average out to 60 times per real second, however often rAF actually
+// fires; draw() still runs on every rAF tick so motion still looks smooth
+// on high-refresh screens.
+const STEP_MS = 1000 / 60;
+const MAX_STEPS_PER_FRAME = 5; // cap catch-up after a big stall (tab backgrounded, breakpoint, etc.) instead of spiraling
+let stepAccumulatorMs = 0;
+let lastFrameMs = 0;
+
+function loop(nowMs) {
   if (!running) return;
-  if (hitStopFrames > 0) { hitStopFrames--; draw(); requestAnimationFrame(loop); return; }
-  update(); draw(); requestAnimationFrame(loop);
+  if (typeof nowMs !== 'number') nowMs = performance.now();
+  if (!lastFrameMs) lastFrameMs = nowMs;
+  let frameMs = nowMs - lastFrameMs;
+  lastFrameMs = nowMs;
+  // A huge gap (laptop slept, tab was backgrounded a while) shouldn't try
+  // to replay all that missed time at once — just pick back up from here.
+  if (frameMs > 1000) frameMs = STEP_MS;
+  stepAccumulatorMs += frameMs;
+
+  let steps = 0;
+  while (stepAccumulatorMs >= STEP_MS && steps < MAX_STEPS_PER_FRAME) {
+    if (hitStopFrames > 0) hitStopFrames--;
+    else update();
+    stepAccumulatorMs -= STEP_MS;
+    steps++;
+  }
+  if (steps === MAX_STEPS_PER_FRAME) stepAccumulatorMs = 0; // drop the debt rather than pile it up
+
+  draw();
+  requestAnimationFrame(loop);
 }
 
 // ---------- Modal management ----------
