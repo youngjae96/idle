@@ -436,6 +436,7 @@
   .bestiaryEntry.undiscovered .beName { color:#8a7fa8; }
   .bestiaryEntry .beMeta { font-size:10px; color:#c8bce8; margin-top:1px; }
   .bestiaryEntry .beProgress { font-size:10px; color:#8fe0ff; margin-top:1px; }
+  .bestiaryEntry .beRewards { font-size:9.5px; color:#a89ac0; margin-top:3px; line-height:1.6; word-break:keep-all; }
   #closeBestiary { width:100%; padding:9px; background:#5a4a70; color:#fff; border:none; border-radius:8px; font-weight:bold; flex-shrink:0; }
 
   /* Chat floats over the game as a lightweight panel, not a full modal — no
@@ -1702,19 +1703,20 @@ function computeCritChance(stats) {
 // (job/level/gear/stats) — used both for the live player (refreshStats) and
 // for simulating an offline-farming character (computeOfflineProgress) so
 // the two can never silently disagree about how strong a character is.
-function computeCombatStats(jobKey, level, weaponId, armorId, stats, weaponEnhance, armorEnhance, passives) {
+function computeCombatStats(jobKey, level, weaponId, armorId, stats, weaponEnhance, armorEnhance, passives, bestiary) {
   const job = JOBS[jobKey] || JOBS.warrior;
   const weapon = WEAPONS.find(w => w.id === weaponId) || WEAPONS[0];
   const armor = ARMORS.find(a => a.id === armorId) || ARMORS[0];
   const s = stats || {};
   const B = GAME_BALANCE;
+  const bb = bestiaryBonusFor(bestiary);
   let atk = job.baseAtk + (level - 1) * B.atkPerLevel + weapon.atk + (weaponEnhance || 0) * ENHANCE_ATK_PER_LEVEL
     + (s.str || 0) * B.atkPerStr + (s.dex || 0) * B.atkPerDex + (s.luk || 0) * B.atkPerLuk
-    + passiveLevel(passives, 'atk') * PASSIVES.atk.perLevel;
+    + passiveLevel(passives, 'atk') * PASSIVES.atk.perLevel + bb.atk;
   if (jobKey === 'mage') atk += (s.int || 0) * B.atkPerIntMage;
   const maxHp = job.baseHp + (level - 1) * B.hpPerLevel + armor.hp + (armorEnhance || 0) * ENHANCE_HP_PER_LEVEL + (s.str || 0) * B.hpPerStr
-    + passiveLevel(passives, 'hp') * PASSIVES.hp.perLevel;
-  let def = (job.baseDef || 0) + (s.str || 0) * B.defPerStr + armor.hp * B.defPerArmorHp + (armorEnhance || 0) * ENHANCE_DEF_PER_LEVEL;
+    + passiveLevel(passives, 'hp') * PASSIVES.hp.perLevel + bb.hp;
+  let def = (job.baseDef || 0) + (s.str || 0) * B.defPerStr + armor.hp * B.defPerArmorHp + (armorEnhance || 0) * ENHANCE_DEF_PER_LEVEL + bb.def;
   if (jobKey === 'warrior') def *= B.warriorDefMult;
   return { atk, maxHp, def, job, weapon, armor };
 }
@@ -1798,7 +1800,7 @@ let player = {
 function refreshStats() {
   const s = player.stats;
   const lvl = player.level;
-  const { atk, maxHp, def, job } = computeCombatStats(player.job, lvl, player.weaponId, player.armorId, s, player.weaponEnhance, player.armorEnhance, player.passives);
+  const { atk, maxHp, def, job } = computeCombatStats(player.job, lvl, player.weaponId, player.armorId, s, player.weaponEnhance, player.armorEnhance, player.passives, player.bestiary);
 
   const maxMp = job.baseMp + (lvl - 1) * job.mpGrowth + s.int * 3;
   const crit = computeCritChance(s);
@@ -2304,7 +2306,7 @@ function killMonster(map, m) {
   const droppedGold = Math.round(m.goldReward);
   addGold(droppedGold, 'kill');
   addExp(m.expReward, 'kill');
-  recordBestiaryKill(m.name, m.goldReward, 1);
+  recordBestiaryKill(m.name, 1);
   sfxKill();
   spawnParticles(m.x + m.w/2, m.y + m.h/2, m.type==='boss'?30:10, { color: m.type==='boss'?'#ffd166':'#7fe07f', size: m.type==='boss'?5:3, spread: m.type==='boss'?10:5 });
   spawnFloatText(m.x + m.w/2, m.y - 10, `+${fmtGold(droppedGold)}🪙`, '#ffd166');
@@ -2532,41 +2534,76 @@ const BESTIARY = [
   { id:'잔재의 폭군', emoji:'🔥', tier:'boss', mapHint:'타오르는 잔재' },
   { id:'태초의 그림자', emoji:'🌑', tier:'boss', mapHint:'만물의 종언' },
 ];
-// Milestone rewards are a multiple of the monster's *own* current goldReward
-// per kill rather than a flat number — since the same monster name can show
-// up at very different power levels across the game's tier range, this keeps
-// the bonus feeling proportional everywhere (a few kills' worth of gold at
-// each milestone) instead of trivial late or absurd early.
+// Milestone rewards used to be bonus gold; now they're small *permanent*
+// combat-stat bumps (atk/hp/def) instead, since gold stops mattering once
+// gear is maxed but raw stats never do. Each tier's numbers step up with the
+// milestone count so completing a monster's full dex entry feels like a
+// real (if modest) power gain — see bestiaryBonusFor below for how these
+// get summed into the player's actual stats.
 const BESTIARY_MILESTONES = {
-  normal: [ {c:10,mult:4}, {c:30,mult:8}, {c:100,mult:15}, {c:300,mult:25}, {c:800,mult:40} ],
-  elite:  [ {c:5,mult:5}, {c:20,mult:10}, {c:60,mult:20}, {c:150,mult:35} ],
-  boss:   [ {c:1,mult:3}, {c:3,mult:6}, {c:10,mult:12}, {c:25,mult:22} ],
+  normal: [
+    { c:10,  atk:0.1, hp:1,  def:0.05 },
+    { c:30,  atk:0.2, hp:2,  def:0.1  },
+    { c:100, atk:0.4, hp:4,  def:0.2  },
+    { c:300, atk:0.6, hp:6,  def:0.3  },
+    { c:800, atk:1.0, hp:10, def:0.5  },
+  ],
+  elite: [
+    { c:5,   atk:0.3, hp:3,  def:0.15 },
+    { c:20,  atk:0.6, hp:6,  def:0.3  },
+    { c:60,  atk:1.0, hp:10, def:0.5  },
+    { c:150, atk:1.6, hp:16, def:0.8  },
+  ],
+  boss: [
+    { c:1,  atk:0.6, hp:6,  def:0.3 },
+    { c:3,  atk:1.2, hp:12, def:0.6 },
+    { c:10, atk:2.0, hp:20, def:1.0 },
+    { c:25, atk:3.2, hp:32, def:1.6 },
+  ],
 };
 function bestiaryDef(name) { return BESTIARY.find(b => b.id === name); }
 function bestiaryThresholds(tier) { return BESTIARY_MILESTONES[tier] || BESTIARY_MILESTONES.normal; }
+// Single source of truth for "how much permanent stat bonus has the player
+// earned from the bestiary so far" — derived fresh from kills/claimed data
+// every time rather than stored as its own save field, so it can never drift
+// out of sync with the (already-sanitized) claimed counts.
+function bestiaryBonusFor(bestiary) {
+  const bonus = { atk:0, hp:0, def:0 };
+  if (!bestiary) return bonus;
+  for (const def of BESTIARY) {
+    const entry = bestiary[def.id];
+    if (!entry || !entry.claimed) continue;
+    const thresholds = bestiaryThresholds(def.tier);
+    for (let i = 0; i < entry.claimed && i < thresholds.length; i++) {
+      bonus.atk += thresholds[i].atk || 0;
+      bonus.hp += thresholds[i].hp || 0;
+      bonus.def += thresholds[i].def || 0;
+    }
+  }
+  return bonus;
+}
 // count defaults to 1 for a single live kill; offline/away-farming batches
 // call this with count > 1 (see bestiaryBreakdownForMap) so a milestone
 // crossed entirely while the player was gone still pays out correctly.
-function recordBestiaryKill(name, goldRewardSample, count = 1) {
+function recordBestiaryKill(name, count = 1) {
   if (!name || count <= 0) return;
   const def = bestiaryDef(name);
   if (!def) return; // unknown/hand-edited name — ignore rather than crash
   if (!player.bestiary) player.bestiary = {};
   const thresholds = bestiaryThresholds(def.tier);
-  if (!player.bestiary[name]) player.bestiary[name] = { kills:0, claimed:0, lastGold:0 };
+  if (!player.bestiary[name]) player.bestiary[name] = { kills:0, claimed:0 };
   const entry = player.bestiary[name];
   entry.kills += count;
-  if (goldRewardSample > 0) entry.lastGold = goldRewardSample;
-  let totalReward = 0;
+  let gained = { atk:0, hp:0, def:0 };
   while (entry.claimed < thresholds.length && entry.kills >= thresholds[entry.claimed].c) {
-    totalReward += Math.max(1, Math.round((entry.lastGold || 1) * thresholds[entry.claimed].mult));
+    const t = thresholds[entry.claimed];
+    gained.atk += t.atk; gained.hp += t.hp; gained.def += t.def;
     entry.claimed++;
   }
-  if (totalReward > 0) {
-    addGold(totalReward, 'bestiary');
-    showMsg(`📖 도감 보상! ${def.emoji} ${name} +${fmtGold(totalReward)}🪙`, 2200);
-    spawnFloatText(player.x + player.w/2, player.y - 46, `+${fmtGold(totalReward)}🪙 도감`, '#8fe0ff');
-    updateHUD();
+  if (gained.atk || gained.hp || gained.def) {
+    refreshStats();
+    showMsg(`📖 도감 보상! ${def.emoji} ${name} 공격력+${gained.atk.toFixed(1)} 방어력+${gained.def.toFixed(2)} 체력+${gained.hp}`, 2400);
+    spawnFloatText(player.x + player.w/2, player.y - 46, `⚔️+${gained.atk.toFixed(1)} ❤️+${gained.hp}`, '#8fe0ff');
   }
 }
 // Offline/away farming only tracks an aggregate kill count for the map (see
@@ -2577,14 +2614,14 @@ function recordBestiaryKill(name, goldRewardSample, count = 1) {
 function bestiaryBreakdownForMap(map, totalKills) {
   const pool = ((map && map.monsters) || []).filter(m => m.type !== 'boss');
   if (!pool.length || totalKills <= 0) return [];
-  const counts = {}, golds = {};
-  pool.forEach(m => { counts[m.name] = (counts[m.name] || 0) + 1; golds[m.name] = m.goldReward; });
+  const counts = {};
+  pool.forEach(m => { counts[m.name] = (counts[m.name] || 0) + 1; });
   return Object.keys(counts)
-    .map(name => ({ name, goldReward: golds[name], kills: Math.round(totalKills * counts[name] / pool.length) }))
+    .map(name => ({ name, kills: Math.round(totalKills * counts[name] / pool.length) }))
     .filter(e => e.kills > 0);
 }
 function applyOfflineBestiary(map, totalKills) {
-  bestiaryBreakdownForMap(map, totalKills).forEach(e => recordBestiaryKill(e.name, e.goldReward, e.kills));
+  bestiaryBreakdownForMap(map, totalKills).forEach(e => recordBestiaryKill(e.name, e.kills));
 }
 
 // ---------- Projectiles (ranged monster attacks + ranged job attacks) ----------
@@ -4099,6 +4136,19 @@ document.getElementById('closeStatus').addEventListener('click', closeStatus);
 function openBestiary() { renderBestiaryPanel(); openModal('bestiaryModal'); }
 function closeBestiary() { closeModal('bestiaryModal'); }
 const BESTIARY_TIER_LABEL = { normal: '🟢 일반 몬스터', elite: '🔥 정예 몬스터', boss: '👑 보스' };
+// Reward numbers are fixed (not gold-based anymore), so unlike before there's
+// no need for a "have we ever killed this monster" fallback — every
+// milestone's exact atk/def/hp bonus can just be shown up front.
+function bestiaryStatText(t) {
+  return `⚔️+${t.atk.toFixed(t.atk % 1 ? 1 : 0)} 🛡️+${t.def.toFixed(2)} ❤️+${t.hp}`;
+}
+function bestiaryRewardLine(entry, thresholds) {
+  const claimed = entry ? entry.claimed : 0;
+  return thresholds.map((t, i) => {
+    const done = i < claimed;
+    return `${done ? '✅' : '⬜'}${t.c}마리 ${bestiaryStatText(t)}`;
+  }).join('  ');
+}
 function renderBestiaryPanel() {
   const bestiary = player.bestiary || {};
   const groups = { normal: [], elite: [], boss: [] };
@@ -4123,7 +4173,8 @@ function renderBestiaryPanel() {
       } else if (claimed >= thresholds.length) {
         progressText = `누적 ${kills}마리 처치 · 도감 보상 완료 ✅`;
       } else {
-        progressText = `누적 ${kills}마리 처치 · 다음 보상까지 ${Math.max(0, thresholds[claimed].c - kills)}마리`;
+        const remain = Math.max(0, thresholds[claimed].c - kills);
+        progressText = `누적 ${kills}마리 처치 · 다음 보상까지 ${remain}마리 · 다음: ${bestiaryStatText(thresholds[claimed])}`;
       }
       html += `<div class="bestiaryEntry ${discovered ? '' : 'undiscovered'}">
         <div class="beEmoji">${discovered ? def.emoji : '❔'}</div>
@@ -4131,12 +4182,15 @@ function renderBestiaryPanel() {
           <div class="beName">${discovered ? def.id : '???'}</div>
           <div class="beMeta">${discovered ? def.mapHint : '전투에서 처치하면 정보가 밝혀져요'}</div>
           <div class="beProgress">${progressText}</div>
+          <div class="beRewards">${bestiaryRewardLine(entry, thresholds)}</div>
         </div>
       </div>`;
     });
   });
   document.getElementById('bestiaryList').innerHTML = html;
-  document.getElementById('bestiarySummary').textContent = `도감 수집: ${discoveredCount} / ${BESTIARY.length}`;
+  const totalBonus = bestiaryBonusFor(bestiary);
+  document.getElementById('bestiarySummary').textContent =
+    `도감 수집: ${discoveredCount} / ${BESTIARY.length}  ·  누적 보너스 ⚔️+${totalBonus.atk.toFixed(1)} 🛡️+${totalBonus.def.toFixed(2)} ❤️+${totalBonus.hp}`;
 }
 document.getElementById('btnBestiary').addEventListener('click', openBestiary);
 document.getElementById('closeBestiary').addEventListener('click', closeBestiary);
@@ -5371,8 +5425,7 @@ function sanitizeSaveData(data) {
       if (kills <= 0) continue;
       const thresholds = BESTIARY_MILESTONES[b.tier] || BESTIARY_MILESTONES.normal;
       const claimed = Math.round(clampNum(e.claimed, 0, thresholds.length, 0));
-      const lastGold = Math.round(clampNum(e.lastGold, 0, 5_000_000, 0));
-      cleanBestiary[b.id] = { kills, claimed, lastGold };
+      cleanBestiary[b.id] = { kills, claimed };
     }
   }
   p.bestiary = cleanBestiary;
@@ -5756,7 +5809,7 @@ function computeOfflineProgress(save) {
   if (!avg) return null;
 
   const lvl = save.player.level;
-  const { atk, maxHp, def } = computeCombatStats(save.player.job, lvl, save.player.weaponId, save.player.armorId, save.player.stats, save.player.weaponEnhance, save.player.armorEnhance, save.player.passives);
+  const { atk, maxHp, def } = computeCombatStats(save.player.job, lvl, save.player.weaponId, save.player.armorId, save.player.stats, save.player.weaponEnhance, save.player.armorEnhance, save.player.passives, save.player.bestiary);
   const mitigatedMonsterAtk = avg.atk * (100 / (100 + (def || 0)));
 
   // Mirror dealDamage's crit rule (crit chance -> critDmgMult dmg) as an
