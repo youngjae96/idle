@@ -872,7 +872,6 @@
           <div class="scTabs">
             <button id="scTabSend" class="scTab">📤 보내기</button>
             <button id="scTabReceive" class="scTab">📥 받기</button>
-            <button id="scTabCloud" class="scTab">☁️ 클라우드</button>
           </div>
 
           <div id="scSendPane">
@@ -886,24 +885,6 @@
             <input id="syncReceiveInput" type="text" inputmode="numeric" maxlength="6" placeholder="123456">
             <button id="syncReceiveBtn">연결해서 불러오기</button>
             <div id="syncReceiveStatus" class="scStatus"></div>
-          </div>
-
-          <div id="scCloudPane" style="display:none">
-            <div class="scDesc" id="scCloudIntro">한 번만 연결해두면 그 다음부턴 저장할 때마다<br>자동으로 클라우드에 백업돼요. 다른 기기에서<br>같은 코드를 입력하면 그 기기에서도 이어할 수 있어요.</div>
-            <div id="scCloudLinkedBox" style="display:none">
-              <div class="scDesc">이 기기의 클라우드 코드예요. 다른 기기 <b>☁️ 클라우드</b> 탭에<br>아래 코드를 입력하면 그 기기도 자동 백업에 연결돼요.</div>
-              <div id="scCloudCode" class="syncCodeDisplay" style="font-size:20px; letter-spacing:2px;">------</div>
-              <button id="scCloudUploadBtn">지금 클라우드에 백업</button>
-              <button id="scCloudDownloadBtn">클라우드에서 불러오기</button>
-              <button id="scCloudUnlinkBtn" style="background:rgba(232,90,60,0.75); color:#fff;">이 기기 연결 해제</button>
-            </div>
-            <div id="scCloudUnlinkedBox">
-              <button id="scCloudStartBtn">새 클라우드 코드 만들기</button>
-              <div class="scDesc" style="margin:10px 0 4px;">— 또는 —</div>
-              <input id="scCloudCodeInput" type="text" maxlength="40" placeholder="다른 기기의 클라우드 코드 붙여넣기">
-              <button id="scCloudConnectBtn">이 코드로 연결</button>
-            </div>
-            <div id="scCloudStatus" class="scStatus"></div>
           </div>
 
           <div id="saveCodeMsg"></div>
@@ -1037,9 +1018,6 @@ const $ = {};
  'btnMenu','menuUnreadBadge',
  'btnGlobalChat','onlineCountBadge','globalChatModal','globalChatMessages','globalChatInput',
  'sendGlobalChatBtn','closeGlobalChat','globalChatStatus',
- 'scTabCloud','scCloudPane','scCloudIntro','scCloudLinkedBox','scCloudUnlinkedBox','scCloudCode',
- 'scCloudUploadBtn','scCloudDownloadBtn','scCloudUnlinkBtn','scCloudStartBtn','scCloudCodeInput',
- 'scCloudConnectBtn','scCloudStatus',
 ].forEach(id => { $[id] = document.getElementById(id); });
 
 // Show runtime errors on the page so mobile testing does not require DevTools.
@@ -5758,7 +5736,6 @@ function saveGame() {
   const json = JSON.stringify(serializeSave());
   const encoded = encodeSavePayload(json);
   lsSet(SAVE_KEY, JSON.stringify({ data: encoded, chk: signPayload(encoded) }));
-  maybeCloudUpload();
 }
 function loadSave() {
   const raw = lsGet(SAVE_KEY);
@@ -5779,106 +5756,6 @@ function loadSave() {
   return sanitizeSaveData(migrateSaveData(parsed));
 }
 function clearSave() { lsRemove(SAVE_KEY); }
-
-// ---------- 클라우드 백업 (Supabase) ----------
-// 기기 간 이어하기는 원래 P2P 코드(위 저장 전송)로 되어 있는데, 그건
-// "두 기기를 동시에 켜고 있어야" 한다는 제약이 있다. 이 기능은 그 제약을
-// 없앤 것 — 클라우드 코드 하나로 여러 기기를 "느슨하게" 연결해두면, 저장할
-// 때마다 자동으로 서버에도 백업되고 아무 기기에서나 불러올 수 있다.
-// DEVICE_ID(자동 생성, 기기별로 다름)와는 별개로 사람이 직접 코드를 공유해야
-// 연결되는 값이라 CLOUD_KEY로 이름을 다르게 뒀다.
-const CLOUD_KEY_STORAGE = 'forestTaleCloudKey_v1';
-let lastCloudUploadAt = 0;
-function getCloudKey() { return lsGet(CLOUD_KEY_STORAGE); }
-function setCloudKey(key) { if (key) lsSet(CLOUD_KEY_STORAGE, key); else lsRemove(CLOUD_KEY_STORAGE); }
-function genCloudKey() {
-  return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID()
-    : (Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
-}
-// 자동저장(saveGame) 경로마다 매번 업로드하면 너무 잦으니 최소 간격을 둔다.
-// 클라우드가 연결 안 돼있으면(getCloudKey() 없음) 그냥 아무 일도 안 하므로
-// 기존 로컬 전용 유저에게는 완전히 무해하다.
-function maybeCloudUpload() {
-  const key = getCloudKey();
-  if (!key) return;
-  const now = Date.now();
-  if (now - lastCloudUploadAt < 4000) return;
-  lastCloudUploadAt = now;
-  cloudUpload(false);
-}
-async function cloudUpload(showStatus) {
-  const key = getCloudKey();
-  if (!key) return;
-  const client = dungeonSb();
-  const save = loadSave();
-  if (!client || !save) {
-    if (showStatus) $.scCloudStatus.textContent = client ? '업로드할 저장 데이터가 없어요' : '오프라인이라 지금은 백업할 수 없어요';
-    return;
-  }
-  try {
-    const { error } = await client.rpc('upsert_cloud_save', { p_cloud_key: key, p_payload: save });
-    if (showStatus) $.scCloudStatus.textContent = error ? '백업 실패했어요' : '방금 클라우드에 백업했어요';
-  } catch (e) {
-    if (showStatus) $.scCloudStatus.textContent = '백업 실패했어요';
-  }
-}
-async function cloudDownload() {
-  const key = getCloudKey();
-  if (!key) return;
-  const client = dungeonSb();
-  if (!client) { $.scCloudStatus.textContent = '오프라인이라 지금은 불러올 수 없어요'; return; }
-  $.scCloudStatus.textContent = '불러오는 중...';
-  try {
-    const { data, error } = await client.rpc('get_cloud_save', { p_cloud_key: key });
-    if (error || !data) { $.scCloudStatus.textContent = '클라우드에 저장된 캐릭터가 없어요'; return; }
-    const clean = sanitizeSaveData(migrateSaveData(data));
-    if (!clean || !clean.player || !clean.player.job) { $.scCloudStatus.textContent = '클라우드 데이터를 읽는 데 실패했어요'; return; }
-    suppressAwayTracking = true;
-    const confirmed = confirm('클라우드에 저장된 캐릭터로 덮어쓸까요? 지금 이 기기의 진행 상황은 사라져요. 되돌릴 수 없어요.');
-    suppressAwayTracking = false;
-    if (!confirmed) { $.scCloudStatus.textContent = ''; return; }
-    clean.savedAt = nowTrusted(); // 오래된 백업을 불러온 시점부터 새 진행으로 취급 — 반복 오프라인 보상 파밍 방지
-    const json = JSON.stringify(clean);
-    const encoded = encodeSavePayload(json);
-    lsSet(SAVE_KEY, JSON.stringify({ data: encoded, chk: signPayload(encoded) }));
-    running = false; // saveGame이 이후 이걸 다시 덮어쓰지 않도록
-    $.scCloudStatus.textContent = '불러왔어요! 창을 닫고 다시 시작해주세요.';
-    $.startBtn.textContent = '이어하기';
-  } catch (e) {
-    $.scCloudStatus.textContent = '불러오기 실패했어요';
-  }
-}
-function renderCloudPane() {
-  const key = getCloudKey();
-  $.scCloudIntro.style.display = key ? 'none' : '';
-  $.scCloudLinkedBox.style.display = key ? '' : 'none';
-  $.scCloudUnlinkedBox.style.display = key ? 'none' : '';
-  if (key) $.scCloudCode.textContent = key;
-  $.scCloudStatus.textContent = '';
-}
-$.scCloudStartBtn.addEventListener('click', () => {
-  setCloudKey(genCloudKey());
-  renderCloudPane();
-  cloudUpload(true);
-});
-$.scCloudConnectBtn.addEventListener('click', () => {
-  const key = $.scCloudCodeInput.value.trim();
-  if (!key) return;
-  setCloudKey(key);
-  $.scCloudCodeInput.value = '';
-  renderCloudPane();
-  $.scCloudStatus.textContent = '연결됐어요. "클라우드에서 불러오기"를 눌러 캐릭터를 가져오세요.';
-});
-$.scCloudUploadBtn.addEventListener('click', () => cloudUpload(true));
-$.scCloudDownloadBtn.addEventListener('click', cloudDownload);
-$.scCloudUnlinkBtn.addEventListener('click', () => {
-  suppressAwayTracking = true;
-  const ok = confirm('이 기기의 클라우드 연결을 해제할까요? 자동 백업이 꺼지고, 코드를 다시 입력해야 재연결돼요.');
-  suppressAwayTracking = false;
-  if (!ok) return;
-  setCloudKey(null);
-  renderCloudPane();
-});
 
 // ---------- Save transfer payload (P2P only — no server, no text code) ----------
 // Builds the {data, chk} payload used by the P2P send/receive flow below.
@@ -6095,17 +5972,13 @@ function switchSyncTab(tab) {
   teardownSync();
   $.scTabSend.classList.toggle('active', tab === 'send');
   $.scTabReceive.classList.toggle('active', tab === 'receive');
-  $.scTabCloud.classList.toggle('active', tab === 'cloud');
   document.getElementById('scSendPane').style.display = tab === 'send' ? '' : 'none';
   document.getElementById('scReceivePane').style.display = tab === 'receive' ? '' : 'none';
-  $.scCloudPane.style.display = tab === 'cloud' ? '' : 'none';
   $.syncReceiveStatus.textContent = '';
   if (tab === 'send') startSyncSend();
-  if (tab === 'cloud') renderCloudPane();
 }
 $.scTabSend.addEventListener('click', () => switchSyncTab('send'));
 $.scTabReceive.addEventListener('click', () => switchSyncTab('receive'));
-$.scTabCloud.addEventListener('click', () => switchSyncTab('cloud'));
 document.getElementById('syncReceiveBtn').addEventListener('click', startSyncReceive);
 function openSaveCodeModal() {
   $.saveCodeMsg.textContent = '';
