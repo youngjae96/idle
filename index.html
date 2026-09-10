@@ -867,15 +867,16 @@
       <div id="saveCodePanel">
         <h2>💾 기기 간 캐릭터 이어하기</h2>
         <div id="saveCodeScroll">
-          <div class="scDesc">두 기기를 동시에 켜고 화면에 뜨는 번호를 주고받으면<br>캐릭터가 <b>통째로 이동</b>해요 (복사 아님 — <b>보낸 기기엔 캐릭터가 남지 않아요</b>).</div>
+          <div class="scDesc">화면에 뜨는 번호를 주고받으면<br>캐릭터가 <b>통째로 이동</b>해요 (복사 아님 — <b>보낸 기기엔 캐릭터가 남지 않아요</b>). 번호는 30분간 유효해요.</div>
 
           <div class="scTabs">
             <button id="scTabSend" class="scTab">📤 보내기</button>
             <button id="scTabReceive" class="scTab">📥 받기</button>
+            <button id="scTabCloud" class="scTab">☁️ 클라우드</button>
           </div>
 
           <div id="scSendPane">
-            <div class="scDesc">다른 기기에서 <b>📥 받기</b> 탭을 열고<br>아래 번호를 입력하게 해주세요.<br>상대가 받으면 <b>이 기기의 캐릭터는 삭제</b>돼요.</div>
+            <div class="scDesc">다른 기기에서 <b>📥 받기</b> 탭을 열고<br>아래 번호를 입력하게 해주세요.<br>상대가 받으면 <b>이 기기의 캐릭터는 삭제</b>돼요.<br>받을 때까지 이 화면을 열어두세요.</div>
             <div id="syncSendCode" class="syncCodeDisplay">------</div>
             <div id="syncSendStatus" class="scStatus"></div>
           </div>
@@ -885,6 +886,24 @@
             <input id="syncReceiveInput" type="text" inputmode="numeric" maxlength="6" placeholder="123456">
             <button id="syncReceiveBtn">연결해서 불러오기</button>
             <div id="syncReceiveStatus" class="scStatus"></div>
+          </div>
+
+          <div id="scCloudPane" style="display:none">
+            <div class="scDesc" id="scCloudIntro">한 번만 연결해두면 그 다음부턴 저장할 때마다<br>자동으로 클라우드에 백업돼요. 다른 기기에서<br>같은 코드를 입력하면 그 기기에서도 이어할 수 있어요.</div>
+            <div id="scCloudLinkedBox" style="display:none">
+              <div class="scDesc">이 기기의 클라우드 코드예요. 다른 기기 <b>☁️ 클라우드</b> 탭에<br>아래 코드를 입력하면 그 기기도 자동 백업에 연결돼요.</div>
+              <div id="scCloudCode" class="syncCodeDisplay" style="font-size:20px; letter-spacing:2px;">------</div>
+              <button id="scCloudUploadBtn">지금 클라우드에 백업</button>
+              <button id="scCloudDownloadBtn">클라우드에서 불러오기</button>
+              <button id="scCloudUnlinkBtn" style="background:rgba(232,90,60,0.75); color:#fff;">이 기기 연결 해제</button>
+            </div>
+            <div id="scCloudUnlinkedBox">
+              <button id="scCloudStartBtn">새 클라우드 코드 만들기</button>
+              <div class="scDesc" style="margin:10px 0 4px;">— 또는 —</div>
+              <input id="scCloudCodeInput" type="text" maxlength="40" placeholder="다른 기기의 클라우드 코드 붙여넣기">
+              <button id="scCloudConnectBtn">이 코드로 연결</button>
+            </div>
+            <div id="scCloudStatus" class="scStatus"></div>
           </div>
 
           <div id="saveCodeMsg"></div>
@@ -1018,6 +1037,9 @@ const $ = {};
  'btnMenu','menuUnreadBadge',
  'btnGlobalChat','onlineCountBadge','globalChatModal','globalChatMessages','globalChatInput',
  'sendGlobalChatBtn','closeGlobalChat','globalChatStatus',
+ 'scTabCloud','scCloudPane','scCloudIntro','scCloudLinkedBox','scCloudUnlinkedBox','scCloudCode',
+ 'scCloudUploadBtn','scCloudDownloadBtn','scCloudUnlinkBtn','scCloudStartBtn','scCloudCodeInput',
+ 'scCloudConnectBtn','scCloudStatus',
 ].forEach(id => { $[id] = document.getElementById(id); });
 
 // Show runtime errors on the page so mobile testing does not require DevTools.
@@ -5736,6 +5758,7 @@ function saveGame() {
   const json = JSON.stringify(serializeSave());
   const encoded = encodeSavePayload(json);
   lsSet(SAVE_KEY, JSON.stringify({ data: encoded, chk: signPayload(encoded) }));
+  maybeCloudUpload();
 }
 function loadSave() {
   const raw = lsGet(SAVE_KEY);
@@ -5756,6 +5779,106 @@ function loadSave() {
   return sanitizeSaveData(migrateSaveData(parsed));
 }
 function clearSave() { lsRemove(SAVE_KEY); }
+
+// ---------- 클라우드 백업 (Supabase) ----------
+// 기기 간 이어하기는 원래 P2P 코드(위 저장 전송)로 되어 있는데, 그건
+// "두 기기를 동시에 켜고 있어야" 한다는 제약이 있다. 이 기능은 그 제약을
+// 없앤 것 — 클라우드 코드 하나로 여러 기기를 "느슨하게" 연결해두면, 저장할
+// 때마다 자동으로 서버에도 백업되고 아무 기기에서나 불러올 수 있다.
+// DEVICE_ID(자동 생성, 기기별로 다름)와는 별개로 사람이 직접 코드를 공유해야
+// 연결되는 값이라 CLOUD_KEY로 이름을 다르게 뒀다.
+const CLOUD_KEY_STORAGE = 'forestTaleCloudKey_v1';
+let lastCloudUploadAt = 0;
+function getCloudKey() { return lsGet(CLOUD_KEY_STORAGE); }
+function setCloudKey(key) { if (key) lsSet(CLOUD_KEY_STORAGE, key); else lsRemove(CLOUD_KEY_STORAGE); }
+function genCloudKey() {
+  return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID()
+    : (Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+}
+// 자동저장(saveGame) 경로마다 매번 업로드하면 너무 잦으니 최소 간격을 둔다.
+// 클라우드가 연결 안 돼있으면(getCloudKey() 없음) 그냥 아무 일도 안 하므로
+// 기존 로컬 전용 유저에게는 완전히 무해하다.
+function maybeCloudUpload() {
+  const key = getCloudKey();
+  if (!key) return;
+  const now = Date.now();
+  if (now - lastCloudUploadAt < 4000) return;
+  lastCloudUploadAt = now;
+  cloudUpload(false);
+}
+async function cloudUpload(showStatus) {
+  const key = getCloudKey();
+  if (!key) return;
+  const client = dungeonSb();
+  const save = loadSave();
+  if (!client || !save) {
+    if (showStatus) $.scCloudStatus.textContent = client ? '업로드할 저장 데이터가 없어요' : '오프라인이라 지금은 백업할 수 없어요';
+    return;
+  }
+  try {
+    const { error } = await client.rpc('upsert_cloud_save', { p_cloud_key: key, p_payload: save });
+    if (showStatus) $.scCloudStatus.textContent = error ? '백업 실패했어요' : '방금 클라우드에 백업했어요';
+  } catch (e) {
+    if (showStatus) $.scCloudStatus.textContent = '백업 실패했어요';
+  }
+}
+async function cloudDownload() {
+  const key = getCloudKey();
+  if (!key) return;
+  const client = dungeonSb();
+  if (!client) { $.scCloudStatus.textContent = '오프라인이라 지금은 불러올 수 없어요'; return; }
+  $.scCloudStatus.textContent = '불러오는 중...';
+  try {
+    const { data, error } = await client.rpc('get_cloud_save', { p_cloud_key: key });
+    if (error || !data) { $.scCloudStatus.textContent = '클라우드에 저장된 캐릭터가 없어요'; return; }
+    const clean = sanitizeSaveData(migrateSaveData(data));
+    if (!clean || !clean.player || !clean.player.job) { $.scCloudStatus.textContent = '클라우드 데이터를 읽는 데 실패했어요'; return; }
+    suppressAwayTracking = true;
+    const confirmed = confirm('클라우드에 저장된 캐릭터로 덮어쓸까요? 지금 이 기기의 진행 상황은 사라져요. 되돌릴 수 없어요.');
+    suppressAwayTracking = false;
+    if (!confirmed) { $.scCloudStatus.textContent = ''; return; }
+    clean.savedAt = nowTrusted(); // 오래된 백업을 불러온 시점부터 새 진행으로 취급 — 반복 오프라인 보상 파밍 방지
+    const json = JSON.stringify(clean);
+    const encoded = encodeSavePayload(json);
+    lsSet(SAVE_KEY, JSON.stringify({ data: encoded, chk: signPayload(encoded) }));
+    running = false; // saveGame이 이후 이걸 다시 덮어쓰지 않도록
+    $.scCloudStatus.textContent = '불러왔어요! 창을 닫고 다시 시작해주세요.';
+    $.startBtn.textContent = '이어하기';
+  } catch (e) {
+    $.scCloudStatus.textContent = '불러오기 실패했어요';
+  }
+}
+function renderCloudPane() {
+  const key = getCloudKey();
+  $.scCloudIntro.style.display = key ? 'none' : '';
+  $.scCloudLinkedBox.style.display = key ? '' : 'none';
+  $.scCloudUnlinkedBox.style.display = key ? 'none' : '';
+  if (key) $.scCloudCode.textContent = key;
+  $.scCloudStatus.textContent = '';
+}
+$.scCloudStartBtn.addEventListener('click', () => {
+  setCloudKey(genCloudKey());
+  renderCloudPane();
+  cloudUpload(true);
+});
+$.scCloudConnectBtn.addEventListener('click', () => {
+  const key = $.scCloudCodeInput.value.trim();
+  if (!key) return;
+  setCloudKey(key);
+  $.scCloudCodeInput.value = '';
+  renderCloudPane();
+  $.scCloudStatus.textContent = '연결됐어요. "클라우드에서 불러오기"를 눌러 캐릭터를 가져오세요.';
+});
+$.scCloudUploadBtn.addEventListener('click', () => cloudUpload(true));
+$.scCloudDownloadBtn.addEventListener('click', cloudDownload);
+$.scCloudUnlinkBtn.addEventListener('click', () => {
+  suppressAwayTracking = true;
+  const ok = confirm('이 기기의 클라우드 연결을 해제할까요? 자동 백업이 꺼지고, 코드를 다시 입력해야 재연결돼요.');
+  suppressAwayTracking = false;
+  if (!ok) return;
+  setCloudKey(null);
+  renderCloudPane();
+});
 
 // ---------- Save transfer payload (P2P only — no server, no text code) ----------
 // Builds the {data, chk} payload used by the P2P send/receive flow below.
@@ -5851,182 +5974,138 @@ function applyImportedSaveData(data, dungeonUsage) {
   return mergeResult;
 }
 
-// ---------- P2P 기기 간 전송 (WebRTC via PeerJS's public broker — no server
-// of our own). Deliberately its own Peer instance (`syncPeer`), separate from
-// the co-op multiplayer `peer`/`connections` above — the two features are
-// unrelated and keeping them decoupled means neither can break the other.
+// ---------- 기기 간 전송 (Supabase 경유로 코드 주고받기 — 예전엔 PeerJS로
+// 두 기기가 WebRTC로 직접 붙어야 했지만, 방화벽/NAT 때문에 연결이 자주
+// 막히는 문제가 있었다. 이제는 payload를 Supabase 테이블에 잠깐(최대
+// 30분) 올려두는 방식으로 대체 — 코드/버튼/문구는 그대로 두고 전송
+// 수단만 바꾼 것.
 //
-// This is a MOVE, not a copy: the character should only ever exist on one
-// device. Protocol (all messages are {type, ...}):
-//   1. sender opens a Peer under a short 6-digit room id and waits
-//   2. receiver connects and gets {type:'save', payload} pushed to it once
-//   3. receiver shows the overwrite confirm; if accepted, writes it to
-//      localStorage and replies {type:'ack'} — if declined, replies
-//      {type:'declined'} instead
-//   4. ONLY on receiving {type:'ack'} does the sender clear its own save.
-// Deleting the original before step 4 (or without waiting for it at all)
-// risks wiping a character that never actually arrived — e.g. the receiver
-// canceled the confirm, or the connection dropped mid-transfer. Waiting for
-// the ack means the failure mode is "both devices briefly have it" (annoying
-// but recoverable) instead of "neither does" (unrecoverable). ----------
-const SYNC_PREFIX = 'forest-tale-sync-';
-const SYNC_ACK_TIMEOUT_MS = 10000;
-let syncPeer = null;
-let syncConn = null;
+// 여전히 MOVE(복사 아님)다. 프로토콜:
+//   1. 보내는 기기가 6자리 코드로 payload를 서버에 올리고 폴링 대기
+//   2. 받는 기기가 코드를 입력해 payload를 가져와 적용하고, 성공하면 서버
+//      상태를 'received'로 바꾼다
+//   3. 보내는 기기는 폴링 중 'received'를 확인한 뒤에야 자기 캐릭터를
+//      지운다 — 확인 전에 지우면 받는 쪽이 확인창을 닫아버렸거나 연결이
+//      끊긴 경우 캐릭터를 통째로 잃을 수 있어서, 기존 P2P 버전과 같은
+//      이유로 "확실해지기 전엔 원본을 건드리지 않는다"는 원칙을 그대로
+//      따른다. 애매하면 "양쪽에 잠깐 둘 다 남는" 쪽(번거롭지만 복구 가능)이
+//      "둘 다 사라지는" 쪽(복구 불가)보다 낫다.
+//
+// buildTransferPayload/parseTransferPayload/applyImportedSaveData/
+// mergeIncomingDungeonUsage는 전송 수단과 무관해서 그대로 재사용한다. ----------
+const SYNC_POLL_MS = 3000;
+let syncPollTimer = null;
+let syncSendCode = null;
 function teardownSync() {
-  if (syncConn) { try { syncConn.close(); } catch (e) {} }
-  if (syncPeer && !syncPeer.destroyed) { try { syncPeer.destroy(); } catch (e) {} }
-  syncConn = null;
-  syncPeer = null;
+  if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
+  syncSendCode = null;
 }
-function startSyncSend(attempt) {
+async function startSyncSend(attempt) {
   attempt = attempt || 0;
   const codeEl = document.getElementById('syncSendCode');
   const statusEl = document.getElementById('syncSendStatus');
-  if (typeof Peer === 'undefined') { codeEl.textContent = '------'; statusEl.textContent = '연결 기능을 불러올 수 없어요 (인터넷 연결 확인)'; return; }
+  const client = dungeonSb();
+  if (!client) { codeEl.textContent = '------'; statusEl.textContent = '연결 기능을 불러올 수 없어요 (인터넷 연결 확인)'; return; }
   const saveObj = running ? serializeSave() : loadSave();
   if (!saveObj) { codeEl.textContent = '------'; statusEl.textContent = '보낼 캐릭터가 없어요. 먼저 게임을 시작해주세요.'; return; }
-  if (attempt > 6) { codeEl.textContent = '------'; statusEl.textContent = '번호를 받지 못했어요. 모달을 닫았다 다시 열어보세요.'; return; }
+  if (attempt > 6) { codeEl.textContent = '------'; statusEl.textContent = '코드를 만들지 못했어요. 모달을 닫았다 다시 열어보세요.'; return; }
   const payload = buildTransferPayload(saveObj);
   const code = randomRoomCode();
   codeEl.textContent = '⋯';
   statusEl.textContent = '';
-  let p;
-  try { p = new Peer(SYNC_PREFIX + code, { config: peerIceConfig() }); } catch (e) { statusEl.textContent = '연결 기능을 사용할 수 없어요'; return; }
-  syncPeer = p;
-  p.on('open', () => {
-    if (syncPeer !== p) return; // superseded (tab switched / modal reopened) while connecting
-    codeEl.textContent = code;
-    statusEl.textContent = '다른 기기에서 이 번호를 입력하기를 기다리는 중...';
-  });
-  p.on('connection', c => {
-    if (syncPeer !== p) { try { c.close(); } catch (e) {} return; }
-    syncConn = c;
-    let ackTimeoutId = null;
-    c.on('open', () => {
-      try { c.send({ type: 'save', payload }); } catch (e) {}
-      statusEl.textContent = '전송했어요! 상대 기기의 확인을 기다리는 중...';
-      ackTimeoutId = setTimeout(() => {
-        if (syncConn !== c) return;
-        // No response in time — leave the original alone. Could mean the
-        // player is still staring at the confirm dialog, or the connection
-        // died in transit; either way, deleting here on a guess is the one
-        // mistake we can't take back, so we don't.
-        statusEl.textContent = '상대 기기의 응답을 받지 못했어요. 혹시 몰라 이 기기의 캐릭터는 지우지 않았어요 — 상대 화면에서 정상적으로 불러와졌는지 확인해주세요.';
-        teardownSync();
-      }, SYNC_ACK_TIMEOUT_MS);
-    });
-    c.on('data', msg => {
-      if (syncConn !== c || !msg) return;
-      if (msg.type === 'ack') {
-        clearTimeout(ackTimeoutId);
-        clearSave();
-        // Same reasoning as the receive-side import: stop autosave/beforeunload
-        // from resurrecting the just-deleted save from the still-in-memory
-        // `player` before the reload below actually happens.
-        running = false;
-        statusEl.textContent = '✅ 이동 완료! 이 기기의 캐릭터는 삭제됐어요. 잠시 후 새로고침됩니다...';
-        teardownSync();
-        setTimeout(() => location.reload(), 1200);
-      } else if (msg.type === 'declined') {
-        clearTimeout(ackTimeoutId);
-        statusEl.textContent = '상대가 받기를 취소했어요. 이 기기의 캐릭터는 그대로 있어요.';
-        teardownSync();
-      }
-    });
-    c.on('error', () => {
-      clearTimeout(ackTimeoutId);
-      statusEl.textContent = '전송 중 오류가 발생했어요. 이 기기의 캐릭터는 그대로 있어요.';
-    });
-  });
-  p.on('error', err => {
-    if (syncPeer !== p) return;
-    if (err && err.type === 'unavailable-id') {
-      // extremely unlikely (1-in-900,000ish), but just try another code
-      try { p.destroy(); } catch (e) {}
-      startSyncSend(attempt + 1);
+  let ok = false;
+  try {
+    const { data, error } = await client.rpc('create_save_transfer', { p_code: code, p_payload: payload });
+    ok = !error && data === true;
+  } catch (e) { ok = false; }
+  // 그 사이 탭을 전환했거나 모달을 닫았다 다시 열었으면(teardownSync가 이미
+  // syncSendCode를 건드렸으면) 이 응답은 더 이상 유효하지 않다.
+  if (!ok) { startSyncSend(attempt + 1); return; }
+  syncSendCode = code;
+  codeEl.textContent = code;
+  statusEl.textContent = '다른 기기에서 이 번호를 입력하기를 기다리는 중... (30분간 유효)';
+  syncPollTimer = setInterval(() => pollSyncSend(code), SYNC_POLL_MS);
+}
+async function pollSyncSend(code) {
+  if (syncSendCode !== code) return; // 이미 취소/교체됨
+  const client = dungeonSb();
+  if (!client) return;
+  const statusEl = document.getElementById('syncSendStatus');
+  try {
+    const { data, error } = await client.rpc('fetch_save_transfer', { p_code: code });
+    if (syncSendCode !== code || error) return;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      // 30분이 지나 서버에서 더 이상 보이지 않는 코드 — 원본은 그대로 둔다.
+      statusEl.textContent = '코드가 만료됐어요. 다시 보내려면 이 탭을 다시 눌러주세요.';
+      teardownSync();
       return;
     }
-    statusEl.textContent = '연결 오류: ' + (err && err.type ? err.type : '알 수 없음');
-  });
+    if (row.status === 'received') {
+      teardownSync();
+      clearSave();
+      // 자동저장/beforeunload가 곧 있을 새로고침 전에 지금 막 지운 저장을
+      // 메모리에 남은 player로 되살려 덮어쓰지 못하게 막는다.
+      running = false;
+      statusEl.textContent = '✅ 이동 완료! 이 기기의 캐릭터는 삭제됐어요. 잠시 후 새로고침됩니다...';
+      client.rpc('delete_save_transfer', { p_code: code }).catch(() => {});
+      setTimeout(() => location.reload(), 1200);
+    }
+  } catch (e) {}
 }
-function startSyncReceive() {
+async function startSyncReceive() {
   const input = $.syncReceiveInput;
   const statusEl = $.syncReceiveStatus;
   const code = (input.value || '').trim();
   if (!/^\d{6}$/.test(code)) { statusEl.textContent = '6자리 번호를 정확히 입력해주세요.'; return; }
-  if (typeof Peer === 'undefined') { statusEl.textContent = '연결 기능을 불러올 수 없어요 (인터넷 연결 확인)'; return; }
-  teardownSync();
-  statusEl.textContent = '연결하는 중...';
-  let p;
-  try { p = new Peer(undefined, { config: peerIceConfig() }); } catch (e) { statusEl.textContent = '연결 기능을 사용할 수 없어요'; return; }
-  syncPeer = p;
-  const timeoutId = setTimeout(() => {
-    if (syncPeer === p) { statusEl.textContent = '연결 시간이 초과됐어요. 번호와 상대 화면을 확인해주세요.'; teardownSync(); }
-  }, 15000);
-  p.on('open', () => {
-    if (syncPeer !== p) return;
-    let c;
-    try { c = p.connect(SYNC_PREFIX + code, { reliable: true }); } catch (e) { statusEl.textContent = '연결할 수 없어요.'; return; }
-    syncConn = c;
-    c.on('open', () => { statusEl.textContent = '연결됐어요! 캐릭터를 받는 중...'; });
-    c.on('data', msg => {
-      clearTimeout(timeoutId);
-      if (!msg || msg.type !== 'save') { statusEl.textContent = '받은 데이터가 올바르지 않아요.'; teardownSync(); return; }
-      let parsed;
-      try {
-        parsed = parseTransferPayload(msg.payload);
-      } catch (e) {
-        statusEl.textContent = '받은 데이터가 올바르지 않아요.';
-        try { c.send({ type: 'declined' }); } catch (e2) {}
-        setTimeout(() => teardownSync(), 400);
-        return;
-      }
-      // ack/declined are sent back over `c` BEFORE teardownSync() runs, with
-      // a short delay after each send so the data channel has time to
-      // actually flush before the connection closes.
-      const mergeResult = applyImportedSaveData(parsed.save, parsed.dungeonUsage);
-      if (!mergeResult) {
-        statusEl.textContent = '취소했어요. 상대 기기의 캐릭터는 그대로 유지돼요.';
-        try { c.send({ type: 'declined' }); } catch (e) {}
-        setTimeout(() => teardownSync(), 400);
-        return;
-      }
-      try { c.send({ type: 'ack' }); } catch (e) {}
-      // 일일던전 사용량이 실제로 얼마나 넘어왔는지 여기서 바로 보여준다 —
-      // "됐는지 안 됐는지 모르겠다"를 없애기 위한 것. carriedSeconds > 0이면
-      // 상대 기기에서 쓴 시간이 이 기기 한도에도 정확히 반영됐다는 뜻이고,
-      // reason:'stale-date'면 넘어온 값이 오늘 것이 아니라서 의도적으로
-      // 버려졌다는 뜻이다(둘 다 정상 동작이며 버그가 아니다).
-      let extra = '';
-      if (mergeResult.applied && mergeResult.carriedSeconds > 0) {
-        extra = ` (일일던전 사용시간 ${fmtDuration(mergeResult.carriedSeconds)} 반영됨)`;
-      } else if (mergeResult.reason === 'stale-date') {
-        extra = ' (일일던전 사용시간은 날짜가 달라 반영 안 됨)';
-      }
-      statusEl.textContent = '불러왔어요!' + extra + ' 잠시 후 새로고침됩니다...';
-      setTimeout(() => { teardownSync(); location.reload(); }, 1400);
-    });
-    c.on('error', () => { statusEl.textContent = '연결 중 오류가 발생했어요.'; });
-  });
-  p.on('error', err => {
-    if (syncPeer !== p) return;
-    clearTimeout(timeoutId);
-    if (err && err.type === 'peer-unavailable') statusEl.textContent = '그 번호로 열린 연결을 찾을 수 없어요. 번호를 확인해주세요.';
-    else statusEl.textContent = '연결 오류: ' + (err && err.type ? err.type : '알 수 없음');
-  });
+  const client = dungeonSb();
+  if (!client) { statusEl.textContent = '연결 기능을 불러올 수 없어요 (인터넷 연결 확인)'; return; }
+  statusEl.textContent = '불러오는 중...';
+  let row;
+  try {
+    const { data, error } = await client.rpc('fetch_save_transfer', { p_code: code });
+    if (error) { statusEl.textContent = '연결 오류가 발생했어요.'; return; }
+    row = Array.isArray(data) ? data[0] : data;
+  } catch (e) { statusEl.textContent = '연결 오류가 발생했어요.'; return; }
+  if (!row) { statusEl.textContent = '그 번호로 보낸 캐릭터를 찾을 수 없어요. 번호나 유효시간(30분)을 확인해주세요.'; return; }
+  if (row.status !== 'waiting') { statusEl.textContent = '이미 받은 코드예요.'; return; }
+  let parsed;
+  try {
+    parsed = parseTransferPayload(row.payload);
+  } catch (e) {
+    statusEl.textContent = '받은 데이터가 올바르지 않아요.';
+    return;
+  }
+  // applyImportedSaveData가 확인창을 띄운다 — 취소하면 false를 돌려받고,
+  // 이 경우 서버 상태를 건드리지 않아서(complete를 호출 안 함) 보내는
+  // 기기는 계속 대기 상태 그대로 남는다.
+  const mergeResult = applyImportedSaveData(parsed.save, parsed.dungeonUsage);
+  if (!mergeResult) { statusEl.textContent = '취소했어요.'; return; }
+  try { await client.rpc('complete_save_transfer', { p_code: code }); } catch (e) {}
+  let extra = '';
+  if (mergeResult.applied && mergeResult.carriedSeconds > 0) {
+    extra = ` (일일던전 사용시간 ${fmtDuration(mergeResult.carriedSeconds)} 반영됨)`;
+  } else if (mergeResult.reason === 'stale-date') {
+    extra = ' (일일던전 사용시간은 날짜가 달라 반영 안 됨)';
+  }
+  statusEl.textContent = '불러왔어요!' + extra + ' 잠시 후 새로고침됩니다...';
+  setTimeout(() => location.reload(), 1400);
 }
 function switchSyncTab(tab) {
   teardownSync();
   $.scTabSend.classList.toggle('active', tab === 'send');
   $.scTabReceive.classList.toggle('active', tab === 'receive');
+  $.scTabCloud.classList.toggle('active', tab === 'cloud');
   document.getElementById('scSendPane').style.display = tab === 'send' ? '' : 'none';
   document.getElementById('scReceivePane').style.display = tab === 'receive' ? '' : 'none';
+  $.scCloudPane.style.display = tab === 'cloud' ? '' : 'none';
   $.syncReceiveStatus.textContent = '';
   if (tab === 'send') startSyncSend();
+  if (tab === 'cloud') renderCloudPane();
 }
 $.scTabSend.addEventListener('click', () => switchSyncTab('send'));
 $.scTabReceive.addEventListener('click', () => switchSyncTab('receive'));
+$.scTabCloud.addEventListener('click', () => switchSyncTab('cloud'));
 document.getElementById('syncReceiveBtn').addEventListener('click', startSyncReceive);
 function openSaveCodeModal() {
   $.saveCodeMsg.textContent = '';
