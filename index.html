@@ -940,32 +940,6 @@ const BUILD_VERSION = '2026-09-07.4-dungeon-sync-visible';
   if (buildTag) buildTag.textContent = 'build ' + BUILD_VERSION;
 }
 let updateAvailable = false;
-// 배너를 띄우고 그냥 무시당하면 아무 일도 안 일어나던 기존 방식 대신, 일정
-// 시간 뒤엔 강제로 새로고침한다. 데이터 손실 걱정은 없다 — location.reload()도
-// beforeunload/pagehide를 정상적으로 발생시키고, 그 안에서 flushDungeonTracking()
-// + saveGame()이 이미 돈다(위쪽 두 addEventListener 참고). 사냥 도중 갑자기
-// 끊기면 불쾌할 수 있어서, 0초로 바로 끊지 않고 30초 카운트다운을 보여줘
-// 최소한 "곧 끊긴다"는 걸 눈치채고 정리할 시간을 준다.
-const FORCE_RELOAD_AFTER_SEC = 30;
-let forceReloadTimer = null;
-function startForceReloadCountdown() {
-  if (forceReloadTimer !== null) return; // already counting down
-  let remaining = FORCE_RELOAD_AFTER_SEC;
-  const textEl = document.getElementById('updateBannerText');
-  const tick = () => {
-    if (textEl) textEl.textContent = `🔄 새 버전이 있어요 (${remaining}초 후 자동 새로고침)`;
-    if (remaining <= 0) {
-      clearInterval(forceReloadTimer);
-      flushDungeonTracking();
-      saveGame();
-      location.reload();
-      return;
-    }
-    remaining -= 1;
-  };
-  tick();
-  forceReloadTimer = setInterval(tick, 1000);
-}
 async function checkForUpdate() {
   if (updateAvailable) return; // already showing the banner, no need to re-check
   try {
@@ -978,7 +952,8 @@ async function checkForUpdate() {
     if (match && match[1] && match[1] !== BUILD_VERSION) {
       updateAvailable = true;
       document.getElementById('updateBanner').classList.add('show');
-      startForceReloadCountdown();
+      // 배너만 띄우고 자동 새로고침은 하지 않는다 — 새로고침은 사용자가
+      // 배너의 버튼을 눌렀을 때만 일어난다.
     }
   } catch (e) {
     // offline or network hiccup — just try again next interval, no need to
