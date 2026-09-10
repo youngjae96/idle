@@ -5413,9 +5413,10 @@ function sanitizeSaveData(data) {
   }
   p.passives = cleanPassives;
   // Same rebuild-from-scratch approach as passives above: only known monster
-  // names from BESTIARY survive, and claimed can't exceed that monster's
-  // actual milestone count — closes off hand-editing kills/claimed to mint
-  // extra bestiary gold beyond what recordBestiaryKill would ever grant.
+  // names from BESTIARY survive. claimed is derived from kills (not merely
+  // clamped to thresholds.length) so a save can never claim a milestone its
+  // own kill count wouldn't actually reach — this is the exact invariant
+  // recordBestiaryKill enforces during normal play, now also enforced here.
   const cleanBestiary = {};
   if (p.bestiary && typeof p.bestiary === 'object') {
     for (const b of BESTIARY) {
@@ -5424,7 +5425,9 @@ function sanitizeSaveData(data) {
       const kills = Math.round(clampNum(e.kills, 0, 10_000_000, 0));
       if (kills <= 0) continue;
       const thresholds = BESTIARY_MILESTONES[b.tier] || BESTIARY_MILESTONES.normal;
-      const claimed = Math.round(clampNum(e.claimed, 0, thresholds.length, 0));
+      let maxClaimed = 0;
+      while (maxClaimed < thresholds.length && kills >= thresholds[maxClaimed].c) maxClaimed++;
+      const claimed = Math.round(clampNum(e.claimed, 0, maxClaimed, 0));
       cleanBestiary[b.id] = { kills, claimed };
     }
   }
