@@ -674,6 +674,20 @@
   #btnAutoHunt {
     box-shadow: 0 2px 0 rgba(0,0,0,0.4); transition: transform .08s, box-shadow .08s;
   }
+
+  #tabLockOverlay {
+    position:fixed; inset:0; z-index:20000; display:none;
+    align-items:center; justify-content:center; padding:20px; box-sizing:border-box;
+    background:rgba(8,5,12,0.92);
+  }
+  #tabLockOverlay.show { display:flex; }
+  #tabLockOverlay .box {
+    max-width:340px; width:100%; text-align:center; padding:22px 20px; border-radius:14px;
+    background:rgba(40,20,30,0.96); border:2px solid #ffd166; color:#f4e9d8;
+    font-family: var(--font-body); box-shadow:0 12px 30px rgba(0,0,0,0.5);
+  }
+  #tabLockOverlay .box strong { display:block; font-size:16px; color:#ffd166; margin-bottom:10px; }
+  #tabLockOverlay .box p { font-size:13px; line-height:1.55; margin:0; color:#e8dcc8; }
 </style>
 </head>
 <body>
@@ -985,6 +999,114 @@ const $ = {};
   window.addEventListener('unhandledrejection', event => {
     showError(String(event.reason || '처리되지 않은 오류'));
   });
+})();
+
+// ---------- Single-tab lock (cheap anti-multi friction) ----------
+// There's no server here, so there's no real way to stop someone from
+// running two *different* browsers or devices at once — that would need a
+// login system with something to check "is this really two different
+// people" against. What IS cheap to stop is the far more common case:
+// someone opening a second tab of the same browser to double up on
+// auto-hunting. localStorage is shared by every tab of the same origin, so
+// we use it as a "who's currently playing" lock with a heartbeat — whoever
+// is running keeps refreshing a timestamp under their own random tab id,
+// and any other tab that shows up sees a fresh timestamp under a different
+// id and defers, showing a blocking overlay instead of letting the player
+// start. If the active tab closes (or crashes) the timestamp goes stale
+// and the waiting tab quietly takes over within a few seconds.
+//
+// Note: checkLock() only touches the `running` variable declared much
+// further down this file, and only inside the (holder === true) branch.
+// The one synchronous call made below, at setup time, can never reach that
+// branch (holder starts false), so it never runs before `running` exists —
+// don't restructure this without keeping that true.
+const TabLock = (function () {
+  const KEY = 'forestTaleActiveTab';
+  const HEARTBEAT_MS = 1000;
+  const STALE_MS = 4000;
+  const TAB_ID = (globalThis.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : ('tab-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+
+  let holder = false;
+  let heartbeatTimer = null;
+  let overlay = null;
+
+  function readLock() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function writeLock() {
+    try { localStorage.setItem(KEY, JSON.stringify({ tabId: TAB_ID, ts: Date.now() })); } catch (e) {}
+  }
+  function releaseLock() {
+    try {
+      const lock = readLock();
+      if (lock && lock.tabId === TAB_ID) localStorage.removeItem(KEY);
+    } catch (e) {}
+  }
+  function isStale(lock) { return !lock || (Date.now() - lock.ts) > STALE_MS; }
+
+  function ensureOverlay() {
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.id = 'tabLockOverlay';
+    overlay.innerHTML =
+      '<div class="box">' +
+        '<strong>다른 탭에서 이미 플레이 중이에요</strong>' +
+        '<p>같은 브라우저에서 이 게임을 두 개 이상 열면 진행이 꼬일 수 있어요.<br>다른 탭을 닫으면 여기서 자동으로 이어할 수 있어요.</p>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+  function showBlocked() {
+    ensureOverlay().classList.add('show');
+    if ($.startBtn) $.startBtn.disabled = true;
+  }
+  function hideBlocked() {
+    ensureOverlay().classList.remove('show');
+    if ($.startBtn) $.startBtn.disabled = false;
+  }
+
+  function becomeHolder() {
+    holder = true;
+    writeLock();
+    hideBlocked();
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = setInterval(writeLock, HEARTBEAT_MS);
+  }
+
+  function checkLock() {
+    const lock = readLock();
+    if (holder) {
+      // Someone else's fresh id is sitting in the key — only happens if two
+      // tabs raced to claim within the same beat. Yield rather than fight
+      // over it; the loser just needs a manual restart, which is a fine
+      // trade for how rare this is.
+      if (lock && lock.tabId !== TAB_ID && !isStale(lock)) {
+        holder = false;
+        clearInterval(heartbeatTimer);
+        if (running) running = false;
+        showBlocked();
+      }
+      return;
+    }
+    if (isStale(lock) || (lock && lock.tabId === TAB_ID)) {
+      becomeHolder();
+    } else {
+      showBlocked();
+    }
+  }
+
+  window.addEventListener('storage', (e) => { if (e.key === KEY) checkLock(); });
+  window.addEventListener('beforeunload', releaseLock);
+  window.addEventListener('pagehide', releaseLock);
+  setInterval(checkLock, HEARTBEAT_MS);
+  checkLock();
+
+  return { isBlocked: () => !holder };
 })();
 
 // ---------- Update checker ----------
@@ -5261,6 +5383,22 @@ function hashStr(str) {
   return (h >>> 0).toString(36);
 }
 function signPayload(json) { return hashStr(json + SAVE_SALT); }
+// The checksum above already stops a save from loading once it's been
+// hand-edited, but the JSON sitting in localStorage is still plain,
+// readable text — someone can see exactly which field to change even if
+// changing it gets rejected. Wrapping it in base64 doesn't stop a
+// determined person (the decode is right here in the source), but it does
+// mean "open devtools, tweak one number" no longer works at a glance, which
+// is the bar we're aiming for, not a cryptographic one.
+function encodeSavePayload(json) {
+  try { return btoa(unescape(encodeURIComponent(json))); } catch (e) { return json; }
+}
+function decodeSavePayload(str) {
+  // Back-compat: saves written before this encoding existed stored plain
+  // JSON in `data`, which isn't valid base64 and makes atob throw — fall
+  // back to treating it as already-decoded rather than losing old saves.
+  try { return decodeURIComponent(escape(atob(str))); } catch (e) { return str; }
+}
 function economyEventHash(event) {
   return signPayload(JSON.stringify({
     id: event.id, kind: event.kind, gold: event.gold, exp: event.exp,
@@ -5488,7 +5626,8 @@ function serializeSave() {
 function saveGame() {
   if (!running) return;
   const json = JSON.stringify(serializeSave());
-  lsSet(SAVE_KEY, JSON.stringify({ data: json, chk: signPayload(json) }));
+  const encoded = encodeSavePayload(json);
+  lsSet(SAVE_KEY, JSON.stringify({ data: encoded, chk: signPayload(encoded) }));
 }
 function loadSave() {
   const raw = lsGet(SAVE_KEY);
@@ -5502,7 +5641,7 @@ function loadSave() {
       console.warn('save checksum mismatch — ignoring edited save');
       return null;
     }
-    try { return sanitizeSaveData(migrateSaveData(JSON.parse(parsed.data))); } catch (e) { return null; }
+    try { return sanitizeSaveData(migrateSaveData(JSON.parse(decodeSavePayload(parsed.data)))); } catch (e) { return null; }
   }
   return sanitizeSaveData(migrateSaveData(parsed));
 }
@@ -5593,7 +5732,8 @@ function applyImportedSaveData(data, dungeonUsage) {
                               // from days ago shouldn't be replayable to farm
                               // repeated offline-progress rewards
   const json = JSON.stringify(data);
-  lsSet(SAVE_KEY, JSON.stringify({ data: json, chk: signPayload(json) }));
+  const encoded = encodeSavePayload(json);
+  lsSet(SAVE_KEY, JSON.stringify({ data: encoded, chk: signPayload(encoded) }));
   const mergeResult = mergeIncomingDungeonUsage(dungeonUsage);
   running = false;
   return mergeResult;
