@@ -2474,93 +2474,67 @@ function tierSq(tier) {
 // dungeon and staying there — the quadratic term keeps monsters closing the
 // gap (roughly a real fight, ~2.5-4 hits) all the way through the later maps
 // instead of only the tutorial field feeling like combat.
-function makeMonster(x, tier) {
-  return {
-    x, y: GROUND_Y - 20, w: 26, h: 20, startX: x, range: 70, dir: Math.random()<0.5?-1:1, speed: 1.0 + tier*0.1,
-    hp: 12 + tier*7.5 + tierSq(tier)*1.1, maxHp: 12 + tier*7.5 + tierSq(tier)*1.1, atk: 2 + tier*1.6 + tierSq(tier)*0.26, goldReward: (3 + tier*2) * GOLD_DROP_MULTIPLIER, expReward: 4 + tier*3,
-    name: '슬라임', type:'slime', dead:false, respawnAt:0, hitCooldown:0,
+// ---------- Monster stat tables ----------
+// Every "normal" (non-boss) monster grows through the exact same curve —
+// speed: base + tier*perTier; hp/atk: base + tier*perTier + tierSq(tier)*perTierSq;
+// gold: (base + tier*perTier) * GOLD_DROP_MULTIPLIER; exp: base + tier*perTier —
+// so only the base numbers and a few per-type extras (flies vs walks, fixed
+// vs random facing, ranged/dash cooldowns) actually differ between monster
+// types. Those live here in one place instead of one near-identical
+// hand-written object per monster; makeMonsterFromDef() below is the one
+// factory that turns a def + (x, tier) into an actual monster instance.
+// Abyss-tier entries (shadowknight/voidbat/riftwraith) are reused at higher
+// tiers by every map from 멸망의 균열 through the post-throne endgame —
+// noticeably stronger than the frost tier: higher base stats and steeper
+// quadratic growth so that map feels like a real step up, not just "one
+// more field with new sprites".
+const MONSTER_DEFS = {
+  slime:        { name:'슬라임',     w:26, h:20, yOff:20, range:70,  speed:[1.0,0.10], hp:[12,7.50,1.10],  atk:[2,1.60,0.26],  gold:[3,2],  exp:[4,3] },
+  bat:          { name:'박쥐',       w:24, h:18, flying:true,        range:90,  speed:[1.6,0.10], hp:[9,6.25,0.95],   atk:[2,1.60,0.26],  gold:[4,2],  exp:[5,3],  extra:()=>({bobT:Math.random()*10}) },
+  goblin:       { name:'고블린',     w:28, h:30, yOff:30, range:100, speed:[1.7,0.12], hp:[22,11.25,1.70], atk:[4,2.40,0.40],  gold:[6,3],  exp:[8,4] },
+  mushroom:     { name:'독버섯',     w:26, h:22, yOff:22, range:0,   speed:[0,0],      hp:[14,7.50,1.10],  atk:[3,1.60,0.26],  gold:[5,2],  exp:[6,3],  fixedDir:1, extra:()=>({rangedCooldown:60+Math.random()*60}) },
+  crab:         { name:'집게게',     w:30, h:22, yOff:22, range:60,  speed:[2.3,0.15], hp:[20,10.00,1.55], atk:[5,2.56,0.43],  gold:[9,3],  exp:[10,4], extra:()=>({rangedCooldown:80+Math.random()*60}) },
+  snail:        { name:'소라고둥',   w:30, h:24, yOff:24, range:30,  speed:[0.5,0.05], hp:[34,15.00,2.30], atk:[4,2.24,0.38],  gold:[8,3],  exp:[9,4] },
+  scorpion:     { name:'전갈',       w:30, h:26, yOff:26, range:110, speed:[1.8,0.15], hp:[26,12.50,1.95], atk:[6,2.88,0.48],  gold:[11,4], exp:[12,5], extra:()=>({dashCooldown:0,dashT:0}) },
+  icespirit:    { name:'얼음정령',   w:26, h:24, yOff:24, range:40,  speed:[0.9,0.08], hp:[24,11.25,1.45], atk:[5,2.56,0.43],  gold:[12,4], exp:[14,5], extra:()=>({rangedCooldown:70+Math.random()*60}) },
+  frostwolf:    { name:'서리늑대',   w:32, h:26, yOff:28, range:120, speed:[2.0,0.15], hp:[30,13.75,1.75], atk:[7,3.20,0.55],  gold:[14,4], exp:[16,5], extra:()=>({dashCooldown:0,dashT:0}) },
+  shadowknight: { name:'그림자기사', w:30, h:32, yOff:32, range:110, speed:[2.1,0.14], hp:[46,17.00,2.40], atk:[10,4.00,0.68], gold:[18,5], exp:[20,6], extra:()=>({dashCooldown:0,dashT:0}) },
+  voidbat:      { name:'심연박쥐',   w:26, h:20, flying:true,        range:100, speed:[2.3,0.14], hp:[18,10.00,1.55], atk:[5,2.50,0.42],  gold:[16,5], exp:[18,6], extra:()=>({bobT:Math.random()*10}) },
+  riftwraith:   { name:'균열정령',   w:28, h:30, yOff:30, range:50,  speed:[1.0,0.08], hp:[40,15.00,2.10], atk:[9,3.80,0.64],  gold:[20,6], exp:[22,7], extra:()=>({rangedCooldown:60+Math.random()*60}) },
+};
+function makeMonsterFromDef(type, x, tier, baseY) {
+  const d = MONSTER_DEFS[type];
+  const [spBase, spPerTier] = d.speed;
+  const [hpBase, hpPerTier, hpPerTierSq] = d.hp;
+  const [atkBase, atkPerTier, atkPerTierSq] = d.atk;
+  const [goldBase, goldPerTier] = d.gold;
+  const [expBase, expPerTier] = d.exp;
+  const hp = hpBase + tier*hpPerTier + tierSq(tier)*hpPerTierSq;
+  const m = {
+    x, y: d.flying ? baseY : (GROUND_Y - d.yOff), w:d.w, h:d.h, startX:x, range:d.range,
+    dir: d.fixedDir != null ? d.fixedDir : (Math.random()<0.5?-1:1),
+    speed: spBase + tier*spPerTier,
+    hp, maxHp:hp, atk: atkBase + tier*atkPerTier + tierSq(tier)*atkPerTierSq,
+    goldReward: (goldBase + tier*goldPerTier) * GOLD_DROP_MULTIPLIER, expReward: expBase + tier*expPerTier,
+    name:d.name, type, dead:false, respawnAt:0, hitCooldown:0,
   };
+  if (d.flying) m.baseY = baseY;
+  if (d.extra) Object.assign(m, d.extra());
+  return m;
 }
-function makeBat(x, baseY, tier) {
-  return {
-    x, y: baseY, w: 24, h: 18, startX: x, baseY, range: 90, dir: Math.random()<0.5?-1:1, speed: 1.6 + tier*0.1,
-    hp: 9 + tier*6.25 + tierSq(tier)*0.95, maxHp: 9 + tier*6.25 + tierSq(tier)*0.95, atk: 2 + tier*1.6 + tierSq(tier)*0.26, goldReward: (4 + tier*2) * GOLD_DROP_MULTIPLIER, expReward: 5 + tier*3,
-    name: '박쥐', type:'bat', dead:false, respawnAt:0, hitCooldown:0, bobT: Math.random()*10,
-  };
-}
-function makeGoblin(x, tier) {
-  return {
-    x, y: GROUND_Y - 30, w: 28, h: 30, startX: x, range: 100, dir: Math.random()<0.5?-1:1, speed: 1.7 + tier*0.12,
-    hp: 22 + tier*11.25 + tierSq(tier)*1.7, maxHp: 22 + tier*11.25 + tierSq(tier)*1.7, atk: 4 + tier*2.4 + tierSq(tier)*0.4, goldReward: (6 + tier*3) * GOLD_DROP_MULTIPLIER, expReward: 8 + tier*4,
-    name: '고블린', type:'goblin', dead:false, respawnAt:0, hitCooldown:0,
-  };
-}
-function makeMushroom(x, tier) {
-  return {
-    x, y: GROUND_Y - 22, w: 26, h: 22, startX: x, range: 0, dir: 1, speed: 0,
-    hp: 14 + tier*7.5 + tierSq(tier)*1.1, maxHp: 14 + tier*7.5 + tierSq(tier)*1.1, atk: 3 + tier*1.6 + tierSq(tier)*0.26, goldReward: (5 + tier*2) * GOLD_DROP_MULTIPLIER, expReward: 6 + tier*3,
-    name: '독버섯', type:'mushroom', dead:false, respawnAt:0, hitCooldown:0, rangedCooldown: 60 + Math.random()*60,
-  };
-}
-function makeBoss(x) {
-  return {
-    x, y: GROUND_Y - 64, w: 52, h: 64, startX: x, range: 0, dir: -1, speed: 1.3,
-    hp: 320, maxHp: 320, atk: 16, goldReward: 150 * GOLD_DROP_MULTIPLIER, expReward: 180,
-    name: '그림자 군주', type:'boss', dead:false, respawnAt:Infinity, hitCooldown:0,
-    state:'chase', actionCooldown: 90, telegraphT:0, slamT:0, engaged:false,
-  };
-}
-function makeCrab(x, tier) {
-  return {
-    x, y: GROUND_Y - 22, w: 30, h: 22, startX: x, range: 60, dir: Math.random()<0.5?-1:1, speed: 2.3 + tier*0.15,
-    hp: 20 + tier*10 + tierSq(tier)*1.55, maxHp: 20 + tier*10 + tierSq(tier)*1.55, atk: 5 + tier*2.56 + tierSq(tier)*0.43, goldReward: (9 + tier*3) * GOLD_DROP_MULTIPLIER, expReward: 10 + tier*4,
-    name: '집게게', type:'crab', dead:false, respawnAt:0, hitCooldown:0, rangedCooldown: 80 + Math.random()*60,
-  };
-}
-function makeSnail(x, tier) {
-  return {
-    x, y: GROUND_Y - 24, w: 30, h: 24, startX: x, range: 30, dir: Math.random()<0.5?-1:1, speed: 0.5 + tier*0.05,
-    hp: 34 + tier*15 + tierSq(tier)*2.3, maxHp: 34 + tier*15 + tierSq(tier)*2.3, atk: 4 + tier*2.24 + tierSq(tier)*0.38, goldReward: (8 + tier*3) * GOLD_DROP_MULTIPLIER, expReward: 9 + tier*4,
-    name: '소라고둥', type:'snail', dead:false, respawnAt:0, hitCooldown:0,
-  };
-}
-function makeScorpion(x, tier) {
-  return {
-    x, y: GROUND_Y - 26, w: 30, h: 26, startX: x, range: 110, dir: Math.random()<0.5?-1:1, speed: 1.8 + tier*0.15,
-    hp: 26 + tier*12.5 + tierSq(tier)*1.95, maxHp: 26 + tier*12.5 + tierSq(tier)*1.95, atk: 6 + tier*2.88 + tierSq(tier)*0.48, goldReward: (11 + tier*4) * GOLD_DROP_MULTIPLIER, expReward: 12 + tier*5,
-    name: '전갈', type:'scorpion', dead:false, respawnAt:0, hitCooldown:0, dashCooldown:0, dashT:0,
-  };
-}
-function makeLavaBoss(x) {
-  return {
-    x, y: GROUND_Y - 70, w: 58, h: 70, startX: x, range: 0, dir: -1, speed: 1.5,
-    hp: 720, maxHp: 720, atk: 28, goldReward: 380 * GOLD_DROP_MULTIPLIER, expReward: 500,
-    name: '용암 정령', type:'boss', theme:'lava', dead:false, respawnAt:Infinity, hitCooldown:0,
-    state:'chase', actionCooldown: 90, telegraphT:0, slamT:0, engaged:false,
-  };
-}
-function makeIceSpirit(x, tier) {
-  return {
-    x, y: GROUND_Y - 24, w: 26, h: 24, startX: x, range: 40, dir: Math.random()<0.5?-1:1, speed: 0.9 + tier*0.08,
-    hp: 24 + tier*11.25 + tierSq(tier)*1.45, maxHp: 24 + tier*11.25 + tierSq(tier)*1.45, atk: 5 + tier*2.56 + tierSq(tier)*0.43, goldReward: (12 + tier*4) * GOLD_DROP_MULTIPLIER, expReward: 14 + tier*5,
-    name: '얼음정령', type:'icespirit', dead:false, respawnAt:0, hitCooldown:0, rangedCooldown: 70 + Math.random()*60,
-  };
-}
-function makeFrostWolf(x, tier) {
-  return {
-    x, y: GROUND_Y - 28, w: 32, h: 26, startX: x, range: 120, dir: Math.random()<0.5?-1:1, speed: 2.0 + tier*0.15,
-    hp: 30 + tier*13.75 + tierSq(tier)*1.75, maxHp: 30 + tier*13.75 + tierSq(tier)*1.75, atk: 7 + tier*3.2 + tierSq(tier)*0.55, goldReward: (14 + tier*4) * GOLD_DROP_MULTIPLIER, expReward: 16 + tier*5,
-    name: '서리늑대', type:'frostwolf', dead:false, respawnAt:0, hitCooldown:0, dashCooldown:0, dashT:0,
-  };
-}
-function makeFrostBoss(x) {
-  return {
-    x, y: GROUND_Y - 74, w: 60, h: 74, startX: x, range: 0, dir: -1, speed: 1.5,
-    hp: 1100, maxHp: 1100, atk: 38, goldReward: 650 * GOLD_DROP_MULTIPLIER, expReward: 850,
-    name: '서리 군주', type:'boss', theme:'frost', dead:false, respawnAt:Infinity, hitCooldown:0,
-    state:'chase', actionCooldown: 90, telegraphT:0, slamT:0, engaged:false,
-  };
-}
+function makeMonster(x, tier)        { return makeMonsterFromDef('slime', x, tier); }
+function makeBat(x, baseY, tier)     { return makeMonsterFromDef('bat', x, tier, baseY); }
+function makeGoblin(x, tier)         { return makeMonsterFromDef('goblin', x, tier); }
+function makeMushroom(x, tier)       { return makeMonsterFromDef('mushroom', x, tier); }
+function makeCrab(x, tier)           { return makeMonsterFromDef('crab', x, tier); }
+function makeSnail(x, tier)          { return makeMonsterFromDef('snail', x, tier); }
+function makeScorpion(x, tier)       { return makeMonsterFromDef('scorpion', x, tier); }
+function makeIceSpirit(x, tier)      { return makeMonsterFromDef('icespirit', x, tier); }
+function makeFrostWolf(x, tier)      { return makeMonsterFromDef('frostwolf', x, tier); }
+function makeShadowKnight(x, tier)   { return makeMonsterFromDef('shadowknight', x, tier); }
+function makeVoidBat(x, baseY, tier) { return makeMonsterFromDef('voidbat', x, tier, baseY); }
+function makeRiftWraith(x, tier)     { return makeMonsterFromDef('riftwraith', x, tier); }
+
 function makeEliteVariant(factory, x, tier, name, power=1.18) {
   const monster = factory(x, tier);
   monster.name = name;
@@ -2576,39 +2550,33 @@ function makeShellCrab(x, tier) { return makeEliteVariant(makeCrab, x, tier, '�
 function makeMagmaScorpion(x, tier) { return makeEliteVariant(makeScorpion, x, tier, '용암 전갈', 1.2); }
 function makeFrostWisp(x, tier) { return makeEliteVariant(makeIceSpirit, x, tier, '빙결 망령', 1.18); }
 function makeRiftKnight(x, tier) { return makeEliteVariant(makeShadowKnight, x, tier, '균열 기사', 1.22); }
-// ---------- Abyss-tier monsters (reused at higher tiers by every map from
-// 멸망의 균열 through the post-throne endgame) — noticeably stronger than the
-// frost tier: higher base stats and steeper quadratic growth so this map
-// feels like a real step up, not just "one more field with new sprites".
-function makeShadowKnight(x, tier) {
-  return {
-    x, y: GROUND_Y - 32, w: 30, h: 32, startX: x, range: 110, dir: Math.random()<0.5?-1:1, speed: 2.1 + tier*0.14,
-    hp: 46 + tier*17 + tierSq(tier)*2.4, maxHp: 46 + tier*17 + tierSq(tier)*2.4, atk: 10 + tier*4.0 + tierSq(tier)*0.68, goldReward: (18 + tier*5) * GOLD_DROP_MULTIPLIER, expReward: 20 + tier*6,
-    name: '그림자기사', type:'shadowknight', dead:false, respawnAt:0, hitCooldown:0, dashCooldown:0, dashT:0,
-  };
-}
-function makeVoidBat(x, baseY, tier) {
-  return {
-    x, y: baseY, w: 26, h: 20, startX: x, baseY, range: 100, dir: Math.random()<0.5?-1:1, speed: 2.3 + tier*0.14,
-    hp: 18 + tier*10 + tierSq(tier)*1.55, maxHp: 18 + tier*10 + tierSq(tier)*1.55, atk: 5 + tier*2.5 + tierSq(tier)*0.42, goldReward: (16 + tier*5) * GOLD_DROP_MULTIPLIER, expReward: 18 + tier*6,
-    name: '심연박쥐', type:'voidbat', dead:false, respawnAt:0, hitCooldown:0, bobT: Math.random()*10,
-  };
-}
-function makeRiftWraith(x, tier) {
-  return {
-    x, y: GROUND_Y - 30, w: 28, h: 30, startX: x, range: 50, dir: Math.random()<0.5?-1:1, speed: 1.0 + tier*0.08,
-    hp: 40 + tier*15 + tierSq(tier)*2.1, maxHp: 40 + tier*15 + tierSq(tier)*2.1, atk: 9 + tier*3.8 + tierSq(tier)*0.64, goldReward: (20 + tier*6) * GOLD_DROP_MULTIPLIER, expReward: 22 + tier*7,
-    name: '균열정령', type:'riftwraith', dead:false, respawnAt:0, hitCooldown:0, rangedCooldown: 60 + Math.random()*60,
-  };
-}
-function makeRuinWarden(x) {
-  return {
-    x, y: GROUND_Y - 80, w: 64, h: 80, startX: x, range: 0, dir: -1, speed: 1.6,
-    hp: 1900, maxHp: 1900, atk: 55, goldReward: 1000 * GOLD_DROP_MULTIPLIER, expReward: 1300,
-    name: '멸망의 파수병', type:'boss', theme:'abyss', dead:false, respawnAt:Infinity, hitCooldown:0,
+
+// ---------- Boss stat table ----------
+// Fixed-stat bosses (no tier scaling) share the same "chase" state shape,
+// so they get the same data-table treatment. makeHighBoss() below still
+// builds on top of makeRuinWarden() and overrides stats with its own
+// tier/power formula, unchanged.
+const BOSS_DEFS = {
+  shadowlord: { name:'그림자 군주',   w:52, h:64, yOff:64, speed:1.3, hp:320,  atk:16, gold:150,  exp:180,  theme:null },
+  lavaspirit: { name:'용암 정령',     w:58, h:70, yOff:70, speed:1.5, hp:720,  atk:28, gold:380,  exp:500,  theme:'lava' },
+  frostlord:  { name:'서리 군주',     w:60, h:74, yOff:74, speed:1.5, hp:1100, atk:38, gold:650,  exp:850,  theme:'frost' },
+  ruinwarden: { name:'멸망의 파수병', w:64, h:80, yOff:80, speed:1.6, hp:1900, atk:55, gold:1000, exp:1300, theme:'abyss' },
+};
+function makeFixedBoss(key, x) {
+  const d = BOSS_DEFS[key];
+  const m = {
+    x, y: GROUND_Y - d.yOff, w:d.w, h:d.h, startX:x, range:0, dir:-1, speed:d.speed,
+    hp:d.hp, maxHp:d.hp, atk:d.atk, goldReward: d.gold * GOLD_DROP_MULTIPLIER, expReward: d.exp,
+    name:d.name, type:'boss', dead:false, respawnAt:Infinity, hitCooldown:0,
     state:'chase', actionCooldown: 90, telegraphT:0, slamT:0, engaged:false,
   };
+  if (d.theme) m.theme = d.theme;
+  return m;
 }
+function makeBoss(x)       { return makeFixedBoss('shadowlord', x); }
+function makeLavaBoss(x)   { return makeFixedBoss('lavaspirit', x); }
+function makeFrostBoss(x)  { return makeFixedBoss('frostlord', x); }
+function makeRuinWarden(x) { return makeFixedBoss('ruinwarden', x); }
 function makeHighBoss(x, tier, name, theme, power) {
   const boss = makeRuinWarden(x);
   boss.name = name;
@@ -5494,6 +5462,69 @@ function validateEconomyLog(log) {
   }
   return log;
 }
+// Must match the starting gold in the `player` object literal (and in
+// newGame()'s equivalents) — every economyLog event is a *delta* recorded by
+// recordEconomyEvent, so replaying the whole log has to start from the same
+// baseline a brand-new character does.
+const ECONOMY_LOG_STARTING_GOLD = 10;
+// Replays a validated economyLog from a fresh character's baseline (10 gold,
+// level 1, 0 exp) and returns what gold/level/exp *should* be if every gold
+// and exp change on this save really did go through addGold/addExp/
+// spendGold. validateEconomyLog only confirms the log is internally
+// consistent (unbroken hash chain) — it says nothing about whether the
+// character's actual stats agree with it. This is that second check.
+function expectedStateFromEconomyLog(log) {
+  let gold = ECONOMY_LOG_STARTING_GOLD;
+  let totalExp = 0;
+  for (const event of log) {
+    gold += Number(event.gold) || 0;
+    totalExp += Math.max(0, Number(event.exp) || 0);
+  }
+  let level = 1;
+  let expNeeded = expNeededForLevel(level);
+  let remaining = totalExp;
+  while (remaining >= expNeeded && level < 999) {
+    remaining -= expNeeded;
+    level++;
+    expNeeded = expNeededForLevel(level);
+  }
+  return { gold, level, exp: remaining, expNeeded };
+}
+// Inverse of the leveling loop above: how much total exp it takes to reach
+// exactly `level`/`exp` from a level-1/0-exp start. Used only to build a
+// genesis event (see below) — never during normal reconciliation.
+function totalExpForLevelAndExp(level, exp) {
+  let total = Math.max(0, Number(exp) || 0);
+  for (let l = 1; l < level; l++) total += expNeededForLevel(l);
+  return total;
+}
+// Builds a single synthetic economyLog event that accounts for a save's
+// *entire* current gold/level/exp in one shot, so expectedStateFromEconomyLog
+// replays back to exactly (gold, level, exp). This is a one-time act of
+// trust for the two legitimate cases where a save has no log to check
+// against at all — an old save from before economyLog existed, or a P2P
+// transfer payload (buildTransferPayload always strips the log to keep
+// transfers small). After this event, every further change is recorded and
+// reconciled normally by the real check.
+function genesisEconomyEvent(gold, level, exp) {
+  const safeLevel = Math.max(1, Math.round(Number(level) || 1));
+  // expectedStateFromEconomyLog's replay loop only rolls a level over once
+  // remaining exp reaches expNeeded for that level (the same invariant
+  // gainExp keeps true during real play). A legacy/corrupt save could have
+  // exp >= expNeeded for its level with no such guarantee — clamp so the
+  // genesis event, once replayed, lands back on exactly `level` instead of
+  // silently leveling one further and failing reconciliation on the very
+  // next load.
+  const safeExp = Math.max(0, Math.min(Number(exp) || 0, expNeededForLevel(safeLevel) - 1));
+  const event = {
+    id: 1, kind: 'legacy_import',
+    gold: Math.round(Number(gold) || 0) - ECONOMY_LOG_STARTING_GOLD,
+    exp: totalExpForLevelAndExp(safeLevel, safeExp),
+    count: 1, at: Date.now(), prev: 'GENESIS',
+  };
+  event.hash = economyEventHash(event);
+  return event;
+}
 
 // ---------- Save schema migration ----------
 // Bump this whenever an update changes the *shape* of save data — a renamed
@@ -5541,10 +5572,18 @@ function migrateSaveData(data) {
 // checksum above is ever bypassed — an edited save that "checks out" but has
 // impossible values (e.g. level 1 with 900000 gold) still gets corrected
 // instead of trusted outright.
-function sanitizeSaveData(data) {
+function sanitizeSaveData(data, { allowMissingLog = false } = {}) {
   if (!data || typeof data !== 'object' || !data.player || typeof data.player !== 'object') return null;
   const p = data.player;
   if (!JOBS[p.job]) return null;
+  // Captured before anything below clamps/rewrites p.gold/p.exp/p.level in
+  // place, so the economyLog reconciliation near the end of this function
+  // checks the save's original claimed values, not values this function has
+  // already coerced into range.
+  const economyLogProvided = data.economyLog != null;
+  const rawGold = Math.round(Number(p.gold)) || 0;
+  const rawExp = Math.round(Number(p.exp)) || 0;
+  const rawLevel = Math.round(Number(p.level)) || 0;
   const clampNum = (v, lo, hi, fallback) => {
     v = Number(v);
     if (!Number.isFinite(v)) return fallback;
@@ -5632,8 +5671,50 @@ function sanitizeSaveData(data) {
     count: Math.round(clampNum(data.quest && data.quest.count, 0, defaultTarget - 1, 0)),
   };
   data.savedAt = Number.isFinite(Number(data.savedAt)) ? Number(data.savedAt) : Date.now();
-  const cleanEconomyLog = validateEconomyLog(data.economyLog);
+  let cleanEconomyLog = validateEconomyLog(data.economyLog);
   if (cleanEconomyLog === null) return null;
+  // validateEconomyLog only proves the log wasn't tampered with *on its own
+  // terms* (unbroken hash chain) — it never actually checks the log against
+  // the character it's supposed to be auditing. Do that here.
+  if (economyLogProvided) {
+    // Replay the log and reject the whole load on any mismatch, rather than
+    // silently trusting whichever side (log vs. player.gold/exp/level)
+    // happens to look more plausible.
+    const expected = expectedStateFromEconomyLog(cleanEconomyLog);
+    if (expected.gold !== rawGold || expected.level !== rawLevel || expected.exp !== rawExp) {
+      return null;
+    }
+  } else if (allowMissingLog) {
+    // No log came with this save, and the caller has told us that's
+    // expected here (an old save from before economyLog existed, or a P2P
+    // transfer payload — buildTransferPayload always strips the log).
+    // Nothing to reconcile against yet, so anchor a genesis event to
+    // whatever this save currently claims; every change from here on is
+    // tracked and reconciled normally.
+    //
+    // level/exp get the same clamp genesisEconomyEvent applies internally,
+    // and it's applied here too (not just inside that helper) so p.exp/
+    // p.level on the save itself stay in sync with the log we're about to
+    // attach — otherwise a legacy save with exp >= expNeeded for its level
+    // (a state real play can never produce, but old/hand-edited data might)
+    // would pass this load only to fail reconciliation on the very next one.
+    const safeLevel = Math.min(999, Math.max(1, rawLevel));
+    const safeExp = Math.max(0, Math.min(rawExp, expNeededForLevel(safeLevel) - 1));
+    if (safeLevel !== p.level || safeExp !== p.exp) {
+      p.level = safeLevel;
+      p.exp = safeExp;
+      p.expNeeded = expNeededForLevel(safeLevel);
+    }
+    cleanEconomyLog = [genesisEconomyEvent(rawGold, safeLevel, safeExp)];
+  } else {
+    // A normal local save produced by this game's own saveGame() always
+    // includes an economyLog, even an empty array for a brand-new character
+    // — serializeSave() never omits the field. Missing here means the field
+    // was stripped by hand, almost certainly to dodge the check above, not
+    // by anything this game itself does. Treat that the same as a broken
+    // hash chain: reject the whole load instead of quietly trusting it.
+    return null;
+  }
   data.economyLog = cleanEconomyLog;
   return data;
 }
@@ -5675,9 +5756,16 @@ function loadSave() {
       console.warn('save checksum mismatch — ignoring edited save');
       return null;
     }
-    try { return sanitizeSaveData(migrateSaveData(JSON.parse(decodeSavePayload(parsed.data)))); } catch (e) { return null; }
+    // Modern, checksum-wrapped format — this is exactly what saveGame()
+    // produces, and it always includes an economyLog. Missing log here is
+    // not a shape this game itself ever writes, so don't grandfather it in.
+    try { return sanitizeSaveData(migrateSaveData(JSON.parse(decodeSavePayload(parsed.data))), { allowMissingLog: false }); } catch (e) { return null; }
   }
-  return sanitizeSaveData(migrateSaveData(parsed));
+  // Reached only for saves written before the {data, chk} wrapper (and, by
+  // extension, economyLog) existed at all — the one real "no log to check"
+  // case on the local-save path, as opposed to a modern save with the field
+  // stripped out.
+  return sanitizeSaveData(migrateSaveData(parsed), { allowMissingLog: true });
 }
 function clearSave() { lsRemove(SAVE_KEY); }
 
@@ -5711,7 +5799,9 @@ function parseTransferPayload(wrapper) {
   const raw = JSON.parse(wrapper.data);
   const { dungeonUsage, ...saveFields } = raw;
   const data = migrateSaveData(saveFields);
-  const clean = sanitizeSaveData(data);
+  // Transfer payloads always exclude economyLog by design (see
+  // buildTransferPayload) — that's expected here, not a sign of tampering.
+  const clean = sanitizeSaveData(data, { allowMissingLog: true });
   if (!clean || !clean.player || !clean.player.job) throw new Error('bad-data');
   return { save: clean, dungeonUsage };
 }
