@@ -183,6 +183,58 @@
   #bossBar .bbar-outer { width:100%; height:10px; background:rgba(0,0,0,0.5); border-radius:5px; overflow:hidden; border:1px solid rgba(255,255,255,0.15); }
   #bossBar .bbar-inner { height:100%; background:linear-gradient(90deg,#ff3a3a,#ff9a5a); transition:width .15s; }
 
+  /* ---------- World Boss (Supabase) ----------
+     #worldBossModal: 입장 전 정보창(offlineModal과 동일한 중앙 팝업 스타일).
+     #worldBossFightBar: 전투 중에만 뜨는 "전체 서버" HP 오버레이 — 로컬 몬스터
+     자체 체력을 보여주는 #bossBar와는 별개로, 서버 realtime으로 갱신됨. */
+  #btnWorldBoss.ready {
+    background:linear-gradient(180deg,#ff8a5a,#e0432a); color:#fff;
+    box-shadow:0 0 8px rgba(255,90,60,0.7); animation:worldBossReadyPulse 2s ease-in-out infinite;
+  }
+  @keyframes worldBossReadyPulse { 0%,100% { filter:brightness(1); } 50% { filter:brightness(1.25); } }
+  #worldBossModal {
+    position:absolute; inset:0; background:rgba(10,6,16,0.88);
+    display:none; align-items:center; justify-content:center; z-index:26;
+  }
+  #worldBossModal.open { display:flex; }
+  #worldBossPanel {
+    width:86%; max-width:320px; text-align:center;
+    background:linear-gradient(180deg,#3a1e18,#241210);
+    border:3px solid #ff8a3a; border-radius:14px; padding:16px;
+  }
+  #worldBossPanel h2 { color:#ffb27a; font-size:16px; margin-bottom:8px; }
+  #worldBossHpOuter { width:100%; height:14px; background:rgba(0,0,0,0.5); border-radius:7px; overflow:hidden; border:1px solid rgba(255,255,255,0.15); margin:6px 0; }
+  #worldBossHpFill { height:100%; background:linear-gradient(90deg,#ff3a3a,#ffb85a); transition:width .3s; }
+  #worldBossHpLabel { font-size:12px; color:#ffe0c8; margin-bottom:6px; }
+  #worldBossRankLine { font-size:10.5px; color:#d8b8a8; margin-bottom:8px; }
+  #worldBossStatusText { font-size:11.5px; color:#d8b8a8; margin-bottom:12px; min-height:14px; }
+  #enterWorldBossBtn {
+    width:100%; padding:9px; background:linear-gradient(180deg,var(--gold-a),var(--gold-b)); color:#4a2a10;
+    font-weight:bold; border:none; border-radius:8px; margin-bottom:8px;
+    box-shadow:0 3px 0 var(--gold-shadow); transition:transform .08s, box-shadow .08s;
+  }
+  #enterWorldBossBtn:disabled { background:#4a4460; color:#8a7fa8; box-shadow:none; }
+  #enterWorldBossBtn:active:not(:disabled) { box-shadow:0 1px 0 var(--gold-shadow); transform:translateY(2px); }
+  #closeWorldBoss { width:100%; padding:8px; background:#5a4a70; color:#fff; border:none; border-radius:8px; font-weight:bold; }
+
+  #worldBossFightBar {
+    position:absolute; top:34px; left:50%; transform:translateX(-50%);
+    width:82%; max-width:480px; z-index:16; display:none;
+    background:linear-gradient(180deg,rgba(46,20,12,0.96),rgba(18,8,4,0.96));
+    border:2px solid #ff8a3a; border-radius:10px; padding:5px 10px;
+    box-shadow:0 4px 14px rgba(0,0,0,0.5), 0 0 18px rgba(255,140,60,0.5);
+  }
+  #worldBossFightBar.show { display:block; }
+  #worldBossFightBar .wbn { display:flex; justify-content:space-between; font-size:10.5px; color:#ffd8b8; font-weight:bold; text-shadow:0 1px 2px #000; margin-bottom:3px; }
+  #worldBossFightBar .wbbar-outer { width:100%; height:8px; background:rgba(0,0,0,0.5); border-radius:5px; overflow:hidden; border:1px solid rgba(255,255,255,0.15); }
+  #worldBossFightBar .wbbar-inner { height:100%; background:linear-gradient(90deg,#ff5a3a,#ffcf5a); transition:width .3s; }
+  #worldBossRetreatBtn {
+    position:absolute; top:34px; right:8px; z-index:17; display:none;
+    background:rgba(20,14,30,0.78); border:2px solid #ff8a3a; color:#ffd8b8;
+    font-size:10px; font-weight:bold; padding:5px 9px; border-radius:16px;
+  }
+  #worldBossRetreatBtn.show { display:block; }
+
   #comboText {
     position:absolute; top:44px; right:10px; z-index:12; pointer-events:none;
     font-weight:bold; font-size:15px; color:#ffe08a; text-shadow:0 2px 4px rgba(0,0,0,0.7);
@@ -763,6 +815,7 @@
         <button id="btnTeleport" class="hudIconBtn" title="텔레포트">🗺️</button>
         <button id="btnChat" class="hudIconBtn" title="채팅 / 친구 연결">💬<span id="chatUnreadBadge" class="unreadBadge"></span></button>
         <button id="btnGlobalChat" class="hudIconBtn" title="전체 채팅">🌐<span id="onlineCountBadge" class="onlineCountBadge"></span></button>
+        <button id="btnWorldBoss" class="hudIconBtn" title="월드보스">🐉</button>
         <button id="btnMenu">☰ 메뉴<span id="menuUnreadBadge" class="unreadBadge"></span></button>
       </div>
     </div>
@@ -784,6 +837,13 @@
       <div class="bn"><span id="bossName">보스</span><span id="bossHpText">0/0</span></div>
       <div class="bbar-outer"><div class="bbar-inner" id="bossHpFill" style="width:100%"></div></div>
     </div>
+    <!-- 전투 중에만 표시되는 "전체 서버" 체력바. 로컬 몬스터 자체 체력을 보여주는
+         #bossBar와는 별개 값이며, Supabase realtime 구독으로 갱신됨. -->
+    <div id="worldBossFightBar">
+      <div class="wbn"><span>🐉 월드보스 (전체)</span><span id="worldBossFightHpText">0/0</span></div>
+      <div class="wbbar-outer"><div class="wbbar-inner" id="worldBossFightHpFill" style="width:100%"></div></div>
+    </div>
+    <button id="worldBossRetreatBtn">후퇴</button>
     <div id="comboText"></div>
     <div id="levelUpBurst"><div id="levelUpRing"></div></div>
     <div id="touchPad">
@@ -861,6 +921,17 @@
         <h2>🕒 어서 오세요!</h2>
         <div class="statRow" id="offlineText">자리를 비운 동안 자동으로 사냥했어요.</div>
         <button id="closeOffline">확인</button>
+      </div>
+    </div>
+    <div id="worldBossModal">
+      <div id="worldBossPanel">
+        <h2>🐉 오늘의 월드보스</h2>
+        <div id="worldBossHpOuter"><div id="worldBossHpFill" style="width:100%"></div></div>
+        <div id="worldBossHpLabel">불러오는 중...</div>
+        <div id="worldBossRankLine"></div>
+        <div id="worldBossStatusText"></div>
+        <button id="enterWorldBossBtn" disabled>도전하기</button>
+        <button id="closeWorldBoss">닫기</button>
       </div>
     </div>
     <div id="saveCodeModal">
@@ -1539,7 +1610,7 @@ function playBgmTheme(themeKey) {
 function updateBgmForState() {
   if (!running) return;
   const map = MAPS[currentMap];
-  const boss = map.monsters && map.monsters.find(m => m.type === 'boss');
+  const boss = map.monsters && (map.monsters.find(m => m.type === 'boss' && m.engaged) || map.monsters.find(m => m.type === 'boss'));
   const wantTheme = (boss && !boss.dead && boss.engaged) ? 'boss' : (map.decor || 'town');
   playBgmTheme(wantTheme);
 }
@@ -2386,6 +2457,9 @@ function dealDamage(map, m, baseDmg, sourceX) {
   let dmg = Math.max(1, Math.round(baseDmg * (0.85 + Math.random()*0.3)));
   if (isCrit) dmg = Math.round(dmg * GAME_BALANCE.critDmgMult);
   m.hp -= dmg;
+  // 지금 이 몬스터가 활성화된 월드보스 도전 인스턴스라면, 서버에 보고할
+  // 데미지를 누적해둔다 (실제 서버 반영은 submitWorldBossDamage에서).
+  if (worldBossFightActive && m === worldBossMonsterRef) worldBossDamageThisFight += dmg;
   sfxHit();
   registerHit();
   if (m.type !== 'boss' && m.type !== 'mushroom') {
@@ -2524,6 +2598,7 @@ function killMonster(map, m) {
     quest.target = questTargetForTier(quest.tier);
     quest.reward = questRewardForTier(quest.tier);
   }
+  if (worldBossFightActive && m === worldBossMonsterRef) finalizeWorldBossFight(true);
   updateHUD();
 }
 
@@ -3811,6 +3886,9 @@ setupMapMonsters();
 
 let currentMap = 'town';
 function switchMap(id, arriveSide) {
+  // 맵을 벗어나면(사망으로 마을 귀환하든, 직접 텔레포트하든) 진행 중이던
+  // 월드보스 도전은 거기서 끝 — 지금까지 낸 데미지만 서버에 반영한다.
+  if (worldBossFightActive) finalizeWorldBossFight(false);
   const destMap = MAPS[id];
   if (destMap.minLevel && player.level < destMap.minLevel) {
     showMsg(`⚠️ 레벨 ${destMap.minLevel} 이상만 입장할 수 있어요.`, 1800);
@@ -3917,7 +3995,7 @@ function updateHUD() {
 
   // boss bar
   const map = MAPS[currentMap];
-  const boss = map.monsters && map.monsters.find(m => m.type === 'boss');
+  const boss = map.monsters && (map.monsters.find(m => m.type === 'boss' && m.engaged) || map.monsters.find(m => m.type === 'boss'));
   const bossBar = document.getElementById('bossBar');
   if (boss && !boss.dead && boss.engaged) {
     bossBar.classList.add('show');
@@ -4109,7 +4187,7 @@ function draw() {
   else { sky.addColorStop(0,'#ffe6b8'); sky.addColorStop(0.6,'#ffc98a'); sky.addColorStop(1,'#e8a860'); }
   ctx.fillStyle = sky; ctx.fillRect(0,0,W,H);
 
-  const boss = map.monsters && map.monsters.find(m => m.type === 'boss');
+  const boss = map.monsters && (map.monsters.find(m => m.type === 'boss' && m.engaged) || map.monsters.find(m => m.type === 'boss'));
   if (boss && !boss.dead && boss.engaged) {
     const flash = 0.08 + Math.sin(Date.now() / 220) * 0.04;
     ctx.fillStyle = `rgba(255, 90, 90, ${flash})`;
@@ -4256,7 +4334,7 @@ function loop(nowMs) {
 // to be open, so tapping a different menu button doesn't leave two panels
 // stacked on top of each other — the player never has to close one by hand
 // before opening the next.
-const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'globalChatModal'];
+const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'globalChatModal', 'worldBossModal'];
 function openModal(id) {
   for (const modalId of MODAL_IDS) {
     if (modalId !== id) document.getElementById(modalId).classList.remove('open');
@@ -6366,6 +6444,195 @@ $.closeGlobalChat.addEventListener('click', () => closeModal('globalChatModal'))
 $.sendGlobalChatBtn.addEventListener('click', sendGlobalChatMsg);
 $.globalChatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendGlobalChatMsg(); });
 window.addEventListener('load', initPresence);
+
+// ---------- World Boss (Supabase) ----------
+// 전 서버가 함께 깎는 보스 체력 풀. 실시간으로 같은 화면을 보는 건 아니고,
+// 각자 자기 화면에서 평소 보스전과 똑같이 싸운(로컬 인스턴스) 뒤 그 전투에서
+// 낸 데미지만 서버의 공유 체력에 반영한다 — 일일던전 사용량 검증과 같은
+// "각자 플레이 + 서버가 진행 상황만 합산" 패턴. 필요한 테이블/RPC는 함께 받은
+// world_boss.sql을 Supabase SQL Editor에서 한 번 실행해야 동작한다.
+//
+// 테스트 팁:
+//   - 빨리 처치 화면까지 보고 싶으면 SQL Editor에서
+//     update world_boss set total_hp=3000, remaining_hp=3000 where date_key=current_date;
+//   - 도전 횟수 제한 없이 반복 테스트하려면 아래 WORLD_BOSS_DAILY_ATTEMPTS를
+//     임시로 999 정도로 올려두기 (SQL의 enter_world_boss 함수 안 v_daily_limit도 같이)
+const WORLD_BOSS_KEY = 'shadowlord';       // 오늘의 보스 (추후 요일별 로테이션 가능)
+const WORLD_BOSS_DAILY_ATTEMPTS = 3;       // 하루 도전 가능 횟수
+const WORLD_BOSS_GOLD_PER_DAMAGE = 0.05;   // 기여 데미지 1당 골드 보상 — 밸런스 튜닝 포인트
+const WORLD_BOSS_SYNC_MS = 3000;           // 전투 중 서버에 데미지를 보고하는 주기
+
+let worldBossState = null;         // 서버가 마지막으로 알려준 { total_hp, remaining_hp, status, my_damage, ... }
+let worldBossAttemptsLeft = null;
+let worldBossChannel = null;
+let worldBossFightActive = false;
+let worldBossMonsterRef = null;    // 지금 싸우고 있는 로컬 보스 인스턴스
+let worldBossDamageThisFight = 0;  // 아직 서버에 보고하지 않은 누적 데미지
+let worldBossSyncTimer = null;
+
+function worldBossSb() { return dungeonSb(); } // 던전 사용량 검증과 같은 supabase 클라이언트 재사용
+
+async function fetchWorldBossState() {
+  const client = worldBossSb();
+  const dateKey = todayKey();
+  if (!client) { worldBossState = null; return null; }
+  try {
+    const { data, error } = await client.rpc('get_world_boss_state', { p_device_id: DEVICE_ID, p_date_key: dateKey });
+    if (error || !data) { worldBossState = null; return null; }
+    const row = Array.isArray(data) ? data[0] : data;
+    worldBossState = row;
+    worldBossAttemptsLeft = Math.max(0, WORLD_BOSS_DAILY_ATTEMPTS - (row.my_attempts || 0));
+    return row;
+  } catch (e) { worldBossState = null; return null; }
+}
+
+function updateWorldBossHpUI() {
+  if (!worldBossState) return;
+  const total = Number(worldBossState.total_hp) || 1;
+  const remain = Math.max(0, Number(worldBossState.remaining_hp) || 0);
+  const pct = Math.max(0, Math.min(100, remain / total * 100));
+  const modalFill = document.getElementById('worldBossHpFill');
+  if (modalFill) modalFill.style.width = pct + '%';
+  const modalLabel = document.getElementById('worldBossHpLabel');
+  if (modalLabel) modalLabel.textContent = `${fmtGold(remain)} / ${fmtGold(total)}`;
+  const rankLine = document.getElementById('worldBossRankLine');
+  if (rankLine) rankLine.textContent = worldBossState.my_damage > 0 ? `내가 넣은 누적 데미지: ${fmtGold(worldBossState.my_damage)}` : '';
+  const statusEl = document.getElementById('worldBossStatusText');
+  const enterBtn = document.getElementById('enterWorldBossBtn');
+  if (statusEl && enterBtn) {
+    if (worldBossState.status === 'defeated') {
+      statusEl.textContent = '오늘의 보스는 이미 쓰러졌어요! 내일 다시 도전해보세요.';
+      enterBtn.disabled = true;
+    } else if (worldBossAttemptsLeft <= 0) {
+      statusEl.textContent = '오늘 도전 횟수를 다 썼어요. 내일 다시 와주세요!';
+      enterBtn.disabled = true;
+    } else {
+      statusEl.textContent = `오늘 남은 도전: ${worldBossAttemptsLeft}/${WORLD_BOSS_DAILY_ATTEMPTS}`;
+      enterBtn.disabled = false;
+    }
+  }
+  // 전투 중 오버레이도 같은 값으로 갱신 — 다른 플레이어의 기여가 realtime으로 실시간 반영됨
+  const fightFill = document.getElementById('worldBossFightHpFill');
+  const fightText = document.getElementById('worldBossFightHpText');
+  if (fightFill) fightFill.style.width = pct + '%';
+  if (fightText) fightText.textContent = `${fmtGold(remain)} / ${fmtGold(total)}`;
+}
+
+function subscribeWorldBossRealtime() {
+  const client = worldBossSb();
+  if (!client || worldBossChannel) return;
+  worldBossChannel = client.channel('world-boss-hp')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'world_boss' }, payload => {
+      if (payload.new.date_key !== todayKey()) return;
+      worldBossState = Object.assign({}, worldBossState, payload.new);
+      updateWorldBossHpUI();
+    })
+    .subscribe();
+}
+
+async function openWorldBossModal() {
+  openModal('worldBossModal');
+  document.getElementById('worldBossHpLabel').textContent = '불러오는 중...';
+  document.getElementById('worldBossStatusText').textContent = '';
+  document.getElementById('enterWorldBossBtn').disabled = true;
+  const row = await fetchWorldBossState();
+  if (!row) {
+    document.getElementById('worldBossStatusText').textContent = '연결할 수 없어요 (인터넷 연결 확인)';
+    return;
+  }
+  updateWorldBossHpUI();
+  subscribeWorldBossRealtime();
+}
+
+async function enterWorldBossFight() {
+  if (worldBossFightActive) return;
+  const client = worldBossSb();
+  if (!client) { showMsg('연결할 수 없어요', 1200); return; }
+  const map = MAPS[currentMap];
+  if (!map || !map.monsters) { showMsg('여기서는 도전할 수 없어요', 1200); return; }
+  const dateKey = todayKey();
+  let ok = false;
+  try {
+    const { data, error } = await client.rpc('enter_world_boss', { p_device_id: DEVICE_ID, p_date_key: dateKey });
+    ok = !error && data === true;
+  } catch (e) { ok = false; }
+  if (!ok) { showMsg('오늘 도전 횟수를 다 썼어요', 1400); return; }
+  worldBossAttemptsLeft = Math.max(0, (worldBossAttemptsLeft ?? WORLD_BOSS_DAILY_ATTEMPTS) - 1);
+  closeModal('worldBossModal');
+
+  // 로컬 전투 인스턴스 생성 — 플레이어 레벨에 맞춰 체력/공격력을 살짝 올려서
+  // 그림자 군주의 기본 스탯(hp:320, Lv.1 기준)이 고레벨에겐 너무 시시하지 않게 한다.
+  const spawnX = Math.max(60, Math.min(map.width - 100, player.x + player.facing * 160));
+  const boss = makeFixedBoss(WORLD_BOSS_KEY, spawnX);
+  const levelScale = 1 + Math.max(0, player.level - 1) * 0.12;
+  boss.hp = Math.round(boss.hp * levelScale);
+  boss.maxHp = boss.hp;
+  boss.atk = Math.round(boss.atk * (1 + Math.max(0, player.level - 1) * 0.06));
+  boss.name = '🐉 ' + boss.name + ' (월드보스)';
+  map.monsters.push(boss);
+
+  worldBossMonsterRef = boss;
+  worldBossDamageThisFight = 0;
+  worldBossFightActive = true;
+  document.getElementById('worldBossFightBar').classList.add('show');
+  document.getElementById('worldBossRetreatBtn').classList.add('show');
+  updateWorldBossHpUI();
+  showMsg('🐉 월드보스가 나타났습니다!', 1800);
+
+  worldBossSyncTimer = setInterval(() => {
+    if (worldBossDamageThisFight > 0) submitWorldBossDamage();
+  }, WORLD_BOSS_SYNC_MS);
+}
+
+async function submitWorldBossDamage() {
+  const dmg = Math.round(worldBossDamageThisFight);
+  if (dmg <= 0) return;
+  worldBossDamageThisFight -= dmg; // 보낸 만큼만 차감 — 그 사이 더 쌓인 데미지는 남겨둔다
+  const client = worldBossSb();
+  if (!client) return;
+  try {
+    const { data, error } = await client.rpc('contribute_world_boss_damage', {
+      p_device_id: DEVICE_ID, p_date_key: todayKey(), p_damage: dmg
+    });
+    if (error || !data) return;
+    const row = Array.isArray(data) ? data[0] : data;
+    const applied = row.applied_damage || 0;
+    worldBossState = Object.assign({}, worldBossState, row, {
+      my_damage: (worldBossState && worldBossState.my_damage || 0) + applied
+    });
+    if (applied > 0) {
+      const gold = Math.max(1, Math.round(applied * WORLD_BOSS_GOLD_PER_DAMAGE));
+      addGold(gold, 'worldboss');
+      spawnFloatText(player.x + player.w/2, player.y - 34, `월드보스 기여 +${fmtGold(gold)}🪙`, '#ff9a5a');
+    }
+    updateWorldBossHpUI();
+    updateHUD();
+  } catch (e) {
+    worldBossDamageThisFight += dmg; // 실패하면 다음 주기에 다시 시도
+  }
+}
+
+async function finalizeWorldBossFight(won) {
+  if (!worldBossFightActive) return;
+  worldBossFightActive = false;
+  if (worldBossSyncTimer) { clearInterval(worldBossSyncTimer); worldBossSyncTimer = null; }
+  document.getElementById('worldBossFightBar').classList.remove('show');
+  document.getElementById('worldBossRetreatBtn').classList.remove('show');
+
+  const map = MAPS[currentMap];
+  if (map && map.monsters && worldBossMonsterRef) {
+    const idx = map.monsters.indexOf(worldBossMonsterRef);
+    if (idx !== -1) map.monsters.splice(idx, 1);
+  }
+  worldBossMonsterRef = null;
+  await submitWorldBossDamage();
+  if (won) showMsg('🏆 오늘의 월드보스 처치에 기여했어요!', 2400);
+}
+
+document.getElementById('btnWorldBoss').addEventListener('click', openWorldBossModal);
+document.getElementById('closeWorldBoss').addEventListener('click', () => closeModal('worldBossModal'));
+document.getElementById('enterWorldBossBtn').addEventListener('click', enterWorldBossFight);
+document.getElementById('worldBossRetreatBtn').addEventListener('click', () => finalizeWorldBossFight(false));
 
 // show "이어하기" on the start screen if a save exists
 (function initStartScreen() {
