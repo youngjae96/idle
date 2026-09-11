@@ -207,6 +207,7 @@
   #worldBossHpFill { height:100%; background:linear-gradient(90deg,#ff3a3a,#ffb85a); transition:width .3s; }
   #worldBossHpLabel { font-size:12px; color:#ffe0c8; margin-bottom:6px; }
   #worldBossRankLine { font-size:10.5px; color:#d8b8a8; margin-bottom:8px; }
+  #worldBossRewardInfo { font-size:10.5px; color:#c8bce8; margin-bottom:8px; line-height:1.5; }
   #worldBossStatusText { font-size:11.5px; color:#d8b8a8; margin-bottom:12px; min-height:14px; }
   #enterWorldBossBtn {
     width:100%; padding:9px; background:linear-gradient(180deg,var(--gold-a),var(--gold-b)); color:#4a2a10;
@@ -928,6 +929,7 @@
         <h2>🐉 오늘의 월드보스</h2>
         <div id="worldBossHpOuter"><div id="worldBossHpFill" style="width:100%"></div></div>
         <div id="worldBossHpLabel">불러오는 중...</div>
+        <div id="worldBossRewardInfo">💰 가한 데미지만큼 실시간 골드 획득 · 오늘 보스를 처치하면 기여도 비례 처치 보너스 지급</div>
         <div id="worldBossRankLine"></div>
         <div id="worldBossStatusText"></div>
         <button id="enterWorldBossBtn" disabled>도전하기</button>
@@ -6499,6 +6501,31 @@ async function fetchWorldBossState() {
   } catch (e) { worldBossState = null; return null; }
 }
 
+let worldBossBonusClaimAttempted = false; // 이번 세션에서 이미 시도했으면 재시도 스팸 방지
+
+// 오늘 보스가 처치된 걸 감지하면(모달 열 때/realtime 업데이트/데미지 제출 응답,
+// 어느 경로로든) 자동으로 기여도 비례 처치 보너스를 수령 시도한다. 서버가
+// bonus_claimed로 중복 지급을 막아주므로 여러 번 호출해도 안전 — 두 번째부턴
+// 그냥 0을 돌려받는다. worldBossBonusClaimAttempted는 정말 불필요한 재호출만 줄이는 용도.
+async function tryClaimWorldBossBonus() {
+  if (!worldBossState || worldBossState.status !== 'defeated') return;
+  if (worldBossBonusClaimAttempted) return;
+  worldBossBonusClaimAttempted = true;
+  const client = worldBossSb();
+  if (!client) { worldBossBonusClaimAttempted = false; return; }
+  try {
+    const { data, error } = await client.rpc('claim_world_boss_bonus', { p_device_id: DEVICE_ID, p_date_key: todayKey() });
+    if (error) { worldBossBonusClaimAttempted = false; return; }
+    const bonus = Math.round(Number(data) || 0);
+    if (bonus > 0) {
+      addGold(bonus, 'worldboss_defeat');
+      showMsg(`🏆 오늘의 월드보스 처치 보너스 +${fmtGold(bonus)}🪙`, 2600);
+      spawnFloatText(player.x + player.w/2, player.y - 40, `처치 보너스 +${fmtGold(bonus)}🪙`, '#ffd166');
+      updateHUD();
+    }
+  } catch (e) { worldBossBonusClaimAttempted = false; }
+}
+
 function updateWorldBossHpUI() {
   if (!worldBossState) return;
   const total = Number(worldBossState.total_hp) || 1;
@@ -6516,6 +6543,7 @@ function updateWorldBossHpUI() {
     if (worldBossState.status === 'defeated') {
       statusEl.textContent = '오늘의 보스는 이미 쓰러졌어요! 내일 다시 도전해보세요.';
       enterBtn.disabled = true;
+      tryClaimWorldBossBonus();
     } else if (worldBossAttemptsLeft <= 0) {
       statusEl.textContent = '오늘 도전 횟수를 다 썼어요. 내일 다시 와주세요!';
       enterBtn.disabled = true;
@@ -6585,12 +6613,16 @@ async function enterWorldBossFight() {
     worldBossAttemptsLeft = Math.max(0, (worldBossAttemptsLeft ?? WORLD_BOSS_DAILY_ATTEMPTS) - 1);
     closeModal('worldBossModal');
 
-  // 로컬 전투 인스턴스 생성 — 플레이어 레벨에 맞춰 체력/공격력을 살짝 올려서
-  // 그림자 군주의 기본 스탯(hp:320, Lv.1 기준)이 고레벨에겐 너무 시시하지 않게 한다.
+  // 로컬 전투 인스턴스 생성 — 예전엔 레벨당 hp를 12%씩만 늘려서, 플레이어
+  // 공격력이 레벨/장비로 더 가파르게 오르면 몇 대만에 끝나버리는 문제가
+  // 있었다. 대신 "평균 몇 대 맞아야 죽는가"를 직접 목표로 잡고 그 플레이어의
+  // 현재 공격력 기준으로 체력을 역산한다 — 전투 체감 길이가 레벨에 상관없이
+  // 비슷하게 유지된다.
   const spawnX = Math.max(60, Math.min(map.width - 100, player.x + player.facing * 160));
   const boss = makeFixedBoss(WORLD_BOSS_KEY, spawnX);
-  const levelScale = 1 + Math.max(0, player.level - 1) * 0.12;
-  boss.hp = Math.round(boss.hp * levelScale);
+  const TARGET_HITS = 25; // 튜닝 포인트: 전투 하나가 대략 이 정도 타격 후 끝나도록
+  const avgDmgPerHit = player.atk * 1.05; // dealDamage의 랜덤/크리 평균 보정 근사치
+  boss.hp = Math.max(boss.hp, Math.round(avgDmgPerHit * TARGET_HITS));
   boss.maxHp = boss.hp;
   boss.atk = Math.round(boss.atk * (1 + Math.max(0, player.level - 1) * 0.06));
   boss.name = '🐉 ' + boss.name + ' (월드보스)';
