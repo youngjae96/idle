@@ -6296,9 +6296,20 @@ document.querySelectorAll('.jobCard').forEach(card => {
 // quietly shortchanging the offline reward. The visibilitychange listener
 // right below already saves once, correctly, at the exact moment of hiding.
 setInterval(() => { if (running && !document.hidden) saveGame(); }, 5000);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveGame(); });
-window.addEventListener('pagehide', () => { flushDungeonTracking(); saveGame(); });
-window.addEventListener('beforeunload', () => { flushDungeonTracking(); saveGame(); });
+// flushWorldBossDamage: 전투 중 아직 서버에 보고 안 한 데미지(최대 WORLD_BOSS_SYNC_MS
+// 만큼 쌓여있을 수 있음)를 탭이 숨겨지거나 닫히기 직전에 강제로 한 번 더 보낸다.
+// 이게 없으면 전투 중 새로고침/탭종료 시 마지막 몇 초치 데미지와 그에 따른
+// 골드 보상이 그냥 유실되는데, 시도 횟수는 이미 서버에서 소모된 뒤라 손해만 남는다.
+// fetch가 unload 시점에 끝까지 완료된다는 보장은 없지만(브라우저마다 다름),
+// visibilitychange('hidden')는 실제 탭 종료보다 먼저/훨씬 자주 발생하고
+// (백그라운드 전환, 앱 스위칭 등) 이 경우엔 정상적으로 끝까지 실행되므로
+// 실사용 케이스 대부분은 이걸로 커버된다.
+function flushWorldBossDamage() {
+  if (worldBossFightActive && worldBossDamageThisFight > 0) submitWorldBossDamage();
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { flushWorldBossDamage(); saveGame(); } });
+window.addEventListener('pagehide', () => { flushWorldBossDamage(); flushDungeonTracking(); saveGame(); });
+window.addEventListener('beforeunload', () => { flushWorldBossDamage(); flushDungeonTracking(); saveGame(); });
 
 // ---------- Auto-hunt while backgrounded ----------
 // requestAnimationFrame (what loop() runs on) is throttled or fully paused by
@@ -6466,6 +6477,8 @@ let worldBossState = null;         // 서버가 마지막으로 알려준 { tota
 let worldBossAttemptsLeft = null;
 let worldBossChannel = null;
 let worldBossFightActive = false;
+let worldBossEntering = false;     // enter_world_boss RPC가 아직 응답 전인 동안의 동기 락 —
+                                    // 버튼 연타/더블탭으로 시도 횟수가 중복 소모되는 걸 막는다.
 let worldBossMonsterRef = null;    // 지금 싸우고 있는 로컬 보스 인스턴스
 let worldBossDamageThisFight = 0;  // 아직 서버에 보고하지 않은 누적 데미지
 let worldBossSyncTimer = null;
@@ -6545,20 +6558,32 @@ async function openWorldBossModal() {
 }
 
 async function enterWorldBossFight() {
-  if (worldBossFightActive) return;
-  const client = worldBossSb();
-  if (!client) { showMsg('연결할 수 없어요', 1200); return; }
-  const map = MAPS[currentMap];
-  if (!map || !map.monsters) { showMsg('여기서는 도전할 수 없어요', 1200); return; }
-  const dateKey = todayKey();
-  let ok = false;
+  // worldBossFightActive는 RPC 왕복이 끝난 뒤에야 true가 되므로, 그 사이에
+  // 버튼을 연타/더블탭하면 두 호출 다 이 가드를 통과해버린다 (시도 횟수 중복
+  // 소모 + 로컬 보스 인스턴스 중복 생성 버그). worldBossEntering을 await 전에
+  // 동기적으로 먼저 세팅해서 진짜 레이스 컨디션을 막는다.
+  if (worldBossFightActive || worldBossEntering) return;
+  worldBossEntering = true;
+  const enterBtn = document.getElementById('enterWorldBossBtn');
+  if (enterBtn) enterBtn.disabled = true;
   try {
-    const { data, error } = await client.rpc('enter_world_boss', { p_device_id: DEVICE_ID, p_date_key: dateKey });
-    ok = !error && data === true;
-  } catch (e) { ok = false; }
-  if (!ok) { showMsg('오늘 도전 횟수를 다 썼어요', 1400); return; }
-  worldBossAttemptsLeft = Math.max(0, (worldBossAttemptsLeft ?? WORLD_BOSS_DAILY_ATTEMPTS) - 1);
-  closeModal('worldBossModal');
+    const client = worldBossSb();
+    if (!client) { showMsg('연결할 수 없어요', 1200); return; }
+    const map = MAPS[currentMap];
+    if (!map || !map.monsters) { showMsg('여기서는 도전할 수 없어요', 1200); return; }
+    const dateKey = todayKey();
+    let ok = false, networkFailed = false;
+    try {
+      const { data, error } = await client.rpc('enter_world_boss', { p_device_id: DEVICE_ID, p_date_key: dateKey });
+      ok = !error && data === true;
+      networkFailed = !!error;
+    } catch (e) { ok = false; networkFailed = true; }
+    if (!ok) {
+      showMsg(networkFailed ? '연결할 수 없어요 (인터넷 연결 확인)' : '오늘 도전 횟수를 다 썼어요', 1400);
+      return;
+    }
+    worldBossAttemptsLeft = Math.max(0, (worldBossAttemptsLeft ?? WORLD_BOSS_DAILY_ATTEMPTS) - 1);
+    closeModal('worldBossModal');
 
   // 로컬 전투 인스턴스 생성 — 플레이어 레벨에 맞춰 체력/공격력을 살짝 올려서
   // 그림자 군주의 기본 스탯(hp:320, Lv.1 기준)이 고레벨에겐 너무 시시하지 않게 한다.
@@ -6582,6 +6607,13 @@ async function enterWorldBossFight() {
   worldBossSyncTimer = setInterval(() => {
     if (worldBossDamageThisFight > 0) submitWorldBossDamage();
   }, WORLD_BOSS_SYNC_MS);
+  } finally {
+    worldBossEntering = false;
+    // 전투에 들어갔다면 버튼은 모달이 닫혀 안 보이니 그대로 둬도 되고,
+    // 실패했다면(횟수 소진/네트워크 오류) 모달이 다시 갱신될 때
+    // updateWorldBossHpUI가 disabled 여부를 다시 계산해준다.
+    if (enterBtn && !worldBossFightActive) enterBtn.disabled = (worldBossAttemptsLeft <= 0);
+  }
 }
 
 async function submitWorldBossDamage() {
