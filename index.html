@@ -592,10 +592,15 @@
     background:rgba(0,0,0,0.3); border-radius:10px; padding:8px; margin-bottom:8px;
   }
   body.kb-open #chatConnectBox { display:none; }
-  .chatMsg { font-size:12px; color:#f0e8ff; margin-bottom:5px; line-height:1.4; word-break:break-word; }
-  .chatMsg-system { color:#a89ac0; font-style:italic; text-align:center; }
-  .chatMsg-me { color:#ffd166; }
-  .chatMsg-friend { color:#8adf9a; }
+  /* Shared line style for BOTH chat panels (P2P friend chat + Supabase
+     global chat) — was duplicated as .chatMsg*/.gchatMsg* with near-identical
+     rules; see renderChatLine() in the JS for the shared renderer that emits
+     this single class family now. */
+  .chatLine { font-size:12px; color:#f0e8ff; margin-bottom:5px; line-height:1.4; word-break:break-word; }
+  .chatLine-system { color:#a89ac0; font-style:italic; text-align:center; }
+  .chatLine-me b { color:#ffd166; }
+  .chatLine-friend b { color:#8adf9a; }
+  .chatLine-other b { color:#6fc7ff; }
   #chatInputRow { display:flex; gap:6px; margin-bottom:8px; }
   #pendingConnBox { display:none; flex-direction:column; gap:6px; margin-bottom:8px; }
   #pendingConnBox.show { display:flex; }
@@ -648,10 +653,6 @@
     flex:1; min-height:120px; max-height:none; overflow-y:auto;
     background:rgba(0,0,0,0.3); border-radius:10px; padding:8px; margin-bottom:8px;
   }
-  .gchatMsg { font-size:12px; color:#f0e8ff; margin-bottom:5px; line-height:1.4; word-break:break-word; }
-  .gchatMsg-system { color:#a89ac0; font-style:italic; text-align:center; }
-  .gchatMsg-me b { color:#ffd166; }
-  .gchatMsg b { color:#6fc7ff; }
   #globalChatInputRow { display:flex; gap:6px; }
   #globalChatInput {
     flex:1; padding:8px 10px; font-size:13px; background:rgba(0,0,0,0.35);
@@ -4749,15 +4750,29 @@ function closeAllConnections() {
   }
   updateChatStatus();
 }
-const CHAT_HISTORY_MAX = 200; // a spammy or malicious peer shouldn't be able to grow this DOM list without bound
-function addChatMessage(kind, text, nickname) {
-  const list = $.chatMessages;
+const CHAT_HISTORY_MAX = 200; // shared cap: a spammy/malicious peer or a chatty global lobby shouldn't grow either chat's DOM list without bound
+// Shared renderer for BOTH chat panels (P2P friend/room chat below, and the
+// Supabase global chat further down) — same DOM shape (system line vs
+// "nickname: body"), same trim-to-max + autoscroll. Kind must be one of
+// 'system' | 'me' | 'friend' (P2P) | 'other' (global) to pick up the right
+// .chatLine-* color from CSS.
+function renderChatLine(listEl, kind, nickname, text, maxLen) {
   const div = document.createElement('div');
-  div.className = 'chatMsg chatMsg-' + kind;
-  div.textContent = kind === 'system' ? text : `${nickname || '?'}: ${text}`;
-  list.appendChild(div);
-  while (list.children.length > CHAT_HISTORY_MAX) list.removeChild(list.firstChild);
-  list.scrollTop = list.scrollHeight;
+  div.className = 'chatLine chatLine-' + kind;
+  if (kind === 'system') {
+    div.textContent = text;
+  } else {
+    const b = document.createElement('b');
+    b.textContent = nickname || '?';
+    div.appendChild(b);
+    div.appendChild(document.createTextNode(': ' + text));
+  }
+  listEl.appendChild(div);
+  while (listEl.children.length > maxLen) listEl.removeChild(listEl.firstChild);
+  listEl.scrollTop = listEl.scrollHeight;
+}
+function addChatMessage(kind, text, nickname) {
+  renderChatLine($.chatMessages, kind, nickname, text, CHAT_HISTORY_MAX);
   // Anything that isn't our own outgoing message is worth surfacing if the
   // chat window happens to be closed when it comes in.
   if (kind !== 'me') bumpChatUnread();
@@ -6365,7 +6380,6 @@ const SUPABASE_URL = 'https://iymtczfpxqoctkdtjjpd.supabase.co';
 // Publishable key — safe to ship in client code (same role as the old
 // "anon" key: RLS still gates what it can actually read/write).
 const SUPABASE_KEY = 'sb_publishable_lzqbd3FVK5PzCj-df5SONg_jI2vHvY5';
-const GCHAT_HISTORY_MAX = 200; // matches CHAT_HISTORY_MAX's reasoning above
 let sb = null;
 let presenceChannel = null;
 let globalChatChannel = null;
@@ -6376,20 +6390,9 @@ function gchatNickname() {
   return (typeof player !== 'undefined' && player && player.nickname) ? player.nickname : '손님';
 }
 function appendGlobalChatMsg(kind, nickname, body) {
-  const list = $.globalChatMessages;
-  const div = document.createElement('div');
-  div.className = 'gchatMsg' + (kind === 'me' ? ' gchatMsg-me' : kind === 'system' ? ' gchatMsg-system' : '');
-  if (kind === 'system') {
-    div.textContent = body;
-  } else {
-    const b = document.createElement('b');
-    b.textContent = nickname;
-    div.appendChild(b);
-    div.appendChild(document.createTextNode(': ' + body));
-  }
-  list.appendChild(div);
-  while (list.children.length > GCHAT_HISTORY_MAX) list.removeChild(list.firstChild);
-  list.scrollTop = list.scrollHeight;
+  // 'other' here is the global-chat equivalent of P2P's 'friend' kind — see
+  // renderChatLine() above (shared with the P2P chat panel) and .chatLine-other in CSS.
+  renderChatLine($.globalChatMessages, kind === 'system' || kind === 'me' ? kind : 'other', nickname, body, CHAT_HISTORY_MAX);
 }
 function updateOnlineCountBadge(n) {
   $.onlineCountBadge.textContent = n;
