@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<!-- Without this, Android Chrome's "force dark theme for web contents"
+     setting doesn't know this page is already intentionally dark, and its
+     heuristic will re-invert some inherited light-on-dark text (e.g. chat
+     message body text) to near-black while leaving explicitly-colored bold
+     text (nicknames) alone. Declaring color-scheme tells Chrome to trust
+     our colors as-is and skip that repaint. -->
+<meta name="color-scheme" content="dark">
 <!-- Best-effort hint against caching this HTML file itself. Not a guarantee —
      GitHub Pages' CDN and some browsers may still cache it for a while — but
      it stops most "새로고침해도 옛날 버전" cases. The in-app update banner
@@ -30,6 +37,7 @@
     --gold-shadow: #a85a1a;
     --gold-text: #4a2a10;
   }
+  :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
   #gameCanvas, #touchPad, .tbtn, #btnMute, #btnTownWarp, #btnAutoHunt, #bossBar, #comboText, #promptBox { touch-action:none; }
   html {
@@ -192,11 +200,17 @@
     box-shadow:0 0 8px rgba(255,90,60,0.7); animation:worldBossReadyPulse 2s ease-in-out infinite;
   }
   @keyframes worldBossReadyPulse { 0%,100% { filter:brightness(1); } 50% { filter:brightness(1.25); } }
-  #worldBossModal {
-    position:absolute; inset:0; background:rgba(10,6,16,0.88);
-    display:none; align-items:center; justify-content:center; z-index:26;
+  /* Shared "centered dark-backdrop modal" base for worldBoss/shop/jobSelect/
+     status/teleport/menu/bestiary/offline — background tint, z-index and
+     backdrop-filter still vary per modal below; only the position/display
+     mechanics were duplicated eight times before this. */
+  #worldBossModal, #shopModal, #jobSelectModal, #statusModal, #teleportModal,
+  #menuModal, #bestiaryModal, #offlineModal {
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center;
   }
-  #worldBossModal.open { display:flex; }
+  #worldBossModal.open, #shopModal.open, #jobSelectModal.open, #statusModal.open,
+  #teleportModal.open, #menuModal.open, #bestiaryModal.open, #offlineModal.open { display:flex; }
+  #worldBossModal { background:rgba(10,6,16,0.88); z-index:26; }
   #worldBossPanel {
     width:86%; max-width:320px; text-align:center;
     background:linear-gradient(180deg,#3a1e18,#241210);
@@ -216,7 +230,13 @@
   }
   #enterWorldBossBtn:disabled { background:#4a4460; color:#8a7fa8; box-shadow:none; }
   #enterWorldBossBtn:active:not(:disabled) { box-shadow:0 1px 0 var(--gold-shadow); transform:translateY(2px); }
-  #closeWorldBoss { width:100%; padding:8px; background:#5a4a70; color:#fff; border:none; border-radius:8px; font-weight:bold; }
+  /* Shared close-button base — width/color/shape were duplicated six times;
+     padding, margin-top and flex-shrink (for scrollable panels) still vary
+     per modal below, and #closeTeleport overrides the background tint. */
+  #closeWorldBoss, #closeShop, #closeStatus, #closeTeleport, #closeMenu, #closeBestiary {
+    width:100%; background:#5a4a70; color:#fff; border:none; border-radius:8px; font-weight:bold;
+  }
+  #closeWorldBoss { padding:8px; }
 
   #worldBossFightBar {
     position:absolute; top:34px; left:50%; transform:translateX(-50%);
@@ -309,12 +329,7 @@
     padding:6px 14px; font-size:12px; color:#ffe9b0; display:none; pointer-events:none;
   }
 
-  #shopModal {
-    position:absolute; inset:0; background:rgba(10,6,16,0.75);
-    display:none; align-items:center; justify-content:center; z-index:20;
-    backdrop-filter: blur(2px);
-  }
-  #shopModal.open { display:flex; }
+  #shopModal { background:rgba(10,6,16,0.75); z-index:20; backdrop-filter: blur(2px); }
   #shopPanel {
     width: 88%; max-width: 340px;
     background:linear-gradient(180deg,var(--panel-a),var(--panel-b));
@@ -330,7 +345,7 @@
     border:none; border-radius:8px; padding:6px 10px; font-size:11px;
   }
   .shop-item button:disabled { background:#4a4460; color:#8a7fa8; }
-  #closeShop { width:100%; margin-top:10px; padding:8px; background:#5a4a70; color:#fff; border:none; border-radius:8px; font-weight:bold; }
+  #closeShop { margin-top:10px; padding:8px; }
 
   .shopTabBtn { background:rgba(255,255,255,0.08); color:#c8bce8; border:none; border-radius:8px; padding:6px 2px; font-size:10.5px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .shopTabBtn.active { background:linear-gradient(180deg,var(--gold-a),var(--gold-b)); color:#4a2a10; }
@@ -340,11 +355,7 @@
 
   .bar-mp { background:linear-gradient(90deg,#4a7aff,#7aa8ff); }
 
-  #jobSelectModal {
-    position:absolute; inset:0; background:rgba(10,6,16,0.88);
-    display:none; align-items:center; justify-content:center; z-index:25;
-  }
-  #jobSelectModal.open { display:flex; }
+  #jobSelectModal { background:rgba(10,6,16,0.88); z-index:25; }
   #jobSelectPanel { width:90%; max-width:360px; text-align:center; }
   #jobSelectPanel h2 { color:#ffd166; font-size:16px; margin-bottom:12px; }
   #nicknameInput {
@@ -365,11 +376,7 @@
   .jobName { color:#ffe9b0; font-weight:bold; font-size:14px; }
   .jobDesc { color:#c8bce8; font-size:11px; margin-top:2px; }
 
-  #statusModal {
-    position:absolute; inset:0; background:rgba(10,6,16,0.75);
-    display:none; align-items:center; justify-content:center; z-index:20;
-  }
-  #statusModal.open { display:flex; }
+  #statusModal { background:rgba(10,6,16,0.75); z-index:20; }
   #statusPanel {
     width:88%; max-width:340px;
     background:linear-gradient(180deg,var(--panel-a),var(--panel-b));
@@ -388,20 +395,16 @@
     border:none; border-radius:8px; width:28px; height:24px; font-size:13px;
   }
   .statAllocRow button:disabled { background:#4a4460; color:#8a7fa8; }
-  #closeStatus { width:100%; margin-top:10px; padding:8px; background:#5a4a70; color:#fff; border:none; border-radius:8px; font-weight:bold; }
+  #closeStatus { margin-top:10px; padding:8px; }
 
-  #teleportModal {
-    position:absolute; inset:0; background:rgba(10,6,16,0.75);
-    display:none; align-items:center; justify-content:center; z-index:20;
-  }
-  #teleportModal.open { display:flex; }
+  #teleportModal { background:rgba(10,6,16,0.75); z-index:20; }
   #teleportPanel {
     width:88%; max-width:340px;
     background:linear-gradient(180deg,#1e3550,#152538);
     border:3px solid #6fc7ff; border-radius:14px; padding:14px;
   }
   #teleportPanel h2 { color:#6fc7ff; font-size:15px; margin-bottom:8px; text-align:center; }
-  #closeTeleport { width:100%; margin-top:10px; padding:8px; background:#3a5a70; color:#fff; border:none; border-radius:8px; font-weight:bold; }
+  #closeTeleport { margin-top:10px; padding:8px; background:#3a5a70; }
 
   /* btnStatus used to be a separate pill button too; it stays consolidated
      inside #menuModal (only the state-modifier styling remains here).
@@ -430,12 +433,7 @@
     pointer-events:auto; position:relative;
   }
   #btnMenu:active { transform:scale(0.94); }
-  #menuModal {
-    position:absolute; inset:0; background:rgba(7,5,14,0.78);
-    display:none; align-items:center; justify-content:center; z-index:20;
-    backdrop-filter:blur(4px) saturate(0.9);
-  }
-  #menuModal.open { display:flex; }
+  #menuModal { background:rgba(7,5,14,0.78); z-index:20; backdrop-filter:blur(4px) saturate(0.9); }
   #menuPanel {
     width:88%; max-width:340px; max-height:82%;
     display:flex; flex-direction:column; gap:7px; overflow-y:auto;
@@ -454,18 +452,10 @@
   .menuItemBtn .miEmoji { font-size:16px; width:20px; text-align:center; flex-shrink:0; }
   .menuItemBtn.off { opacity:0.6; }
   .menuItemBtn.cooling { opacity:0.5; }
-  #closeMenu {
-    width:100%; margin-top:2px; padding:9px; background:#5a4a70; color:#fff;
-    border:none; border-radius:8px; font-weight:bold; flex-shrink:0;
-  }
+  #closeMenu { margin-top:2px; padding:9px; flex-shrink:0; }
 
   /* ---------- Monster bestiary (몬스터 도감) ---------- */
-  #bestiaryModal {
-    position:absolute; inset:0; background:rgba(7,5,14,0.78);
-    display:none; align-items:center; justify-content:center; z-index:20;
-    backdrop-filter:blur(4px) saturate(0.9);
-  }
-  #bestiaryModal.open { display:flex; }
+  #bestiaryModal { background:rgba(7,5,14,0.78); z-index:20; backdrop-filter:blur(4px) saturate(0.9); }
   #bestiaryPanel {
     width:90%; max-width:360px; max-height:84%;
     display:flex; flex-direction:column;
@@ -491,7 +481,7 @@
   .bestiaryEntry .beMeta { font-size:10px; color:#c8bce8; margin-top:1px; }
   .bestiaryEntry .beProgress { font-size:10px; color:#8fe0ff; margin-top:1px; }
   .bestiaryEntry .beRewards { font-size:9.5px; color:#a89ac0; margin-top:3px; line-height:1.6; word-break:keep-all; }
-  #closeBestiary { width:100%; padding:9px; background:#5a4a70; color:#fff; border:none; border-radius:8px; font-weight:bold; flex-shrink:0; }
+  #closeBestiary { padding:9px; flex-shrink:0; }
 
   /* Chat floats over the game as a lightweight panel, not a full modal — no
      dark backdrop here (see the shared modal-backdrop rule further down,
@@ -664,11 +654,7 @@
     border:none; border-radius:8px; padding:7px 10px; font-size:12px; white-space:nowrap;
   }
 
-  #offlineModal {
-    position:absolute; inset:0; background:rgba(10,6,16,0.88);
-    display:none; align-items:center; justify-content:center; z-index:26;
-  }
-  #offlineModal.open { display:flex; }
+  #offlineModal { background:rgba(10,6,16,0.88); z-index:26; }
   #offlinePanel {
     width:86%; max-width:320px; text-align:center;
     background:linear-gradient(180deg,var(--panel-a),var(--panel-b));
