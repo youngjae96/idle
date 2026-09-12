@@ -570,12 +570,17 @@
   }
   .roomMemberBtn:active { background:rgba(255,178,122,0.22); }
   .roomMemberMeta { color:#bfaeb0; font-size:10px; }
-  #playerDetail {
+  #playerDetail, #globalChatPlayerDetail {
     display:none; margin:6px 0 8px; padding:8px 10px;
     border:1px solid #ffb27a; border-radius:8px; background:rgba(0,0,0,0.25);
     color:#f0e8ff; font-size:11px; line-height:1.6;
   }
-  #playerDetail.show { display:block; }
+  #playerDetail.show, #globalChatPlayerDetail.show { display:block; }
+  /* Nickname in a global-chat line that carries a stats snapshot (see
+     renderChatLine's `profile` param) — tappable to open the same kind of
+     "캐릭터 상세보기" panel the friend/room-member list already has. */
+  .chatLine b.clickableName { cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px; }
+  .chatLine b.clickableName:active { opacity:0.7; }
   #chatConnectBox { margin-bottom:8px; }
   #myPeerRow, #chatConnectRow {
     display:flex; gap:6px; align-items:center; margin:5px 0;
@@ -1089,6 +1094,7 @@
       <span id="globalChatStatus">🌐 전체 채팅</span>
       <button id="closeGlobalChat">✕</button>
     </div>
+    <div id="globalChatPlayerDetail"></div>
     <div id="globalChatMessages"></div>
     <div id="globalChatInputRow">
       <input id="globalChatInput" type="text" maxlength="200" placeholder="메시지 입력...">
@@ -4791,7 +4797,7 @@ const CHAT_HISTORY_MAX = 200; // shared cap: a spammy/malicious peer or a chatty
 // "nickname: body"), same trim-to-max + autoscroll. Kind must be one of
 // 'system' | 'me' | 'friend' (P2P) | 'other' (global) to pick up the right
 // .chatLine-* color from CSS.
-function renderChatLine(listEl, kind, nickname, text, maxLen) {
+function renderChatLine(listEl, kind, nickname, text, maxLen, profile) {
   const div = document.createElement('div');
   div.className = 'chatLine chatLine-' + kind;
   if (kind === 'system') {
@@ -4799,6 +4805,16 @@ function renderChatLine(listEl, kind, nickname, text, maxLen) {
   } else {
     const b = document.createElement('b');
     b.textContent = nickname || '?';
+    // Global chat lines carry a stats "profile" snapshot (see
+    // sendGlobalChatMsg/loadGlobalChatHistory below) — tapping the nickname
+    // opens the same kind of "캐릭터 상세보기" panel the friend/room-member
+    // list already has (renderPlayerDetail). P2P friend-chat lines never
+    // pass a profile, so addChatMessage's calls into this function are
+    // completely unaffected.
+    if (profile) {
+      b.classList.add('clickableName');
+      b.addEventListener('click', () => renderGlobalChatPlayerDetail(nickname, profile));
+    }
     div.appendChild(b);
     div.appendChild(document.createTextNode(': ' + text));
   }
@@ -4869,6 +4885,43 @@ function renderPlayerDetail(member) {
       document.createTextNode(`⚔️ 공격력 ${Math.round(member.atk || 0)} · 💥 치명타 ${Math.round(member.crit || 0)}%`),
     );
   }
+  detail.classList.add('show');
+}
+// Global-chat equivalent of renderPlayerDetail above — same idea, but the
+// input is a `profile` snapshot taken at message-send time (see
+// sendGlobalChatMsg/loadGlobalChatHistory), not a live P2P-synced member.
+// Deliberately omits map/HP: those only make sense for a live connection —
+// showing them from a snapshot would just be stale, misleading info by the
+// time anyone reads an old message. Same no-innerHTML rule as
+// renderPlayerDetail: nickname/profile values ultimately came from another
+// player's free-text row in Supabase, never server-trusted.
+function renderGlobalChatPlayerDetail(nickname, profile) {
+  const detail = document.getElementById('globalChatPlayerDetail');
+  if (!detail || !profile) return;
+  detail.innerHTML = '';
+  const weapon = WEAPONS.find(w => w.id === profile.weaponId) || WEAPONS[0];
+  const armor = ARMORS.find(a => a.id === profile.armorId) || ARMORS[0];
+  const weaponEnhance = Number(profile.weaponEnhance) || 0;
+  const armorEnhance = Number(profile.armorEnhance) || 0;
+  const weaponLabel = weaponEnhance > 0 ? `+${weaponEnhance} ${weapon.name}` : weapon.name;
+  const armorLabel = armorEnhance > 0 ? `+${armorEnhance} ${armor.name}` : armor.name;
+  const rarityTag = (level) => {
+    const r = rarityForEnhance(level);
+    const span = document.createElement('span');
+    span.textContent = `[${r.name}] `;
+    span.style.color = r.color;
+    span.style.fontWeight = 'bold';
+    return span;
+  };
+  const nameLine = document.createElement('strong');
+  nameLine.textContent = nickname || '모험가';
+  detail.append(
+    nameLine, document.createElement('br'),
+    document.createTextNode(`${playerJobLabel(profile.job)} · Lv.${profile.level || 1}`), document.createElement('br'),
+    rarityTag(weaponEnhance), document.createTextNode(`${weapon.emoji} ${weaponLabel}`), document.createElement('br'),
+    rarityTag(armorEnhance), document.createTextNode(`${armor.emoji} ${armorLabel}`), document.createElement('br'),
+    document.createTextNode(`⚔️ 공격력 ${Math.round(Number(profile.atk) || 0)} · 💥 치명타 ${Math.round(Number(profile.crit) || 0)}%`),
+  );
   detail.classList.add('show');
 }
 // Small always-on nickname strip in the HUD itself, separate from the full
@@ -6427,10 +6480,35 @@ let lastGlobalChatSentAt = 0;
 function gchatNickname() {
   return (typeof player !== 'undefined' && player && player.nickname) ? player.nickname : '손님';
 }
-function appendGlobalChatMsg(kind, nickname, body) {
+function appendGlobalChatMsg(kind, nickname, body, profile) {
   // 'other' here is the global-chat equivalent of P2P's 'friend' kind — see
   // renderChatLine() above (shared with the P2P chat panel) and .chatLine-other in CSS.
-  renderChatLine($.globalChatMessages, kind === 'system' || kind === 'me' ? kind : 'other', nickname, body, CHAT_HISTORY_MAX);
+  renderChatLine($.globalChatMessages, kind === 'system' || kind === 'me' ? kind : 'other', nickname, body, CHAT_HISTORY_MAX, profile);
+}
+// Supabase row (snake_case columns) -> the {job, level, weaponId, ...}
+// shape renderGlobalChatPlayerDetail expects. Rows saved before this feature
+// shipped won't have a `job` column value, so we deliberately return null
+// for those instead of a half-filled profile that would render garbage.
+function rowToGlobalChatProfile(row) {
+  if (!row || !row.job) return null;
+  return {
+    job: row.job, level: row.level,
+    weaponId: row.weapon_id, armorId: row.armor_id,
+    weaponEnhance: row.weapon_enhance || 0, armorEnhance: row.armor_enhance || 0,
+    atk: row.atk, crit: row.crit,
+  };
+}
+// Snapshot of our own current gear/stats to attach to an outgoing chat
+// message — see world_boss-style comment below for the matching SQL that
+// needs to run once for the extra columns to exist.
+function gchatProfile() {
+  if (typeof player === 'undefined' || !player) return null;
+  return {
+    job: player.job, level: player.level,
+    weaponId: player.weaponId, armorId: player.armorId,
+    weaponEnhance: player.weaponEnhance || 0, armorEnhance: player.armorEnhance || 0,
+    atk: player.atk, crit: player.crit,
+  };
 }
 function updateOnlineCountBadge(n) {
   $.onlineCountBadge.textContent = n;
@@ -6463,15 +6541,19 @@ async function loadGlobalChatHistory() {
   if (!sb) sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   // postgres_changes below only pushes *new* rows from the moment we
   // subscribe, so without this one-time fetch the panel would open empty.
-  const { data } = await sb.from('chat_messages').select('device_id, nickname, body').order('created_at', { ascending: false }).limit(30);
-  if (data) data.reverse().forEach(row => appendGlobalChatMsg(row.device_id === DEVICE_ID ? 'me' : 'other', row.nickname, row.body));
+  const { data } = await sb.from('chat_messages')
+    .select('device_id, nickname, body, job, level, weapon_id, armor_id, weapon_enhance, armor_enhance, atk, crit')
+    .order('created_at', { ascending: false }).limit(30);
+  if (data) data.reverse().forEach(row => appendGlobalChatMsg(
+    row.device_id === DEVICE_ID ? 'me' : 'other', row.nickname, row.body, rowToGlobalChatProfile(row)
+  ));
 
   globalChatChannel = sb.channel('chat')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, payload => {
       // Our own message is appended locally the instant we send it (feels
       // instant instead of waiting on a round-trip) — skip the echo here.
       if (payload.new.device_id === DEVICE_ID) return;
-      appendGlobalChatMsg('other', payload.new.nickname, payload.new.body);
+      appendGlobalChatMsg('other', payload.new.nickname, payload.new.body, rowToGlobalChatProfile(payload.new));
     })
     .subscribe();
 }
@@ -6485,16 +6567,25 @@ function sendGlobalChatMsg() {
   if (now - lastGlobalChatSentAt < 1000) return;
   lastGlobalChatSentAt = now;
   const nickname = gchatNickname();
+  const profile = gchatProfile();
   $.globalChatInput.value = '';
-  appendGlobalChatMsg('me', nickname, text);
-  sb.from('chat_messages').insert({ device_id: DEVICE_ID, nickname, body: text })
-    .then(({ error }) => { if (error) appendGlobalChatMsg('system', '', '전송 실패했어요'); });
+  appendGlobalChatMsg('me', nickname, text, profile);
+  sb.from('chat_messages').insert({
+    device_id: DEVICE_ID, nickname, body: text,
+    job: profile && profile.job, level: profile && profile.level,
+    weapon_id: profile && profile.weaponId, armor_id: profile && profile.armorId,
+    weapon_enhance: profile && profile.weaponEnhance, armor_enhance: profile && profile.armorEnhance,
+    atk: profile && profile.atk, crit: profile && profile.crit,
+  }).then(({ error }) => { if (error) appendGlobalChatMsg('system', '', '전송 실패했어요'); });
 }
 $.btnGlobalChat.addEventListener('click', () => {
   openModal('globalChatModal');
   loadGlobalChatHistory();
 });
-$.closeGlobalChat.addEventListener('click', () => closeModal('globalChatModal'));
+$.closeGlobalChat.addEventListener('click', () => {
+  closeModal('globalChatModal');
+  document.getElementById('globalChatPlayerDetail').classList.remove('show');
+});
 $.sendGlobalChatBtn.addEventListener('click', sendGlobalChatMsg);
 $.globalChatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendGlobalChatMsg(); });
 window.addEventListener('load', initPresence);
