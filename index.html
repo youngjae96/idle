@@ -2406,6 +2406,20 @@ function autoHuntStep(map) {
     player.vx = dx > 0 ? MOVE_SPEED : -MOVE_SPEED;
     player.facing = dx > 0 ? 1 : -1;
     moving = true;
+  } else if (forceDescend) {
+    // Watchdog fired (been stuck 50+ frames) but there was no elevated ledge
+    // to walk off — e.g. camped almost directly under/over a target that's
+    // out of vertical reach (like a bat hovering overhead) with dx too small
+    // to trigger the normal chase-move above. The descend branch further up
+    // only fires when standing on a floating platform, so on flat ground (or
+    // any other geometry) forceDescend previously had zero effect and the
+    // watchdog just capped out forever with nothing changing. Nudge sideways
+    // so position genuinely changes and the standoff actually breaks.
+    const dir = dx !== 0 ? (dx > 0 ? 1 : -1) : (player.facing || 1);
+    player.vx = dir * MOVE_SPEED;
+    player.facing = dir;
+    moving = true;
+    autoHuntStuckFrames = 0;
   } else {
     player.vx *= 0.72;
     player.facing = dx > 0 ? 1 : -1;
