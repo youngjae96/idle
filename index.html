@@ -424,6 +424,44 @@
   }
   .unreadBadge.show { display:block; }
 
+  /* ---------- First-play onboarding tour ----------
+     A one-time, lightweight tooltip tour shown right after a brand-new
+     character is created (see startOnboarding()). Spotlights a real HUD
+     button with a border + a huge box-shadow (the "9999px spotlight" trick:
+     the shadow darkens the whole screen except the cut-out box itself), then
+     shows a speech-bubble with the explanation next to it. Blocks all input
+     underneath on purpose — this only ever runs in town, which has no
+     monsters, so there's nothing for that pause to interrupt. Seen-once
+     state persists in localStorage (ONBOARD_KEY) so returning players never
+     see it again, and "건너뛰기" marks it seen immediately.
+  */
+  #onboardOverlay {
+    position:fixed; inset:0; z-index:400; display:none; pointer-events:auto;
+  }
+  #onboardOverlay.show { display:block; }
+  #onboardHighlight {
+    position:absolute; border:2px solid var(--gold-a); border-radius:14px;
+    box-shadow: 0 0 0 9999px rgba(5,3,10,0.62), 0 0 16px rgba(255,209,102,0.55);
+    pointer-events:none; transition: top .25s ease, left .25s ease, width .25s ease, height .25s ease;
+  }
+  #onboardBubble {
+    position:absolute; max-width:230px;
+    background:linear-gradient(180deg,#3a2a4a,#241a30); border:2px solid var(--border-purple);
+    border-radius:14px; padding:12px 14px; box-shadow:0 8px 20px rgba(0,0,0,0.5);
+  }
+  #onboardBubble p { color:#e8dcff; font-size:12px; line-height:1.55; margin-bottom:10px; }
+  .onboardBtnRow { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  #onboardStepDots { font-size:10.5px; color:#a89ac0; }
+  #onboardSkip {
+    background:none; border:none; color:#a89ac0; font-size:11px; text-decoration:underline;
+    padding:4px; flex-shrink:0;
+  }
+  #onboardNext {
+    background:linear-gradient(180deg,var(--gold-a),var(--gold-b)); color:#4a2a10; border:none;
+    border-radius:20px; padding:6px 16px; font-size:12px; font-weight:bold; flex-shrink:0;
+  }
+  #onboardNext:active { filter:brightness(0.95); }
+
   /* ---------- Consolidated menu (☰) ---------- everything that isn't a
      core in-combat control (movement/attack/skill/auto-hunt) lives behind
      this one button instead of being scattered across the HUD and canvas. */
@@ -786,6 +824,17 @@
 <div id="updateBanner">
   <span id="updateBannerText">🔄 새 버전이 있어요</span>
   <button id="updateBannerBtn">지금 새로고침</button>
+</div>
+<div id="onboardOverlay">
+  <div id="onboardHighlight"></div>
+  <div id="onboardBubble">
+    <p id="onboardText"></p>
+    <div class="onboardBtnRow">
+      <button id="onboardSkip">건너뛰기</button>
+      <span id="onboardStepDots"></span>
+      <button id="onboardNext">다음</button>
+    </div>
+  </div>
 </div>
 <div id="wrap">
   <h1>엔드리스 리얼름</h1>
@@ -6228,6 +6277,9 @@ function beginGame(job, nickname) {
   refreshStats();
   player.hp = player.maxHp; player.mp = player.maxMp;
   startCommon();
+  // 신규 캐릭터일 때만 — 이어하기(continueGame)에서는 절대 안 뜬다. 마을엔
+  // 몬스터가 없으니 오버레이가 입력을 막아도 안전한 타이밍.
+  setTimeout(startOnboarding, 400);
 }
 
 function continueGame(save) {
@@ -6686,6 +6738,77 @@ document.getElementById('btnWorldBoss').addEventListener('click', openWorldBossM
 document.getElementById('closeWorldBoss').addEventListener('click', () => closeModal('worldBossModal'));
 document.getElementById('enterWorldBossBtn').addEventListener('click', enterWorldBossFight);
 document.getElementById('worldBossRetreatBtn').addEventListener('click', () => finalizeWorldBossFight(false));
+
+// ---------- First-play onboarding tour ----------
+// See the CSS comment above #onboardOverlay for the overall approach.
+const ONBOARD_KEY = 'forestTaleOnboardSeen';
+const ONBOARD_STEPS = [
+  { sel: '#btnInventory', text: '🎒 여기서 무기·방어구를 사고 강화할 수 있어요. 골드를 모아 방문해보세요!' },
+  { sel: '#btnTeleport', text: '🗺️ 한 번 가본 마을·사냥터로 바로 이동할 수 있어요.' },
+  { sel: '#questText', text: '🎯 화면의 목표를 채우면 보상을 받아요. 다 채우면 자동으로 다음 목표가 나와요.' },
+  { sel: '#btnWorldBoss', text: '🐉 매일 서버 전체가 함께 깎는 월드보스예요. 하루 3번 도전할 수 있고, 넣은 데미지만큼 바로 골드도 받아요.' },
+  { sel: '#btnMenu', text: '☰ 상태창·몬스터 도감·저장 코드 백업은 이 메뉴 안에 있어요. 이제 모험을 떠나볼까요?' },
+];
+let onboardIdx = 0;
+
+// 대상 요소 위치에 맞춰 스포트라이트 박스 + 말풍선을 재배치한다. 말풍선은
+// 대상 아래쪽에 두는 게 기본이지만, 화면 아래로 넘치면(예: 화면이 작은
+// 기기에서 맨 아래 버튼을 가리킬 때) 자동으로 위쪽에 붙인다.
+function positionOnboardStep(sel) {
+  const el = document.querySelector(sel);
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  const pad = 6;
+  const hl = document.getElementById('onboardHighlight');
+  hl.style.left = (r.left - pad) + 'px';
+  hl.style.top = (r.top - pad) + 'px';
+  hl.style.width = (r.width + pad * 2) + 'px';
+  hl.style.height = (r.height + pad * 2) + 'px';
+
+  const bubble = document.getElementById('onboardBubble');
+  bubble.style.visibility = 'hidden';
+  bubble.style.display = 'block';
+  const bw = bubble.offsetWidth, bh = bubble.offsetHeight;
+  let top = r.bottom + 12;
+  if (top + bh > window.innerHeight - 8) top = Math.max(8, r.top - bh - 12);
+  let left = r.left + r.width / 2 - bw / 2;
+  left = Math.max(8, Math.min(window.innerWidth - bw - 8, left));
+  bubble.style.top = top + 'px';
+  bubble.style.left = left + 'px';
+  bubble.style.visibility = 'visible';
+  return true;
+}
+
+function showOnboardStep(i) {
+  const step = ONBOARD_STEPS[i];
+  if (!step || !positionOnboardStep(step.sel)) { finishOnboarding(); return; }
+  document.getElementById('onboardText').textContent = step.text;
+  document.getElementById('onboardStepDots').textContent = `${i + 1} / ${ONBOARD_STEPS.length}`;
+  document.getElementById('onboardNext').textContent = (i === ONBOARD_STEPS.length - 1) ? '시작하기!' : '다음';
+}
+
+function startOnboarding() {
+  if (lsGet(ONBOARD_KEY)) return; // 이미 본 적 있으면 (기기 기준) 다시 안 띄운다
+  onboardIdx = 0;
+  document.getElementById('onboardOverlay').classList.add('show');
+  showOnboardStep(0);
+}
+function finishOnboarding() {
+  document.getElementById('onboardOverlay').classList.remove('show');
+  lsSet(ONBOARD_KEY, '1');
+}
+document.getElementById('onboardNext').addEventListener('click', () => {
+  onboardIdx++;
+  if (onboardIdx >= ONBOARD_STEPS.length) finishOnboarding();
+  else showOnboardStep(onboardIdx);
+});
+document.getElementById('onboardSkip').addEventListener('click', finishOnboarding);
+// 회전/리사이즈 중에도 스포트라이트가 대상 버튼을 계속 정확히 감싸도록.
+window.addEventListener('resize', () => {
+  if (document.getElementById('onboardOverlay').classList.contains('show')) {
+    positionOnboardStep(ONBOARD_STEPS[onboardIdx].sel);
+  }
+});
 
 // show "이어하기" on the start screen if a save exists
 (function initStartScreen() {
