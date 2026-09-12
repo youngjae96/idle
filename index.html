@@ -4882,7 +4882,7 @@ function renderPlayerDetail(member) {
       document.createElement('br'),
       rarityTag(weaponEnhance), document.createTextNode(`${weapon.emoji} ${weaponLabel}`), document.createElement('br'),
       rarityTag(armorEnhance), document.createTextNode(`${armor.emoji} ${armorLabel}`), document.createElement('br'),
-      document.createTextNode(`⚔️ 공격력 ${Math.round(member.atk || 0)} · 💥 치명타 ${Math.round(member.crit || 0)}%`),
+      document.createTextNode(`⚔️ 공격력 ${Math.round(member.atk || 0)} · 🛡️ 방어력 ${Math.round((member.def || 0) * 10) / 10} · 💥 치명타 ${Math.round(member.crit || 0)}%`),
     );
   }
   detail.classList.add('show');
@@ -4920,7 +4920,7 @@ function renderGlobalChatPlayerDetail(nickname, profile) {
     document.createTextNode(`${playerJobLabel(profile.job)} · Lv.${profile.level || 1}`), document.createElement('br'),
     rarityTag(weaponEnhance), document.createTextNode(`${weapon.emoji} ${weaponLabel}`), document.createElement('br'),
     rarityTag(armorEnhance), document.createTextNode(`${armor.emoji} ${armorLabel}`), document.createElement('br'),
-    document.createTextNode(`⚔️ 공격력 ${Math.round(Number(profile.atk) || 0)} · 💥 치명타 ${Math.round(Number(profile.crit) || 0)}%`),
+    document.createTextNode(`⚔️ 공격력 ${Math.round(Number(profile.atk) || 0)} · 🛡️ 방어력 ${Math.round((Number(profile.def) || 0) * 10) / 10} · 💥 치명타 ${Math.round(Number(profile.crit) || 0)}%`),
   );
   detail.classList.add('show');
 }
@@ -4979,7 +4979,7 @@ function getLocalPlayerState() {
     // "checking out their gear", so it stays off the wire.
     weaponId: player.weaponId, armorId: player.armorId,
     weaponEnhance: player.weaponEnhance, armorEnhance: player.armorEnhance,
-    atk: player.atk, crit: player.crit,
+    atk: player.atk, def: player.def, crit: player.crit,
   };
 }
 function sendCurrentState(connection) {
@@ -5030,6 +5030,7 @@ function sanitizeRemoteState(data) {
     weaponEnhance: Math.round(num(data.weaponEnhance, 0, ENHANCE_MAX, 0)),
     armorEnhance: Math.round(num(data.armorEnhance, 0, ENHANCE_MAX, 0)),
     atk: Math.round(num(data.atk, 0, 100_000, 0)),
+    def: Math.round(num(data.def, 0, 100_000, 0) * 10) / 10,
     crit: Math.round(num(data.crit, 0, 100, 0)),
   };
 }
@@ -6495,7 +6496,7 @@ function rowToGlobalChatProfile(row) {
     job: row.job, level: row.level,
     weaponId: row.weapon_id, armorId: row.armor_id,
     weaponEnhance: row.weapon_enhance || 0, armorEnhance: row.armor_enhance || 0,
-    atk: row.atk, crit: row.crit,
+    atk: row.atk, def: row.def, crit: row.crit,
   };
 }
 // Snapshot of our own current gear/stats to attach to an outgoing chat
@@ -6507,7 +6508,7 @@ function gchatProfile() {
     job: player.job, level: player.level,
     weaponId: player.weaponId, armorId: player.armorId,
     weaponEnhance: player.weaponEnhance || 0, armorEnhance: player.armorEnhance || 0,
-    atk: player.atk, crit: player.crit,
+    atk: player.atk, def: player.def, crit: player.crit,
   };
 }
 function updateOnlineCountBadge(n) {
@@ -6542,7 +6543,7 @@ async function loadGlobalChatHistory() {
   // postgres_changes below only pushes *new* rows from the moment we
   // subscribe, so without this one-time fetch the panel would open empty.
   const { data } = await sb.from('chat_messages')
-    .select('device_id, nickname, body, job, level, weapon_id, armor_id, weapon_enhance, armor_enhance, atk, crit')
+    .select('device_id, nickname, body, job, level, weapon_id, armor_id, weapon_enhance, armor_enhance, atk, def, crit')
     .order('created_at', { ascending: false }).limit(30);
   if (data) data.reverse().forEach(row => appendGlobalChatMsg(
     row.device_id === DEVICE_ID ? 'me' : 'other', row.nickname, row.body, rowToGlobalChatProfile(row)
@@ -6575,7 +6576,7 @@ function sendGlobalChatMsg() {
     job: profile && profile.job, level: profile && profile.level,
     weapon_id: profile && profile.weaponId, armor_id: profile && profile.armorId,
     weapon_enhance: profile && profile.weaponEnhance, armor_enhance: profile && profile.armorEnhance,
-    atk: profile && profile.atk, crit: profile && profile.crit,
+    atk: profile && profile.atk, def: profile && profile.def, crit: profile && profile.crit,
   }).then(({ error }) => { if (error) appendGlobalChatMsg('system', '', '전송 실패했어요'); });
 }
 $.btnGlobalChat.addEventListener('click', () => {
