@@ -4839,6 +4839,85 @@ function playerJobLabel(job) {
   const info = JOBS[job];
   return info ? `${info.emoji} ${info.name}` : '모험가';
 }
+// Single source of truth for the gear/combat fields shown in another
+// player's detail panel. Every place that builds, transmits, stores, or
+// renders another player's profile (P2P state packets, the Supabase
+// chat_messages row, and both detail panels below) pulls from this list
+// instead of hand-copying field names — a hand-copied list is exactly what
+// silently dropped `def` before. Add a stat once here and it flows through
+// every one of those places automatically.
+const PROFILE_FIELDS = [
+  // key: camelCase field on player/profile objects and P2P packets
+  // col:  matching snake_case column in the Supabase chat_messages table
+  // clamp(value, num): validates/clamps an incoming value; `num` is the
+  //   same numeric clamp helper sanitizeRemoteState already builds
+  { key: 'weaponId', col: 'weapon_id', clamp: (v) => WEAPONS.some(w => w.id === v) ? v : 'w0' },
+  { key: 'armorId', col: 'armor_id', clamp: (v) => ARMORS.some(a => a.id === v) ? v : 'a0' },
+  { key: 'weaponEnhance', col: 'weapon_enhance', clamp: (v, num) => Math.round(num(v, 0, ENHANCE_MAX, 0)) },
+  { key: 'armorEnhance', col: 'armor_enhance', clamp: (v, num) => Math.round(num(v, 0, ENHANCE_MAX, 0)) },
+  { key: 'atk', col: 'atk', clamp: (v, num) => Math.round(num(v, 0, 100_000, 0)) },
+  { key: 'def', col: 'def', clamp: (v, num) => Math.round(num(v, 0, 100_000, 0) * 10) / 10 },
+  { key: 'crit', col: 'crit', clamp: (v, num) => Math.round(num(v, 0, 100, 0)) },
+];
+// Snapshot the shared fields off a live player-like object (our own
+// `player`, or anything with the same camelCase field names).
+function buildProfileFromPlayer(p) {
+  const out = {};
+  for (const f of PROFILE_FIELDS) out[f.key] = p[f.key];
+  return out;
+}
+// Validate/clamp the shared fields off an untrusted P2P packet — mirrors
+// buildProfileFromPlayer's field list so nothing here can drift from what's
+// actually sent.
+function sanitizeProfileFields(data, num) {
+  const out = {};
+  for (const f of PROFILE_FIELDS) out[f.key] = f.clamp(data[f.key], num);
+  return out;
+}
+// Supabase row (snake_case columns) -> the {weaponId, ...} shape the detail
+// panels expect.
+function profileFromRow(row) {
+  const out = {};
+  for (const f of PROFILE_FIELDS) out[f.key] = row[f.col];
+  return out;
+}
+// {weaponId, ...} shape -> the snake_case columns an insert into
+// chat_messages needs. `profile` may be null (e.g. player object not ready
+// yet), in which case every column comes out undefined, same as before.
+function profileToInsertColumns(profile) {
+  const out = {};
+  for (const f of PROFILE_FIELDS) out[f.col] = profile && profile[f.key];
+  return out;
+}
+// Appends the equipment + combat-stat lines shared by both player-detail
+// panels below (a live P2P member vs a global-chat profile snapshot) — see
+// PROFILE_FIELDS above for where these fields come from.
+function appendGearAndStatsLines(detail, profile) {
+  const weapon = WEAPONS.find(w => w.id === profile.weaponId) || WEAPONS[0];
+  const armor = ARMORS.find(a => a.id === profile.armorId) || ARMORS[0];
+  const weaponEnhance = Number(profile.weaponEnhance) || 0;
+  const armorEnhance = Number(profile.armorEnhance) || 0;
+  const weaponLabel = weaponEnhance > 0 ? `+${weaponEnhance} ${weapon.name}` : weapon.name;
+  const armorLabel = armorEnhance > 0 ? `+${armorEnhance} ${armor.name}` : armor.name;
+  // Rarity tag built with createElement + textContent (not innerHTML) even
+  // though weaponEnhance/armorEnhance are already sanitized numbers — kept
+  // consistent with the "no innerHTML on anything touched by a remote
+  // packet" rule so a future edit here can't accidentally reopen it.
+  const rarityTag = (level) => {
+    const r = rarityForEnhance(level);
+    const span = document.createElement('span');
+    span.textContent = `[${r.name}] `;
+    span.style.color = r.color;
+    span.style.fontWeight = 'bold';
+    return span;
+  };
+  detail.append(
+    document.createElement('br'),
+    rarityTag(weaponEnhance), document.createTextNode(`${weapon.emoji} ${weaponLabel}`), document.createElement('br'),
+    rarityTag(armorEnhance), document.createTextNode(`${armor.emoji} ${armorLabel}`), document.createElement('br'),
+    document.createTextNode(`⚔️ 공격력 ${Math.round(Number(profile.atk) || 0)} · 🛡️ 방어력 ${Math.round((Number(profile.def) || 0) * 10) / 10} · 💥 치명타 ${Math.round(Number(profile.crit) || 0)}%`),
+  );
+}
 // A nickname is attacker-controlled free text from another peer, never
 // server-trusted data — every place it (or anything else remote) reaches the
 // DOM has to go through textContent/createElement, never innerHTML, or a
@@ -4856,35 +4935,10 @@ function renderPlayerDetail(member) {
     document.createTextNode(`📍 ${mapName}`), document.createElement('br'),
     document.createTextNode(`❤️ HP ${Math.max(0, Math.round(member.hp || 0))}/${member.maxHp || 0}`),
   );
-  // Equipment line is only meaningful for remote members — our own weapon/armor
-  // is already visible everywhere else in our own UI, and `member.self` rows
-  // don't carry weaponId/armorId in the shape renderRoomMembers builds for us.
-  if (!member.self) {
-    const weapon = WEAPONS.find(w => w.id === member.weaponId) || WEAPONS[0];
-    const armor = ARMORS.find(a => a.id === member.armorId) || ARMORS[0];
-    const weaponEnhance = member.weaponEnhance || 0;
-    const armorEnhance = member.armorEnhance || 0;
-    const weaponLabel = weaponEnhance > 0 ? `+${weaponEnhance} ${weapon.name}` : weapon.name;
-    const armorLabel = armorEnhance > 0 ? `+${armorEnhance} ${armor.name}` : armor.name;
-    // Rarity tag built with createElement + textContent (not innerHTML) even
-    // though weaponEnhance/armorEnhance are already sanitized numbers — kept
-    // consistent with this function's "no innerHTML on anything touched by a
-    // remote packet" rule so a future edit here can't accidentally reopen it.
-    const rarityTag = (level) => {
-      const r = rarityForEnhance(level);
-      const span = document.createElement('span');
-      span.textContent = `[${r.name}] `;
-      span.style.color = r.color;
-      span.style.fontWeight = 'bold';
-      return span;
-    };
-    detail.append(
-      document.createElement('br'),
-      rarityTag(weaponEnhance), document.createTextNode(`${weapon.emoji} ${weaponLabel}`), document.createElement('br'),
-      rarityTag(armorEnhance), document.createTextNode(`${armor.emoji} ${armorLabel}`), document.createElement('br'),
-      document.createTextNode(`⚔️ 공격력 ${Math.round(member.atk || 0)} · 🛡️ 방어력 ${Math.round((member.def || 0) * 10) / 10} · 💥 치명타 ${Math.round(member.crit || 0)}%`),
-    );
-  }
+  // Equipment/stat lines are only meaningful for remote members — our own
+  // gear is already visible everywhere else in our own UI, and `member.self`
+  // rows don't carry weaponId/armorId in the shape renderRoomMembers builds.
+  if (!member.self) appendGearAndStatsLines(detail, member);
   detail.classList.add('show');
 }
 // Global-chat equivalent of renderPlayerDetail above — same idea, but the
@@ -4899,29 +4953,13 @@ function renderGlobalChatPlayerDetail(nickname, profile) {
   const detail = document.getElementById('globalChatPlayerDetail');
   if (!detail || !profile) return;
   detail.innerHTML = '';
-  const weapon = WEAPONS.find(w => w.id === profile.weaponId) || WEAPONS[0];
-  const armor = ARMORS.find(a => a.id === profile.armorId) || ARMORS[0];
-  const weaponEnhance = Number(profile.weaponEnhance) || 0;
-  const armorEnhance = Number(profile.armorEnhance) || 0;
-  const weaponLabel = weaponEnhance > 0 ? `+${weaponEnhance} ${weapon.name}` : weapon.name;
-  const armorLabel = armorEnhance > 0 ? `+${armorEnhance} ${armor.name}` : armor.name;
-  const rarityTag = (level) => {
-    const r = rarityForEnhance(level);
-    const span = document.createElement('span');
-    span.textContent = `[${r.name}] `;
-    span.style.color = r.color;
-    span.style.fontWeight = 'bold';
-    return span;
-  };
   const nameLine = document.createElement('strong');
   nameLine.textContent = nickname || '모험가';
   detail.append(
     nameLine, document.createElement('br'),
     document.createTextNode(`${playerJobLabel(profile.job)} · Lv.${profile.level || 1}`), document.createElement('br'),
-    rarityTag(weaponEnhance), document.createTextNode(`${weapon.emoji} ${weaponLabel}`), document.createElement('br'),
-    rarityTag(armorEnhance), document.createTextNode(`${armor.emoji} ${armorLabel}`), document.createElement('br'),
-    document.createTextNode(`⚔️ 공격력 ${Math.round(Number(profile.atk) || 0)} · 🛡️ 방어력 ${Math.round((Number(profile.def) || 0) * 10) / 10} · 💥 치명타 ${Math.round(Number(profile.crit) || 0)}%`),
   );
+  appendGearAndStatsLines(detail, profile);
   detail.classList.add('show');
 }
 // Small always-on nickname strip in the HUD itself, separate from the full
@@ -4974,12 +5012,11 @@ function getLocalPlayerState() {
     anim: player.attackAnim > 0 ? 'attack' : (!player.onGround ? 'jump' : (Math.abs(player.vx) > 0.3 ? 'walk' : 'idle')),
     hp: player.hp, maxHp: player.maxHp, nickname: player.nickname,
     job: player.job, level: player.level, map: currentMap,
-    // Equipment/combat info for the player-detail panel. Deliberately excludes
-    // gold — that's the one stat that feels like snooping rather than
+    // Equipment/combat info for the player-detail panel — see PROFILE_FIELDS
+    // above. Deliberately excludes gold, which isn't part of that shared
+    // list — it's the one stat that feels like snooping rather than
     // "checking out their gear", so it stays off the wire.
-    weaponId: player.weaponId, armorId: player.armorId,
-    weaponEnhance: player.weaponEnhance, armorEnhance: player.armorEnhance,
-    atk: player.atk, def: player.def, crit: player.crit,
+    ...buildProfileFromPlayer(player),
   };
 }
 function sendCurrentState(connection) {
@@ -5021,17 +5058,9 @@ function sanitizeRemoteState(data) {
     job: JOBS[data.job] ? data.job : 'warrior',
     level: Math.round(num(data.level, 1, 999, 1)),
     map: MAPS[data.map] ? data.map : 'town',
-    // Equipment/combat display fields — same "never trust a remote packet"
-    // treatment as everything else here: unknown ids fall back to the
-    // starter item, numeric fields get clamped to what the game could ever
-    // actually produce.
-    weaponId: WEAPONS.some(w => w.id === data.weaponId) ? data.weaponId : 'w0',
-    armorId: ARMORS.some(a => a.id === data.armorId) ? data.armorId : 'a0',
-    weaponEnhance: Math.round(num(data.weaponEnhance, 0, ENHANCE_MAX, 0)),
-    armorEnhance: Math.round(num(data.armorEnhance, 0, ENHANCE_MAX, 0)),
-    atk: Math.round(num(data.atk, 0, 100_000, 0)),
-    def: Math.round(num(data.def, 0, 100_000, 0) * 10) / 10,
-    crit: Math.round(num(data.crit, 0, 100, 0)),
+    // Equipment/combat display fields — see PROFILE_FIELDS above for the
+    // full list and clamp rules.
+    ...sanitizeProfileFields(data, num),
   };
 }
 function sanitizeChatText(text) {
@@ -6492,24 +6521,14 @@ function appendGlobalChatMsg(kind, nickname, body, profile) {
 // for those instead of a half-filled profile that would render garbage.
 function rowToGlobalChatProfile(row) {
   if (!row || !row.job) return null;
-  return {
-    job: row.job, level: row.level,
-    weaponId: row.weapon_id, armorId: row.armor_id,
-    weaponEnhance: row.weapon_enhance || 0, armorEnhance: row.armor_enhance || 0,
-    atk: row.atk, def: row.def, crit: row.crit,
-  };
+  return { job: row.job, level: row.level, ...profileFromRow(row) };
 }
 // Snapshot of our own current gear/stats to attach to an outgoing chat
 // message — see world_boss-style comment below for the matching SQL that
 // needs to run once for the extra columns to exist.
 function gchatProfile() {
   if (typeof player === 'undefined' || !player) return null;
-  return {
-    job: player.job, level: player.level,
-    weaponId: player.weaponId, armorId: player.armorId,
-    weaponEnhance: player.weaponEnhance || 0, armorEnhance: player.armorEnhance || 0,
-    atk: player.atk, def: player.def, crit: player.crit,
-  };
+  return { job: player.job, level: player.level, ...buildProfileFromPlayer(player) };
 }
 function updateOnlineCountBadge(n) {
   $.onlineCountBadge.textContent = n;
@@ -6543,7 +6562,7 @@ async function loadGlobalChatHistory() {
   // postgres_changes below only pushes *new* rows from the moment we
   // subscribe, so without this one-time fetch the panel would open empty.
   const { data } = await sb.from('chat_messages')
-    .select('device_id, nickname, body, job, level, weapon_id, armor_id, weapon_enhance, armor_enhance, atk, def, crit')
+    .select(`device_id, nickname, body, job, level, ${PROFILE_FIELDS.map(f => f.col).join(', ')}`)
     .order('created_at', { ascending: false }).limit(30);
   if (data) data.reverse().forEach(row => appendGlobalChatMsg(
     row.device_id === DEVICE_ID ? 'me' : 'other', row.nickname, row.body, rowToGlobalChatProfile(row)
@@ -6574,9 +6593,7 @@ function sendGlobalChatMsg() {
   sb.from('chat_messages').insert({
     device_id: DEVICE_ID, nickname, body: text,
     job: profile && profile.job, level: profile && profile.level,
-    weapon_id: profile && profile.weaponId, armor_id: profile && profile.armorId,
-    weapon_enhance: profile && profile.weaponEnhance, armor_enhance: profile && profile.armorEnhance,
-    atk: profile && profile.atk, def: profile && profile.def, crit: profile && profile.crit,
+    ...profileToInsertColumns(profile),
   }).then(({ error }) => { if (error) appendGlobalChatMsg('system', '', '전송 실패했어요'); });
 }
 $.btnGlobalChat.addEventListener('click', () => {
