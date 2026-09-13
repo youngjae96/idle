@@ -1304,7 +1304,7 @@ const TabLock = (function () {
 // affect saves or game logic at all — it only powers the "새 버전이 있어요"
 // banner below, so someone who already had the tab open when you deployed
 // finds out without having to guess-and-refresh.
-const BUILD_VERSION = '2026-09-13.1-autohunt-stall-window';
+const BUILD_VERSION = '2026-09-13.2-autohunt-awareness';
 // 기기 간 전송 모달에도 이 값을 그대로 찍어둔다 — updateBanner는 "새 버전이
 // 있다"만 알려줄 뿐, 지금 이 탭이 정확히 어느 빌드인지는 안 보여준다. 전송이
 // 이상하게 동작할 때 "이게 최신 코드가 맞나?"를 눈으로 바로 확인할 수 있게.
@@ -6446,7 +6446,31 @@ function continueGame(save) {
     applyOfflineBestiary(MAPS[currentMap], offline.kills);
     saveGame();
     setTimeout(() => showOfflineModal(offline), 300);
+  } else {
+    maybeNudgeAutoHuntOff(save);
   }
+}
+
+// computeOfflineProgress silently returns null whenever auto-hunt was off (or
+// the player was in town, or it's a no-offline daily dungeon) when they left —
+// which means someone who simply forgot to turn it on gets no feedback at all
+// and can go on missing the mechanic indefinitely. Nudge them toward it a
+// handful of times (not the town/daily-dungeon cases, since those are the
+// intended "no offline farming here" design, not a mistake) — capped so it
+// doesn't nag forever if someone deliberately always plays manually.
+const AUTO_HUNT_OFF_NUDGE_KEY = 'forestTaleAutoHuntOffNudgeCount_v1';
+const AUTO_HUNT_OFF_NUDGE_MAX = 3;
+const AUTO_HUNT_OFF_NUDGE_MIN_AWAY_MS = 5 * 60 * 1000; // don't nag over a quick refresh, only a real "went away" gap
+function maybeNudgeAutoHuntOff(save) {
+  if (autoHunt) return; // was actually on — computeOfflineProgress returning null here means some other legit reason (e.g. no monsters), not this
+  const savedMap = MAPS[save.currentMap];
+  if (!savedMap || save.currentMap === 'town' || !savedMap.monsters || !savedMap.monsters.length) return;
+  if (isDailyDungeon(save.currentMap)) return; // no offline farming there by design — not a "you missed out" situation
+  if (nowTrusted() - save.savedAt < AUTO_HUNT_OFF_NUDGE_MIN_AWAY_MS) return;
+  const seen = parseInt(lsGet(AUTO_HUNT_OFF_NUDGE_KEY) || '0', 10);
+  if (seen >= AUTO_HUNT_OFF_NUDGE_MAX) return;
+  lsSet(AUTO_HUNT_OFF_NUDGE_KEY, String(seen + 1));
+  setTimeout(() => showMsg('💤 자동사냥이 꺼진 채로 떠나 있었어요! 켜두면 앱을 꺼도 계속 사냥해서 골드·경험치를 받아요.', 4200), 500);
 }
 
 document.querySelectorAll('.jobCard').forEach(card => {
@@ -6917,6 +6941,7 @@ const ONBOARD_STEPS = [
   { sel: '#btnInventory', text: '🎒 여기서 무기·방어구를 사고 강화할 수 있어요. 골드를 모아 방문해보세요!' },
   { sel: '#btnTeleport', text: '🗺️ 한 번 가본 마을·사냥터로 바로 이동할 수 있어요.' },
   { sel: '#questText', text: '🎯 화면의 목표를 채우면 보상을 받아요. 다 채우면 자동으로 다음 목표가 나와요.' },
+  { sel: '#btnAutoHunt', text: '🤖 이 버튼을 켜두면 앱을 꺼도 계속 사냥해요! 나중에 다시 열면 그동안 번 골드·경험치를 한꺼번에 받아요.' },
   { sel: '#btnWorldBoss', text: '🐉 매일 서버 전체가 함께 깎는 월드보스예요. 하루 3번 도전할 수 있고, 넣은 데미지만큼 바로 골드도 받아요.' },
   { sel: '#btnMenu', text: '☰ 상태창·몬스터 도감·저장 코드 백업은 이 메뉴 안에 있어요. 이제 모험을 떠나볼까요?' },
 ];
