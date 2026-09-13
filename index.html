@@ -61,21 +61,23 @@
   }
   button { font-family: var(--font-display); letter-spacing: 0.2px; }
   h1, h2, .jobName { font-family: var(--font-display); font-weight: normal; }
-  #wrap { display:flex; flex-direction:column; align-items:center; gap:5px; width:100%; max-width:900px; height:100%; overflow:hidden; padding:6px; }
+  #wrap { display:flex; flex-direction:column; align-items:center; gap:3px; width:100%; max-width:900px; height:100%; overflow:hidden; padding:4px; }
+  /* h1 is folded into the slim HUD top row (see .brandMark) so it no longer
+     eats its own full-width line; kept in the DOM (visually tiny/hidden)
+     so nothing that queries it elsewhere breaks. */
   h1 {
-    color:#ffe08a; text-shadow:0 2px 0 #7a4a1a, 0 0 14px rgba(255,190,80,0.5);
-    font-size:19px; letter-spacing:1px; flex-shrink:0;
-    animation: titleGlow 3.6s ease-in-out infinite;
+    position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0);
   }
-  @keyframes titleGlow {
-    0%,100% { text-shadow:0 2px 0 #7a4a1a, 0 0 14px rgba(255,190,80,0.5); }
-    50% { text-shadow:0 2px 0 #7a4a1a, 0 0 22px rgba(255,190,80,0.85); }
+  .brandMark {
+    color:#ffe08a; text-shadow:0 1px 0 #7a4a1a, 0 0 8px rgba(255,190,80,0.5);
+    font-family: var(--font-display); font-size:9.5px; letter-spacing:0.3px; white-space:nowrap;
+    flex-shrink:0; padding-right:6px; margin-right:2px; border-right:1px solid rgba(200,188,232,0.35);
   }
 
   #hud {
-    width:100%; display:flex; flex-direction:column; gap:4px; flex-shrink:0;
+    width:100%; display:flex; flex-direction:column; gap:3px; flex-shrink:0;
     background: linear-gradient(180deg, rgba(67,48,92,0.96), rgba(29,18,38,0.96));
-    padding:6px 12px; border-radius:12px; border:2px solid rgba(143,109,201,0.9);
+    padding:5px 10px; border-radius:12px; border:2px solid rgba(143,109,201,0.9);
     box-shadow: inset 0 0 10px rgba(255,255,255,0.08), 0 8px 18px rgba(15,8,18,0.35);
     position:relative;
   }
@@ -84,6 +86,14 @@
   }
   .hud-top { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#e8dcff; font-weight:bold; flex-wrap:wrap; row-gap:4px; }
   .hud-top > div { min-width:0; flex-wrap:wrap; row-gap:4px; }
+  /* Icon-weight hierarchy: primary (inventory/chat — used constantly) stay
+     full-strength; secondary (teleport/global chat/world boss — checked
+     occasionally) are visually quieter, separated by a hairline divider,
+     so the eye isn't asked to treat all six icons as equally important. */
+  .hudIconGroup { display:flex; align-items:center; gap:6px; }
+  .hudIconGroup + .hudIconGroup { padding-left:6px; border-left:1px solid rgba(200,188,232,0.3); }
+  .hudIconBtn.secondary { opacity:0.72; font-size:12.5px; padding:4px 8px; }
+  .hudIconBtn.secondary:active { opacity:1; }
   .bar-outer { width:100%; height:11px; background:rgba(0,0,0,0.4); border-radius:6px; overflow:hidden; border:1px solid rgba(255,255,255,0.1); }
   .bar-inner { height:100%; transition:width .15s; }
   .bar-hp { background:linear-gradient(90deg,#e05a5a,#f08a5a); }
@@ -92,9 +102,20 @@
   .hud-row { display:flex; align-items:center; gap:6px; font-size:10.5px; color:#c8bce8; }
   #hudPartyNames { color:#8adf9a; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .hud-row .bar-outer { flex:1; }
+  /* HP/MP stay visible at all times (moment-to-moment combat info); EXP and
+     the quest line are progress info players glance at occasionally, so
+     they live in a collapsible drawer instead of permanently eating space. */
+  .hud-vitals { display:flex; flex-direction:column; gap:3px; }
+  #hudDetailsToggle {
+    align-self:center; margin-top:1px; background:none; border:none; color:#a898cc;
+    font-size:9.5px; padding:1px 10px; line-height:1.4; letter-spacing:0.3px;
+  }
+  #hudDetailsToggle:active { color:#ffe08a; }
+  #hudDetails { display:flex; flex-direction:column; gap:3px; max-height:0; overflow:hidden; transition:max-height .22s ease; }
+  #hudDetails.open { max-height:80px; }
 
   #canvasWrap { position:relative; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; width:100%; overflow:hidden; touch-action:auto; }
-  #gameCanvas { display:block; max-width:100%; max-height:100%; height:auto; border:4px solid #2a1e14; border-radius:8px; background:#7fc9e8; box-shadow:0 12px 30px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(255,255,255,0.08); }
+  #gameCanvas { display:block; max-width:100%; max-height:100%; height:auto; border:2px solid #2a1e14; border-radius:6px; background:#7fc9e8; box-shadow:0 12px 30px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(255,255,255,0.08); }
 
   #msg { height:16px; color:#ffd166; font-weight:bold; font-size:11.5px; text-align:center; text-shadow:0 1px 2px rgba(0,0,0,0.6); flex-shrink:0; letter-spacing:0.3px; }
   #controls { color:#b8a8d8; font-size:10px; opacity:0.85; text-align:center; flex-shrink:0; letter-spacing:0.1px; }
@@ -129,6 +150,15 @@
   #updateBanner button:active { filter:brightness(0.95); }
 
   #touchPad { position:absolute; inset:0; pointer-events:none; }
+  /* Decorative "controller plate" behind each button cluster so the loose
+     circles read as one grouped control instead of stray buttons floating
+     on the canvas. Purely visual — sits below the buttons, no pointer events. */
+  .padPlate {
+    position:absolute; bottom:6px; border-radius:40px; pointer-events:none;
+    background:rgba(10,6,16,0.32); border:1px solid rgba(255,255,255,0.12);
+  }
+  #padPlateLeft { left:4px; width:130px; height:64px; }
+  #padPlateRight { right:4px; width:148px; height:146px; border-radius:50px; }
   .tbtn {
     position:absolute; bottom:12px; border-radius:50%;
     background:rgba(255,255,255,0.35); border:3px solid rgba(0,0,0,0.35);
@@ -153,6 +183,10 @@
   }
   #btnSkill.cooling .cdRing { display:block; }
 
+  /* btnAutoHunt and comboText share one "status badge" visual language now
+     (same pill shape, same backdrop treatment) even though they stay on
+     opposite corners — see the comboText rule below for why they aren't
+     merged into a single top-center slot. */
   #btnAutoHunt {
     position:absolute; top:46px; left:8px; z-index:15; pointer-events:auto;
     background:rgba(20,14,30,0.78); border:2px solid var(--border-purple); color:#c8bce8;
@@ -256,16 +290,25 @@
   }
   #worldBossRetreatBtn.show { display:block; }
 
+  /* Same pill/backdrop language as #btnAutoHunt (padding, radius, translucent
+     dark background, border) so the two status badges that share this row
+     read as one consistent system instead of "button here, bare text there".
+     Kept on its own top-right corner rather than merged to top-center with
+     #btnAutoHunt, because top-center is already #bossBar's spot during boss
+     fights — combo count and boss HP are very often on screen at the same
+     time, so stacking both badges there would cause real overlap. */
   #comboText {
-    position:absolute; top:44px; right:10px; z-index:12; pointer-events:none;
-    font-weight:bold; font-size:15px; color:#ffe08a; text-shadow:0 2px 4px rgba(0,0,0,0.7);
+    position:absolute; top:46px; right:8px; z-index:12; pointer-events:none;
+    background:rgba(20,14,30,0.78); border:2px solid rgba(255,224,138,0.55); border-radius:20px;
+    padding:6px 12px; font-weight:bold; font-size:13px; color:#ffe08a; text-shadow:0 1px 2px rgba(0,0,0,0.6);
     opacity:0; transition:opacity .15s, transform .15s; transform:scale(0.8);
   }
   #comboText.show { opacity:1; transform:scale(1); }
-  #comboText.combo-hot { color:#ff9a3a; font-size:19px; }
+  #comboText.combo-hot { color:#ff9a3a; font-size:15px; border-color:rgba(255,154,58,0.65); }
   #comboText.combo-fire {
-    color:#ff4a4a; font-size:23px;
-    text-shadow:0 2px 4px rgba(0,0,0,0.7), 0 0 14px rgba(255,80,40,0.85);
+    color:#ff4a4a; font-size:17px; border-color:#ff4a4a;
+    box-shadow:0 0 12px rgba(255,80,40,0.6);
+    text-shadow:0 1px 2px rgba(0,0,0,0.6);
     animation: comboPulse .4s ease-in-out infinite;
   }
   @keyframes comboPulse {
@@ -1018,26 +1061,38 @@
   <div id="hud">
     <div class="hud-top">
       <div style="display:flex; gap:8px; align-items:center;">
+        <span class="brandMark">엔드리스 리얼름</span>
         <span>📍 <b id="mapName">마을</b></span>
         <span id="dungeonTimer" style="display:none; color:#ffd166;"></span>
         <span id="dungeonOfflineNotice" style="display:none; color:#ff9a9a; font-size:10px;" title="이 던전은 앱을 꺼두거나 화면을 벗어나도 사냥이 진행되지 않아요.">🚫오프라인 불가</span>
         <span>Lv.<b id="lvl">1</b></span>
         <span>🪙 <b id="gold">0</b></span>
       </div>
-      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-        <button id="btnInventory" class="hudIconBtn" title="상점 / 장비">🎒</button>
-        <button id="btnTeleport" class="hudIconBtn" title="텔레포트">🗺️</button>
-        <button id="btnChat" class="hudIconBtn" title="채팅 / 친구 연결">💬<span id="chatUnreadBadge" class="unreadBadge"></span></button>
-        <button id="btnGlobalChat" class="hudIconBtn" title="전체 채팅">🌐<span id="onlineCountBadge" class="onlineCountBadge"></span><span id="globalChatUnreadBadge" class="unreadBadge unreadBadge-left"></span></button>
-        <button id="btnWorldBoss" class="hudIconBtn" title="월드보스">🐉</button>
-        <button id="btnMenu">☰ 메뉴<span id="menuUnreadBadge" class="unreadBadge"></span></button>
+      <div style="display:flex; gap:0; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+        <div class="hudIconGroup">
+          <button id="btnInventory" class="hudIconBtn" title="상점 / 장비">🎒</button>
+          <button id="btnChat" class="hudIconBtn" title="채팅 / 친구 연결">💬<span id="chatUnreadBadge" class="unreadBadge"></span></button>
+        </div>
+        <div class="hudIconGroup">
+          <button id="btnTeleport" class="hudIconBtn secondary" title="텔레포트">🗺️</button>
+          <button id="btnGlobalChat" class="hudIconBtn secondary" title="전체 채팅">🌐<span id="onlineCountBadge" class="onlineCountBadge"></span><span id="globalChatUnreadBadge" class="unreadBadge unreadBadge-left"></span></button>
+          <button id="btnWorldBoss" class="hudIconBtn secondary" title="월드보스">🐉</button>
+        </div>
+        <div class="hudIconGroup">
+          <button id="btnMenu">☰ 메뉴<span id="menuUnreadBadge" class="unreadBadge"></span></button>
+        </div>
       </div>
     </div>
-    <div class="hud-row">HP <div class="bar-outer"><div class="bar-inner bar-hp" id="hpBar" style="width:100%"></div></div> <span id="hpText">30/30</span></div>
-    <div class="hud-row">MP <div class="bar-outer"><div class="bar-inner bar-mp" id="mpBar" style="width:100%"></div></div> <span id="mpText">20/20</span></div>
-    <div class="hud-row">EXP <div class="bar-outer"><div class="bar-inner bar-exp" id="expBar" style="width:0%"></div></div></div>
-    <div class="hud-row">🎯 <span id="questText">사냥터에서 몬스터 5마리 처치하기</span></div>
-    <div class="hud-row"><div class="bar-outer"><div class="bar-inner bar-quest" id="questBar" style="width:0%"></div></div></div>
+    <div class="hud-vitals">
+      <div class="hud-row">HP <div class="bar-outer"><div class="bar-inner bar-hp" id="hpBar" style="width:100%"></div></div> <span id="hpText">30/30</span></div>
+      <div class="hud-row">MP <div class="bar-outer"><div class="bar-inner bar-mp" id="mpBar" style="width:100%"></div></div> <span id="mpText">20/20</span></div>
+      <button id="hudDetailsToggle" onclick="var d=document.getElementById('hudDetails'); d.classList.toggle('open'); this.textContent = d.classList.contains('open') ? '경험치·목표 숨기기 ▴' : '경험치·목표 더보기 ▾';">경험치·목표 더보기 ▾</button>
+    </div>
+    <div id="hudDetails">
+      <div class="hud-row">EXP <div class="bar-outer"><div class="bar-inner bar-exp" id="expBar" style="width:0%"></div></div></div>
+      <div class="hud-row">🎯 <span id="questText">사냥터에서 몬스터 5마리 처치하기</span></div>
+      <div class="hud-row"><div class="bar-outer"><div class="bar-inner bar-quest" id="questBar" style="width:0%"></div></div></div>
+    </div>
     <!-- 방에 다른 사람이 접속돼 있을 때만 보임(솔로 플레이 중엔 숨김). 같은
          맵에 없어도(다른 사냥터에 있어도) 누가 접속해 있는지 알 수 있게
          닉네임만 항상 HUD에 띄워둔다. -->
@@ -1061,6 +1116,8 @@
     <div id="comboText"></div>
     <div id="levelUpBurst"><div id="levelUpRing"></div></div>
     <div id="touchPad">
+      <div class="padPlate" id="padPlateLeft"></div>
+      <div class="padPlate" id="padPlateRight"></div>
       <div class="tbtn" id="btnLeft">◀</div>
       <div class="tbtn" id="btnRight">▶</div>
       <div class="tbtn" id="btnJump">⤒</div>
@@ -7696,7 +7753,14 @@ function positionOnboardStep(sel) {
 
 function showOnboardStep(i) {
   const step = ONBOARD_STEPS[i];
-  if (!step || !positionOnboardStep(step.sel)) { finishOnboarding(); return; }
+  if (!step) { finishOnboarding(); return; }
+  // #questText lives inside the collapsible #hudDetails drawer now — open it
+  // so this tutorial step doesn't spotlight something the player can't see.
+  if (step.sel === '#questText') {
+    const d = document.getElementById('hudDetails');
+    if (d) d.classList.add('open');
+  }
+  if (!positionOnboardStep(step.sel)) { finishOnboarding(); return; }
   document.getElementById('onboardText').textContent = step.text;
   document.getElementById('onboardStepDots').textContent = `${i + 1} / ${ONBOARD_STEPS.length}`;
   document.getElementById('onboardNext').textContent = (i === ONBOARD_STEPS.length - 1) ? '시작하기!' : '다음';
