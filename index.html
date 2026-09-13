@@ -1303,7 +1303,7 @@
               <button id="guildDonateBig" data-amt="100000">100,000🪙 기부</button>
             </div>
             <div id="guildDonateStatus"></div>
-            <div id="guildMembersTitle">멤버 (<span id="guildMemberCount">0</span>/30)</div>
+            <div id="guildMembersTitle">멤버 (<span id="guildMemberCount">0</span>/10)</div>
             <div id="guildMembersList"></div>
             <button id="guildChatOpenBtn">💬 길드 채팅 열기</button>
             <button id="guildLeaveBtn">길드 탈퇴</button>
@@ -7260,7 +7260,7 @@ document.getElementById('worldBossRetreatBtn').addEventListener('click', () => f
 // the next donation: `update guilds set exp = 5000000, level = 12 where id = <id>;`
 const GUILD_EMOJIS = ['🏯','⚔️','🛡️','🐉','🔥','🌙','⭐','🍀'];
 const GUILD_CREATE_COST = 500000; // keep in sync with the "500,000🪙" label on #guildCreateBtn
-const GUILD_MAX_MEMBERS = 30;  // keep in sync with the "/30" label near #guildMemberCount
+const GUILD_MAX_MEMBERS = 10;  // keep in sync with the "/10" label near #guildMemberCount
 
 let myGuild = null;             // 서버가 마지막으로 알려준 길드 row ({id,name,emoji,description,level,exp,member_count,owner_device_id}), 길드 없으면 null
 let myGuildMembers = [];        // 기부량(contribution) 내림차순으로 정렬된 멤버 목록
