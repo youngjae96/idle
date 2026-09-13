@@ -548,6 +548,13 @@
 
   /* -- Browse view: search + create -- */
   #guildSearchRow { display:flex; gap:6px; margin-bottom:8px; }
+  #guildRefreshBtn { flex-shrink:0; }
+  #guildHomeToolbar { text-align:right; margin-bottom:2px; }
+  #guildHomeToolbar button, #guildRefreshBtn {
+    background:rgba(255,255,255,0.08); color:#c8bce8; border:1px solid rgba(255,255,255,0.18);
+    border-radius:8px; font-size:10.5px; padding:4px 8px; cursor:pointer;
+  }
+  #guildHomeToolbar button:disabled, #guildRefreshBtn:disabled { opacity:0.5; cursor:default; }
   #guildSearchInput {
     flex:1; padding:8px 10px; font-size:12.5px; background:rgba(0,0,0,0.35);
     border:2px solid var(--border-purple); border-radius:8px; color:#f0e8ff;
@@ -621,6 +628,11 @@
   .guildMemberRow .gmName.owner::before { content:'👑 '; }
   .guildMemberRow .gmName.me { color:#ffd166; }
   .guildMemberRow .gmContrib { font-size:10px; color:#8fe0c8; flex-shrink:0; }
+  .guildMemberRow .gmKick {
+    flex-shrink:0; background:rgba(255,90,90,0.15); color:#ff9a9a; border:1px solid rgba(255,90,90,0.35);
+    border-radius:6px; font-size:9.5px; padding:3px 6px; margin-left:4px; cursor:pointer;
+  }
+  .guildMemberRow .gmKick:disabled { opacity:0.5; cursor:default; }
   #guildChatOpenBtn {
     width:100%; padding:9px; margin-top:10px; font-weight:bold; border:none; border-radius:8px; font-size:12px;
     background:linear-gradient(180deg,#6fc7ff,#2a7ae0); color:#0a1a2a;
@@ -1180,6 +1192,7 @@
             <div id="guildSearchRow">
               <input id="guildSearchInput" type="text" maxlength="12" placeholder="길드 이름 검색">
               <button id="guildSearchBtn">검색</button>
+              <button id="guildRefreshBtn" title="새로고침">🔄</button>
             </div>
             <div id="guildList"></div>
             <div id="guildCreateDivider">또는 새로 만들기</div>
@@ -1191,6 +1204,7 @@
           </div>
           <!-- 길드가 있을 때: 정보/멤버/기부 -->
           <div id="guildHomeView" style="display:none;">
+            <div id="guildHomeToolbar"><button id="guildHomeRefreshBtn" title="새로고침">🔄 새로고침</button></div>
             <div id="guildHomeHeader">
               <div id="guildHomeEmoji">🏯</div>
               <div id="guildHomeName">길드명</div>
@@ -7241,7 +7255,9 @@ function buildGuildRow(g, actionLabel, actionDisabled, onAction) {
   if (actionLabel) {
     const btn = document.createElement('button');
     btn.textContent = actionLabel; btn.disabled = actionDisabled;
-    btn.addEventListener('click', onAction);
+    // onAction은 버튼 자체를 받아 연타 방지를 위해 즉시 비활성화할 수 있다
+    // (가입 요청 왕복 중 같은 버튼을 여러 번 눌러 join_guild를 중복 호출하는 것을 막음).
+    btn.addEventListener('click', () => onAction(btn));
     row.appendChild(btn);
   }
   return row;
@@ -7265,7 +7281,10 @@ async function searchGuilds(term) {
     listEl.innerHTML = '';
     data.forEach(g => {
       const full = g.member_count >= GUILD_MAX_MEMBERS;
-      listEl.appendChild(buildGuildRow(g, full ? '만석' : '가입', full, () => joinGuild(g.id, g.name)));
+      listEl.appendChild(buildGuildRow(g, full ? '만석' : '가입', full, (btn) => {
+        btn.disabled = true; btn.textContent = '가입 중...';
+        joinGuild(g.id, g.name).finally(() => { btn.disabled = full; btn.textContent = full ? '만석' : '가입'; });
+      }));
     });
   } catch (e) { loading.textContent = '연결할 수 없어요 (인터넷 연결 확인)'; }
 }
@@ -7342,6 +7361,13 @@ function renderGuildMembers() {
     name.textContent = `${playerJobLabel(m.job)} ${m.nickname || '?'} · Lv.${m.level || 1}`;
     const contrib = document.createElement('span'); contrib.className = 'gmContrib'; contrib.textContent = fmtGold(m.contribution || 0) + '🪙';
     row.appendChild(rank); row.appendChild(name); row.appendChild(contrib);
+    // 길드장 본인 눈에만, 자신을 제외한 멤버 옆에 추방 버튼을 붙인다.
+    if (myGuild.owner_device_id === DEVICE_ID && m.device_id !== DEVICE_ID) {
+      const kickBtn = document.createElement('button');
+      kickBtn.className = 'gmKick'; kickBtn.type = 'button'; kickBtn.textContent = '추방';
+      kickBtn.addEventListener('click', () => kickGuildMember(m.device_id, m.nickname || '?', kickBtn));
+      row.appendChild(kickBtn);
+    }
     list.appendChild(row);
   });
 }
@@ -7379,6 +7405,11 @@ async function donateToGuild(amount) {
   const beforeLevel = guildLevelInfo(myGuild.exp).level;
   if (!spendGold(amount, 'guild_donate')) return;
   updateHUD();
+  // 왕복 중 연타로 두 번 기부되는 걸 막기 위해 두 버튼 모두 잠근다
+  // (요청이 끝나면 finally에서 항상 원상복구).
+  const smallBtn = document.getElementById('guildDonateSmall');
+  const bigBtn = document.getElementById('guildDonateBig');
+  smallBtn.disabled = true; bigBtn.disabled = true;
   try {
     const { data, error } = await client.rpc('contribute_guild_gold', { p_device_id: DEVICE_ID, p_amount: amount });
     if (error || !data) {
@@ -7400,17 +7431,53 @@ async function donateToGuild(amount) {
   } catch (e) {
     player.gold += amount; recordEconomyEvent('guild_donate_refund', amount, 0); updateHUD();
     showMsg('연결할 수 없어요 (골드를 돌려드려요)', 1600);
+  } finally {
+    smallBtn.disabled = false; bigBtn.disabled = false;
   }
 }
 async function leaveGuildConfirm() {
   if (!myGuild) return;
   if (!confirm(`정말 '${myGuild.name}' 길드를 탈퇴하시겠어요?`)) return;
+  const btn = document.getElementById('guildLeaveBtn');
+  btn.disabled = true;
   const client = guildSb();
   if (client) { try { await client.rpc('leave_guild', { p_device_id: DEVICE_ID }); } catch (e) {} }
   unsubscribeGuildChat();
   myGuild = null; myGuildMembers = []; updateGuildPerk();
   showMsg('길드를 탈퇴했어요.', 1400);
   renderGuildModal();
+  btn.disabled = false;
+}
+// 길드장 전용: 멤버 추방. contribute_guild_gold/join_guild와 같은 패턴으로
+// guild.sql에 kick_guild_member(p_owner_device_id, p_guild_id, p_target_device_id)
+// RPC가 정의돼 있어야 동작한다 (길드장 검증은 서버에서 해야 클라이언트 조작을 막을 수 있음).
+async function kickGuildMember(targetDeviceId, nickname, btn) {
+  if (!myGuild || myGuild.owner_device_id !== DEVICE_ID) return;
+  if (!confirm(`정말 '${nickname}'님을 길드에서 추방하시겠어요?`)) return;
+  const client = guildSb();
+  if (!client) { showMsg('연결할 수 없어요', 1200); return; }
+  if (btn) btn.disabled = true;
+  try {
+    const { data, error } = await client.rpc('kick_guild_member', {
+      p_owner_device_id: DEVICE_ID, p_guild_id: myGuild.id, p_target_device_id: targetDeviceId,
+    });
+    if (error || data !== true) { showMsg('추방에 실패했어요', 1400); if (btn) btn.disabled = false; return; }
+    myGuildMembers = myGuildMembers.filter(m => m.device_id !== targetDeviceId);
+    document.getElementById('guildMemberCount').textContent = String(myGuildMembers.length);
+    renderGuildMembers();
+    showMsg(`'${nickname}'님을 추방했어요.`, 1400);
+  } catch (e) {
+    showMsg('연결할 수 없어요', 1200);
+    if (btn) btn.disabled = false;
+  }
+}
+// 홈 화면(내 길드) 새로고침: 다른 멤버의 기부/레벨 변화를 모달을 닫지 않고 반영.
+async function refreshGuildHome() {
+  const btn = document.getElementById('guildHomeRefreshBtn');
+  btn.disabled = true; btn.textContent = '새로고침 중...';
+  await loadMyGuildFull();
+  renderGuildModal();
+  btn.disabled = false; btn.textContent = '🔄 새로고침';
 }
 
 // ---- Guild chat ---- mirrors global chat's pattern (see initGlobalChatListener
@@ -7494,6 +7561,8 @@ document.getElementById('btnGuild').addEventListener('click', openGuildModal);
 document.getElementById('closeGuild').addEventListener('click', () => closeModal('guildModal'));
 document.getElementById('guildSearchBtn').addEventListener('click', () => searchGuilds(document.getElementById('guildSearchInput').value.trim()));
 document.getElementById('guildSearchInput').addEventListener('keydown', e => { if (e.key === 'Enter') searchGuilds(document.getElementById('guildSearchInput').value.trim()); });
+document.getElementById('guildRefreshBtn').addEventListener('click', () => searchGuilds(document.getElementById('guildSearchInput').value.trim()));
+document.getElementById('guildHomeRefreshBtn').addEventListener('click', refreshGuildHome);
 document.getElementById('guildCreateBtn').addEventListener('click', createGuildSubmit);
 document.getElementById('guildDonateSmall').addEventListener('click', () => donateToGuild(10000));
 document.getElementById('guildDonateBig').addEventListener('click', () => donateToGuild(100000));
