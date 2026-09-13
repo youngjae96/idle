@@ -205,11 +205,11 @@
      backdrop-filter still vary per modal below; only the position/display
      mechanics were duplicated eight times before this. */
   #worldBossModal, #shopModal, #jobSelectModal, #statusModal, #teleportModal,
-  #menuModal, #bestiaryModal, #offlineModal {
+  #menuModal, #bestiaryModal, #offlineModal, #guildModal {
     position:absolute; inset:0; display:none; align-items:center; justify-content:center;
   }
   #worldBossModal.open, #shopModal.open, #jobSelectModal.open, #statusModal.open,
-  #teleportModal.open, #menuModal.open, #bestiaryModal.open, #offlineModal.open { display:flex; }
+  #teleportModal.open, #menuModal.open, #bestiaryModal.open, #offlineModal.open, #guildModal.open { display:flex; }
   #worldBossModal { background:rgba(10,6,16,0.88); z-index:26; }
   #worldBossPanel {
     width:86%; max-width:320px; text-align:center;
@@ -525,6 +525,146 @@
   .bestiaryEntry .beRewards { font-size:9.5px; color:#a89ac0; margin-top:3px; line-height:1.6; word-break:keep-all; }
   #closeBestiary { padding:9px; flex-shrink:0; }
 
+  /* ---------- Guild (길드, Supabase) ----------
+     Same "각자 플레이 + 서버가 상태만 합산" spirit as the world boss: no
+     realtime battlefield, just a shared guild record everyone contributes
+     gold into. Needs guild.sql run once in the Supabase SQL editor (see the
+     comment above GUILD_LEVEL_THRESHOLDS in the script for details/testing
+     tips). Two sub-views share #guildModal: #guildBrowseView (no guild yet —
+     search/create) and #guildHomeView (in a guild — info/members/donate). */
+  #btnGuild .miEmoji { position:relative; }
+  #guildModal { background:rgba(7,5,14,0.78); z-index:24; backdrop-filter:blur(4px) saturate(0.9); }
+  #guildPanel {
+    width:90%; max-width:380px; max-height:86%;
+    display:flex; flex-direction:column;
+    background:linear-gradient(180deg,var(--panel-a),var(--panel-b));
+    border:3px solid #c9a4ff; border-radius:14px; padding:14px;
+    animation:panelRise .22s ease-out both;
+    box-shadow:0 18px 38px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+  #guildPanel h2 { color:#c9a4ff; font-size:15px; margin-bottom:8px; text-align:center; flex-shrink:0; }
+  #guildScroll { overflow-y:auto; min-height:0; margin-bottom:10px; }
+  #closeGuild { padding:9px; flex-shrink:0; }
+
+  /* -- Browse view: search + create -- */
+  #guildSearchRow { display:flex; gap:6px; margin-bottom:8px; }
+  #guildSearchInput {
+    flex:1; padding:8px 10px; font-size:12.5px; background:rgba(0,0,0,0.35);
+    border:2px solid var(--border-purple); border-radius:8px; color:#f0e8ff;
+  }
+  #guildSearchInput:focus { outline:none; border-color:#c9a4ff; }
+  #guildSearchBtn {
+    background:linear-gradient(180deg,#c9a4ff,#8a5ae0); color:#1a0f2e; font-weight:bold;
+    border:none; border-radius:8px; padding:0 12px; font-size:12px; white-space:nowrap;
+  }
+  #guildList { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; min-height:40px; }
+  .guildRow {
+    display:flex; align-items:center; gap:9px; padding:8px 9px;
+    background:rgba(0,0,0,0.24); border:1px solid rgba(201,164,255,0.35); border-radius:10px;
+  }
+  .guildRow .grEmoji { font-size:22px; width:28px; text-align:center; flex-shrink:0; }
+  .guildRow .grInfo { flex:1; min-width:0; }
+  .guildRow .grName { font-size:12.5px; font-weight:bold; color:#f0e8ff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .guildRow .grMeta { font-size:10px; color:#c8bce8; margin-top:1px; }
+  .guildRow button {
+    flex-shrink:0; background:linear-gradient(180deg,var(--gold-a),var(--gold-b)); color:#4a2a10;
+    font-weight:bold; border:none; border-radius:8px; padding:6px 10px; font-size:11px;
+  }
+  .guildRow button:disabled { background:#4a4460; color:#8a7fa8; }
+  #guildEmptyMsg { text-align:center; font-size:11.5px; color:#a89ac0; padding:12px 4px; }
+  #guildCreateDivider {
+    display:flex; align-items:center; gap:8px; margin:10px 0 6px; font-size:10.5px; color:#8a7a9a;
+  }
+  #guildCreateDivider::before, #guildCreateDivider::after { content:''; flex:1; height:1px; background:rgba(255,255,255,0.15); }
+  #guildEmojiPicker { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; justify-content:center; }
+  .guildEmojiOpt {
+    width:34px; height:34px; font-size:17px; border-radius:9px; border:2px solid transparent;
+    background:rgba(0,0,0,0.28); display:flex; align-items:center; justify-content:center;
+  }
+  .guildEmojiOpt.sel { border-color:#c9a4ff; background:rgba(201,164,255,0.22); }
+  #guildNameInput, #guildDescInput {
+    width:100%; padding:8px 10px; font-size:12.5px; background:rgba(0,0,0,0.35);
+    border:2px solid var(--border-purple); border-radius:8px; color:#f0e8ff; margin-bottom:6px;
+  }
+  #guildNameInput:focus, #guildDescInput:focus { outline:none; border-color:#c9a4ff; }
+  #guildCreateBtn {
+    width:100%; padding:9px; font-weight:bold; border:none; border-radius:8px; font-size:12.5px;
+    background:linear-gradient(180deg,#c9a4ff,#8a5ae0); color:#1a0f2e;
+    box-shadow:0 3px 0 #5a3a94; transition:transform .08s, box-shadow .08s;
+  }
+  #guildCreateBtn:active { box-shadow:0 1px 0 #5a3a94; transform:translateY(2px); }
+  #guildCreateBtn:disabled { background:#4a4460; color:#8a7fa8; box-shadow:none; }
+  #guildCreateMsg { min-height:14px; text-align:center; font-size:11px; margin-top:4px; color:#ff8a8a; }
+
+  /* -- Home view: my guild -- */
+  #guildHomeHeader { text-align:center; margin-bottom:10px; }
+  #guildHomeEmoji { font-size:34px; line-height:1; }
+  #guildHomeName { font-size:16px; font-weight:bold; color:#f0e8ff; margin-top:2px; }
+  #guildHomeDesc { font-size:10.5px; color:#c8bce8; margin-top:3px; line-height:1.5; }
+  #guildLevelRow { display:flex; justify-content:space-between; font-size:11px; color:#e8dcff; margin:8px 0 3px; font-weight:bold; }
+  #guildExpOuter { width:100%; height:11px; background:rgba(0,0,0,0.4); border-radius:6px; overflow:hidden; border:1px solid rgba(255,255,255,0.1); margin-bottom:4px; }
+  #guildExpFill { height:100%; background:linear-gradient(90deg,#c9a4ff,#8a5ae0); transition:width .3s; }
+  #guildPerkLine { font-size:10.5px; color:#8fe0c8; text-align:center; margin-bottom:10px; }
+  #guildDonateRow { display:flex; gap:6px; margin-bottom:12px; }
+  #guildDonateRow button {
+    flex:1; padding:8px 4px; font-size:11.5px; font-weight:bold; border:none; border-radius:8px;
+    background:linear-gradient(180deg,var(--gold-a),var(--gold-b)); color:#4a2a10;
+  }
+  #guildDonateRow button:disabled { background:#4a4460; color:#8a7fa8; }
+  #guildMembersTitle { font-size:11.5px; font-weight:bold; color:#ffe9b0; margin-bottom:5px; }
+  .guildMemberRow {
+    display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px dashed rgba(255,255,255,0.12); font-size:11.5px; color:#e8dcff;
+  }
+  .guildMemberRow:last-child { border-bottom:none; }
+  .guildMemberRow .gmRank { width:16px; text-align:center; color:#a89ac0; font-size:10px; flex-shrink:0; }
+  .guildMemberRow .gmName { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:bold; }
+  .guildMemberRow .gmName.owner::before { content:'👑 '; }
+  .guildMemberRow .gmName.me { color:#ffd166; }
+  .guildMemberRow .gmContrib { font-size:10px; color:#8fe0c8; flex-shrink:0; }
+  #guildChatOpenBtn {
+    width:100%; padding:9px; margin-top:10px; font-weight:bold; border:none; border-radius:8px; font-size:12px;
+    background:linear-gradient(180deg,#6fc7ff,#2a7ae0); color:#0a1a2a;
+  }
+  #guildLeaveBtn {
+    width:100%; padding:8px; margin-top:8px; font-weight:bold; border:none; border-radius:8px; font-size:11.5px;
+    background:rgba(255,90,90,0.18); color:#ff9a9a; border:1px solid rgba(255,90,90,0.4);
+  }
+
+  /* Guild chat mirrors global chat's floating (non-backdrop) panel style. */
+  #guildChatModal {
+    position:fixed; inset:0; background:transparent; pointer-events:none;
+    display:none; align-items:flex-start; justify-content:flex-end; z-index:9999;
+    padding:54px 10px 10px 10px;
+  }
+  #guildChatModal.open { display:flex; }
+  #guildChatPanel {
+    pointer-events:auto;
+    width:min(84vw, 300px); height:min(56dvh, 400px); max-height:56dvh;
+    display:flex; flex-direction:column; overflow:hidden;
+    background:linear-gradient(180deg, rgba(40,28,56,0.94), rgba(24,16,34,0.94));
+    border:2px solid #c9a4ff; border-radius:14px; padding:10px;
+    box-shadow:0 10px 28px rgba(0,0,0,0.55); backdrop-filter: blur(3px);
+    animation:panelRise .22s ease-out both;
+  }
+  #guildChatPanelTop { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:8px; }
+  #guildChatStatus { font-size:11px; color:#e0d0ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #closeGuildChat {
+    flex-shrink:0; width:26px; height:26px; padding:0; line-height:1; font-size:13px; font-weight:bold;
+    background:rgba(255,255,255,0.1); color:#f0e8ff; border:1px solid #8a6aaa; border-radius:8px;
+  }
+  #guildChatMessages { flex:1; min-height:120px; max-height:none; overflow-y:auto; background:rgba(0,0,0,0.3); border-radius:10px; padding:8px; margin-bottom:8px; }
+  #guildChatInputRow { display:flex; gap:6px; }
+  #guildChatInput {
+    flex:1; padding:8px 10px; font-size:13px; background:rgba(0,0,0,0.35);
+    border:2px solid var(--border-purple); border-radius:8px; color:#f0e8ff;
+  }
+  #guildChatInput:focus { outline:none; border-color:#c9a4ff; }
+  #sendGuildChatBtn {
+    background:linear-gradient(180deg,#c9a4ff,#8a5ae0); color:#1a0f2e; font-weight:bold;
+    border:none; border-radius:8px; padding:7px 10px; font-size:12px; white-space:nowrap;
+  }
+
+
   /* Chat floats over the game as a lightweight panel, not a full modal — no
      dark backdrop here (see the shared modal-backdrop rule further down,
      which deliberately excludes #chatModal) so the player can keep an eye on
@@ -547,7 +687,8 @@
   #chatModal, #chatPanel, #chatMessages, #jobSelectModal, #jobSelectPanel,
   #offlineModal, #offlinePanel, #saveCodeModal, #saveCodePanel, #saveCodeScroll,
   #itemList, #teleportList, #errorPanel, #menuModal, #menuPanel, #bestiaryModal, #bestiaryPanel, #bestiaryList,
-  #globalChatModal, #globalChatPanel, #globalChatMessages {
+  #globalChatModal, #globalChatPanel, #globalChatMessages,
+  #guildModal, #guildPanel, #guildScroll, #guildList, #guildChatModal, #guildChatPanel, #guildChatMessages {
     touch-action:auto; -webkit-overflow-scrolling:touch;
   }
   #chatPanel h2 { color:#ffb27a; font-size:15px; margin-bottom:8px; text-align:center; }
@@ -1022,11 +1163,53 @@
       <div id="menuPanel">
         <h2>☰ 메뉴</h2>
         <button id="btnStatus" class="menuItemBtn"><span class="miEmoji">📊</span> 상태창</button>
+        <button id="btnGuild" class="menuItemBtn"><span class="miEmoji">🏯</span> 길드<span id="guildUnreadBadge" class="unreadBadge"></span></button>
         <button id="btnBestiary" class="menuItemBtn"><span class="miEmoji">📖</span> 몬스터 도감</button>
         <button id="btnTownWarp" class="menuItemBtn" title="마을로 귀환"><span class="miEmoji">🏠</span> 마을로 귀환</button>
         <button id="btnMute" class="menuItemBtn" title="소리 켜기/끄기"><span class="miEmoji">🔊</span> 소리 켜기/끄기</button>
         <button id="btnSaveCode" class="menuItemBtn" title="저장 코드 백업/복원"><span class="miEmoji">💾</span> 기기 간 이어하기</button>
         <button id="closeMenu">닫기</button>
+      </div>
+    </div>
+    <div id="guildModal">
+      <div id="guildPanel">
+        <h2>🏯 길드</h2>
+        <div id="guildScroll">
+          <!-- 길드가 없을 때: 검색/가입/생성 -->
+          <div id="guildBrowseView">
+            <div id="guildSearchRow">
+              <input id="guildSearchInput" type="text" maxlength="12" placeholder="길드 이름 검색">
+              <button id="guildSearchBtn">검색</button>
+            </div>
+            <div id="guildList"></div>
+            <div id="guildCreateDivider">또는 새로 만들기</div>
+            <div id="guildEmojiPicker"></div>
+            <input id="guildNameInput" type="text" maxlength="12" placeholder="길드 이름 (2~12자)">
+            <input id="guildDescInput" type="text" maxlength="40" placeholder="한 줄 소개 (선택)">
+            <button id="guildCreateBtn">길드 만들기 (800,000🪙)</button>
+            <div id="guildCreateMsg"></div>
+          </div>
+          <!-- 길드가 있을 때: 정보/멤버/기부 -->
+          <div id="guildHomeView" style="display:none;">
+            <div id="guildHomeHeader">
+              <div id="guildHomeEmoji">🏯</div>
+              <div id="guildHomeName">길드명</div>
+              <div id="guildHomeDesc"></div>
+            </div>
+            <div id="guildLevelRow"><span id="guildLevelText">Lv.1</span><span id="guildExpText">0 / 0</span></div>
+            <div id="guildExpOuter"><div id="guildExpFill" style="width:0%"></div></div>
+            <div id="guildPerkLine"></div>
+            <div id="guildDonateRow">
+              <button id="guildDonateSmall" data-amt="10000">10,000🪙 기부</button>
+              <button id="guildDonateBig" data-amt="100000">100,000🪙 기부</button>
+            </div>
+            <div id="guildMembersTitle">멤버 (<span id="guildMemberCount">0</span>/30)</div>
+            <div id="guildMembersList"></div>
+            <button id="guildChatOpenBtn">💬 길드 채팅 열기</button>
+            <button id="guildLeaveBtn">길드 탈퇴</button>
+          </div>
+        </div>
+        <button id="closeGuild">닫기</button>
       </div>
     </div>
     <div id="bestiaryModal">
@@ -1103,6 +1286,23 @@
     <div id="globalChatInputRow">
       <input id="globalChatInput" type="text" maxlength="200" placeholder="메시지 입력...">
       <button id="sendGlobalChatBtn">전송</button>
+    </div>
+  </div>
+</div>
+
+<!-- Guild chat — same "floating panel, no backdrop" treatment as global
+     chat, but scoped to guild_chat_messages / a per-guild realtime channel
+     (see openGuildChatModal/subscribeGuildChat in the script). -->
+<div id="guildChatModal">
+  <div id="guildChatPanel">
+    <div id="guildChatPanelTop">
+      <span id="guildChatStatus">🏯 길드 채팅</span>
+      <button id="closeGuildChat">✕</button>
+    </div>
+    <div id="guildChatMessages"></div>
+    <div id="guildChatInputRow">
+      <input id="guildChatInput" type="text" maxlength="200" placeholder="메시지 입력...">
+      <button id="sendGuildChatBtn">전송</button>
     </div>
   </div>
 </div>
@@ -1304,7 +1504,7 @@ const TabLock = (function () {
 // affect saves or game logic at all — it only powers the "새 버전이 있어요"
 // banner below, so someone who already had the tab open when you deployed
 // finds out without having to guess-and-refresh.
-const BUILD_VERSION = '2026-09-13.2-autohunt-awareness';
+const BUILD_VERSION = '2026-09-13.3-guild';
 // 기기 간 전송 모달에도 이 값을 그대로 찍어둔다 — updateBanner는 "새 버전이
 // 있다"만 알려줄 뿐, 지금 이 탭이 정확히 어느 빌드인지는 안 보여준다. 전송이
 // 이상하게 동작할 때 "이게 최신 코드가 맞나?"를 눈으로 바로 확인할 수 있게.
@@ -4396,7 +4596,7 @@ function loop(nowMs) {
 // to be open, so tapping a different menu button doesn't leave two panels
 // stacked on top of each other — the player never has to close one by hand
 // before opening the next.
-const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'globalChatModal', 'worldBossModal'];
+const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'globalChatModal', 'worldBossModal', 'guildModal', 'guildChatModal'];
 function openModal(id) {
   for (const modalId of MODAL_IDS) {
     if (modalId !== id) document.getElementById(modalId).classList.remove('open');
@@ -4779,7 +4979,7 @@ let globalChatUnread = 0;
 // but the ☰ menu button mirrors a single combined total too, in case the
 // player has the menu open and can't see the HUD row underneath it.
 function updateMenuUnreadBadge() {
-  const total = chatUnread + globalChatUnread;
+  const total = chatUnread + globalChatUnread + guildChatUnread;
   if (total > 0) {
     $.menuUnreadBadge.textContent = total > 9 ? '9+' : String(total);
     $.menuUnreadBadge.classList.add('show');
@@ -5799,7 +5999,11 @@ function recordEconomyEvent(kind, gold=0, exp=0, count=1) {
   }
 }
 function addGold(amount, reason='reward') {
-  const value = Math.max(0, Math.round((Number(amount) || 0) * passiveGoldMult(player.passives) * GAME_BALANCE.goldGainMultiplier));
+  // guildGoldBonusPct (see the Guild section further down) is a small extra
+  // multiplier from the player's guild level — 0 until guild.sql is set up
+  // and/or the player has actually joined a guild, so this is a no-op for
+  // anyone not using that feature.
+  const value = Math.max(0, Math.round((Number(amount) || 0) * passiveGoldMult(player.passives) * GAME_BALANCE.goldGainMultiplier * (1 + (typeof guildGoldBonusPct !== 'undefined' ? guildGoldBonusPct : 0))));
   if (!value) return 0;
   player.gold += value;
   recordEconomyEvent(reason, value, 0);
@@ -6934,6 +7138,374 @@ document.getElementById('closeWorldBoss').addEventListener('click', () => closeM
 document.getElementById('enterWorldBossBtn').addEventListener('click', enterWorldBossFight);
 document.getElementById('worldBossRetreatBtn').addEventListener('click', () => finalizeWorldBossFight(false));
 
+// ---------- Guild (길드, Supabase) ----------
+// Same "각자 플레이 + 서버가 상태만 합산" pattern as the world boss above:
+// there's no shared battlefield, just a shared guild record (level/exp) that
+// members grow together by donating gold, plus a lightweight per-guild chat.
+// Needs guild.sql run once in the Supabase SQL editor before any of this
+// works — see the RPC names below (create_guild/join_guild/leave_guild/
+// contribute_guild_gold) for what that script needs to define. A device can
+// only ever be in one guild at a time (enforced by guild_members.device_id
+// being its primary key), matching how DEVICE_ID is used everywhere else in
+// this file as the one durable per-install identity.
+//
+// Guild level curve — kept in one place (guildLevelInfo) and mirrored
+// exactly by a matching plpgsql function in guild.sql, so the client's
+// progress bar and the server's authoritative `guilds.level` column never
+// disagree. Testing tip: to jump a guild to a high level instantly, run
+// `update guilds set exp = 5000000 where id = <id>;` in the SQL editor —
+// contribute_guild_gold recomputes level from exp on every donation anyway,
+// but nothing re-checks it outside that call, so also nudge the level
+// yourself in the same statement if you need the UI to reflect it before
+// the next donation: `update guilds set exp = 5000000, level = 12 where id = <id>;`
+const GUILD_EMOJIS = ['🏯','⚔️','🛡️','🐉','🔥','🌙','⭐','🍀'];
+const GUILD_CREATE_COST = 800000; // keep in sync with the "800,000🪙" label on #guildCreateBtn
+const GUILD_MAX_MEMBERS = 30;  // keep in sync with the "/30" label near #guildMemberCount
+
+let myGuild = null;             // 서버가 마지막으로 알려준 길드 row ({id,name,emoji,description,level,exp,member_count,owner_device_id}), 길드 없으면 null
+let myGuildMembers = [];        // 기부량(contribution) 내림차순으로 정렬된 멤버 목록
+let guildChatChannel = null;
+let guildChatHistoryLoaded = false;
+let lastGuildChatSentAt = 0;
+let guildChatUnread = 0;
+let guildGoldBonusPct = 0;      // addGold()가 읽는 패시브 보너스 — updateGuildPerk()가 갱신
+let guildCreateEmoji = GUILD_EMOJIS[0];
+
+function guildSb() { return dungeonSb(); } // 다른 Supabase 기능들과 같은 클라이언트 재사용
+
+// exp -> {level, into, need}. plpgsql의 guild_level_info()와 반드시 같은 커브를
+// 써야 한다 — 한쪽만 바꾸면 클라이언트 진행바와 서버 레벨이 어긋난다.
+// (기부 단위가 10,000/100,000🪙로 커진 뒤 맞춰 임계값도 1000배로 올렸다 —
+// 예전 300/450/600...은 새 기부 버튼 한 번이면 몇 레벨씩 뛰어버렸다.)
+function guildLevelInfo(exp) {
+  let level = 1;
+  let remaining = Math.max(0, Math.floor(Number(exp) || 0));
+  let need = 300000;
+  while (remaining >= need) {
+    remaining -= need;
+    level++;
+    need = 300000 + (level - 1) * 150000;
+  }
+  return { level, into: remaining, need };
+}
+function updateGuildPerk() {
+  const info = myGuild ? guildLevelInfo(myGuild.exp) : null;
+  // 레벨당 +1%, 최대 +20% — 길드가 없거나 서버 연결이 안 되면 자연히 0.
+  guildGoldBonusPct = info ? Math.min(0.20, (info.level - 1) * 0.01) : 0;
+}
+
+// 조용히(에러를 UI에 띄우지 않고) 내가 속한 길드 id만 확인 — 페이지 로드 시
+// 골드 보너스 퍼크를 적용하기 위해서와, 길드 모달을 열 때 홈/브라우즈 뷰 중
+// 뭘 보여줄지 정하기 위해 둘 다 이 함수를 거친다.
+async function fetchMyGuildId() {
+  const client = guildSb();
+  if (!client) return null;
+  try {
+    const { data, error } = await client.from('guild_members').select('guild_id').eq('device_id', DEVICE_ID).maybeSingle();
+    if (error || !data) return null;
+    return data.guild_id;
+  } catch (e) { return null; }
+}
+// 길드 row + 멤버 목록을 한 번에 새로고침. 길드가 없으면 myGuild를 null로
+// 비운다 (예: 다른 기기에서 이미 탈퇴/추방된 경우에도 다음 새로고침에 반영됨).
+async function loadMyGuildFull() {
+  const client = guildSb();
+  if (!client) { myGuild = null; myGuildMembers = []; updateGuildPerk(); return false; }
+  const guildId = await fetchMyGuildId();
+  if (!guildId) { myGuild = null; myGuildMembers = []; updateGuildPerk(); return false; }
+  try {
+    const [{ data: guildRow }, { data: members }] = await Promise.all([
+      client.from('guilds').select('*').eq('id', guildId).maybeSingle(),
+      client.from('guild_members').select('device_id,nickname,job,level,contribution').eq('guild_id', guildId).order('contribution', { ascending: false }),
+    ]);
+    if (!guildRow) { myGuild = null; myGuildMembers = []; updateGuildPerk(); return false; }
+    myGuild = guildRow;
+    myGuildMembers = members || [];
+    updateGuildPerk();
+    return true;
+  } catch (e) { return false; }
+}
+
+// ---- Browse view (검색 + 생성) ----
+function buildGuildRow(g, actionLabel, actionDisabled, onAction) {
+  // createElement + textContent throughout (not innerHTML) since guild
+  // name/description are player-chosen strings from other devices.
+  const row = document.createElement('div'); row.className = 'guildRow';
+  const emoji = document.createElement('span'); emoji.className = 'grEmoji'; emoji.textContent = g.emoji || '🏯';
+  const info = document.createElement('div'); info.className = 'grInfo';
+  const nameEl = document.createElement('div'); nameEl.className = 'grName'; nameEl.textContent = g.name;
+  const metaEl = document.createElement('div'); metaEl.className = 'grMeta';
+  metaEl.textContent = `Lv.${g.level} · ${g.member_count}/${GUILD_MAX_MEMBERS}명` + (g.description ? ` · ${g.description}` : '');
+  info.appendChild(nameEl); info.appendChild(metaEl);
+  row.appendChild(emoji); row.appendChild(info);
+  if (actionLabel) {
+    const btn = document.createElement('button');
+    btn.textContent = actionLabel; btn.disabled = actionDisabled;
+    btn.addEventListener('click', onAction);
+    row.appendChild(btn);
+  }
+  return row;
+}
+async function searchGuilds(term) {
+  const listEl = document.getElementById('guildList');
+  listEl.innerHTML = '';
+  const loading = document.createElement('div'); loading.id = 'guildEmptyMsg'; loading.textContent = '불러오는 중...';
+  listEl.appendChild(loading);
+  const client = guildSb();
+  if (!client) { loading.textContent = '연결할 수 없어요 (인터넷 연결 확인)'; return; }
+  try {
+    let query = client.from('guilds').select('id,name,emoji,description,level,member_count')
+      .order('level', { ascending: false }).order('member_count', { ascending: false }).limit(20);
+    if (term) query = query.ilike('name', `%${term}%`);
+    const { data, error } = await query;
+    if (error || !data || !data.length) {
+      loading.textContent = term ? '검색 결과가 없어요.' : '아직 만들어진 길드가 없어요. 첫 길드를 만들어보세요!';
+      return;
+    }
+    listEl.innerHTML = '';
+    data.forEach(g => {
+      const full = g.member_count >= GUILD_MAX_MEMBERS;
+      listEl.appendChild(buildGuildRow(g, full ? '만석' : '가입', full, () => joinGuild(g.id, g.name)));
+    });
+  } catch (e) { loading.textContent = '연결할 수 없어요 (인터넷 연결 확인)'; }
+}
+function renderGuildEmojiPicker() {
+  const wrap = document.getElementById('guildEmojiPicker');
+  wrap.innerHTML = '';
+  GUILD_EMOJIS.forEach(emoji => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'guildEmojiOpt' + (emoji === guildCreateEmoji ? ' sel' : '');
+    btn.textContent = emoji;
+    btn.addEventListener('click', () => { guildCreateEmoji = emoji; renderGuildEmojiPicker(); });
+    wrap.appendChild(btn);
+  });
+}
+async function createGuildSubmit() {
+  const nameInput = document.getElementById('guildNameInput');
+  const descInput = document.getElementById('guildDescInput');
+  const msgEl = document.getElementById('guildCreateMsg');
+  const name = nameInput.value.trim();
+  if (!/^[가-힣a-zA-Z0-9 ]{2,12}$/.test(name)) { msgEl.textContent = '2~12자, 한글/영문/숫자/공백만 사용할 수 있어요.'; return; }
+  if (player.gold < GUILD_CREATE_COST) { msgEl.textContent = `골드가 부족해요 (${GUILD_CREATE_COST}🪙 필요)`; return; }
+  const client = guildSb();
+  if (!client) { msgEl.textContent = '연결할 수 없어요 (인터넷 연결 확인)'; return; }
+  const desc = descInput.value.trim().slice(0, 40);
+  const btn = document.getElementById('guildCreateBtn');
+  btn.disabled = true;
+  msgEl.textContent = '만드는 중...';
+  try {
+    const { data, error } = await client.rpc('create_guild', {
+      p_device_id: DEVICE_ID, p_nickname: gchatNickname(), p_job: player.job, p_level: player.level,
+      p_name: name, p_emoji: guildCreateEmoji, p_description: desc,
+    });
+    if (error || !data) {
+      msgEl.textContent = (error && /duplicate|unique/i.test(error.message || '')) ? '이미 있는 길드 이름이에요.' : '이미 길드에 속해 있거나 실패했어요.';
+      btn.disabled = false;
+      return;
+    }
+    spendGold(GUILD_CREATE_COST, 'guild_create');
+    updateHUD();
+    nameInput.value = ''; descInput.value = ''; msgEl.textContent = '';
+    showMsg(`🏯 '${name}' 길드를 만들었어요!`, 2000);
+    await loadMyGuildFull();
+    renderGuildModal();
+  } catch (e) {
+    msgEl.textContent = '연결할 수 없어요 (인터넷 연결 확인)';
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function joinGuild(guildId, name) {
+  const client = guildSb();
+  if (!client) { showMsg('연결할 수 없어요', 1200); return; }
+  try {
+    const { data, error } = await client.rpc('join_guild', {
+      p_device_id: DEVICE_ID, p_nickname: gchatNickname(), p_job: player.job, p_level: player.level, p_guild_id: guildId,
+    });
+    if (error || data !== true) { showMsg('가입할 수 없어요 (이미 길드가 있거나 정원이 찼어요)', 1600); return; }
+    showMsg(`🏯 '${name}' 길드에 가입했어요!`, 1800);
+    await loadMyGuildFull();
+    renderGuildModal();
+  } catch (e) { showMsg('연결할 수 없어요', 1200); }
+}
+
+// ---- Home view (내 길드) ----
+function renderGuildMembers() {
+  const list = document.getElementById('guildMembersList');
+  list.innerHTML = '';
+  myGuildMembers.forEach((m, i) => {
+    const row = document.createElement('div'); row.className = 'guildMemberRow';
+    const rank = document.createElement('span'); rank.className = 'gmRank'; rank.textContent = String(i + 1);
+    const name = document.createElement('span');
+    name.className = 'gmName' + (m.device_id === myGuild.owner_device_id ? ' owner' : '') + (m.device_id === DEVICE_ID ? ' me' : '');
+    name.textContent = `${playerJobLabel(m.job)} ${m.nickname || '?'} · Lv.${m.level || 1}`;
+    const contrib = document.createElement('span'); contrib.className = 'gmContrib'; contrib.textContent = fmtGold(m.contribution || 0) + '🪙';
+    row.appendChild(rank); row.appendChild(name); row.appendChild(contrib);
+    list.appendChild(row);
+  });
+}
+function renderGuildHome() {
+  document.getElementById('guildBrowseView').style.display = 'none';
+  document.getElementById('guildHomeView').style.display = 'block';
+  document.getElementById('guildHomeEmoji').textContent = myGuild.emoji || '🏯';
+  document.getElementById('guildHomeName').textContent = myGuild.name;
+  document.getElementById('guildHomeDesc').textContent = myGuild.description || '';
+  const info = guildLevelInfo(myGuild.exp);
+  document.getElementById('guildLevelText').textContent = `Lv.${info.level}`;
+  document.getElementById('guildExpText').textContent = `${fmtGold(info.into)} / ${fmtGold(info.need)}`;
+  document.getElementById('guildExpFill').style.width = Math.max(0, Math.min(100, info.into / info.need * 100)) + '%';
+  const pct = Math.round(guildGoldBonusPct * 100);
+  document.getElementById('guildPerkLine').textContent = pct > 0
+    ? `✨ 길드 레벨 보너스: 골드 획득 +${pct}%`
+    : '✨ 길드 레벨이 오르면 전 멤버에게 골드 획득 보너스가 붙어요';
+  document.getElementById('guildMemberCount').textContent = String(myGuildMembers.length);
+  renderGuildMembers();
+}
+function renderGuildBrowse() {
+  document.getElementById('guildHomeView').style.display = 'none';
+  document.getElementById('guildBrowseView').style.display = 'block';
+  renderGuildEmojiPicker();
+  searchGuilds('');
+}
+function renderGuildModal() {
+  if (myGuild) renderGuildHome(); else renderGuildBrowse();
+}
+async function donateToGuild(amount) {
+  if (!myGuild) return;
+  if (player.gold < amount) { showMsg('골드가 부족해요', 1200); return; }
+  const client = guildSb();
+  if (!client) { showMsg('연결할 수 없어요', 1200); return; }
+  const beforeLevel = guildLevelInfo(myGuild.exp).level;
+  if (!spendGold(amount, 'guild_donate')) return;
+  updateHUD();
+  try {
+    const { data, error } = await client.rpc('contribute_guild_gold', { p_device_id: DEVICE_ID, p_amount: amount });
+    if (error || !data) {
+      // 실패하면 방금 낸 골드를 정확히 그대로 돌려준다 — addGold()는 패시브/길드
+      // 보너스 배율을 다시 곱해버리므로 여기선 일부러 쓰지 않는다.
+      player.gold += amount; recordEconomyEvent('guild_donate_refund', amount, 0); updateHUD();
+      showMsg('기부에 실패했어요 (골드를 돌려드려요)', 1600);
+      return;
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    myGuild = Object.assign({}, myGuild, row);
+    const myRow = myGuildMembers.find(m => m.device_id === DEVICE_ID);
+    if (myRow) myRow.contribution = (myRow.contribution || 0) + amount;
+    myGuildMembers.sort((a, b) => (b.contribution || 0) - (a.contribution || 0));
+    updateGuildPerk();
+    const afterLevel = guildLevelInfo(myGuild.exp).level;
+    showMsg(afterLevel > beforeLevel ? `🎉 길드가 Lv.${afterLevel}로 성장했어요!` : `🏯 길드에 ${fmtGold(amount)}🪙 기부했어요!`, afterLevel > beforeLevel ? 2200 : 1600);
+    renderGuildModal();
+  } catch (e) {
+    player.gold += amount; recordEconomyEvent('guild_donate_refund', amount, 0); updateHUD();
+    showMsg('연결할 수 없어요 (골드를 돌려드려요)', 1600);
+  }
+}
+async function leaveGuildConfirm() {
+  if (!myGuild) return;
+  if (!confirm(`정말 '${myGuild.name}' 길드를 탈퇴하시겠어요?`)) return;
+  const client = guildSb();
+  if (client) { try { await client.rpc('leave_guild', { p_device_id: DEVICE_ID }); } catch (e) {} }
+  unsubscribeGuildChat();
+  myGuild = null; myGuildMembers = []; updateGuildPerk();
+  showMsg('길드를 탈퇴했어요.', 1400);
+  renderGuildModal();
+}
+
+// ---- Guild chat ---- mirrors global chat's pattern (see initGlobalChatListener
+// above) but scoped to this guild's rows/channel only.
+function appendGuildChatMsg(kind, nickname, body) {
+  renderChatLine(document.getElementById('guildChatMessages'), kind, nickname, body, CHAT_HISTORY_MAX);
+}
+function subscribeGuildChat() {
+  if (!myGuild || guildChatChannel) return;
+  const client = guildSb();
+  if (!client) return;
+  guildChatChannel = client.channel('guild-chat-' + myGuild.id)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guild_chat_messages', filter: `guild_id=eq.${myGuild.id}` }, payload => {
+      if (payload.new.device_id === DEVICE_ID) return;
+      if (guildChatHistoryLoaded) appendGuildChatMsg('other', payload.new.nickname, payload.new.body);
+      bumpGuildChatUnread();
+    })
+    .subscribe();
+}
+function unsubscribeGuildChat() {
+  if (guildChatChannel) { try { guildChatChannel.unsubscribe(); } catch (e) {} guildChatChannel = null; }
+  guildChatHistoryLoaded = false;
+}
+async function loadGuildChatHistory() {
+  if (guildChatHistoryLoaded || !myGuild) return;
+  const client = guildSb();
+  if (!client) { appendGuildChatMsg('system', '', '길드 채팅을 불러올 수 없어요 (인터넷 연결 확인)'); return; }
+  guildChatHistoryLoaded = true;
+  const { data } = await client.from('guild_chat_messages').select('device_id,nickname,body')
+    .eq('guild_id', myGuild.id).order('created_at', { ascending: false }).limit(30);
+  if (data) data.reverse().forEach(row => appendGuildChatMsg(row.device_id === DEVICE_ID ? 'me' : 'other', row.nickname, row.body));
+  subscribeGuildChat();
+}
+function sendGuildChatMsg() {
+  const input = document.getElementById('guildChatInput');
+  const text = input.value.trim().slice(0, 200);
+  if (!text || !myGuild) return;
+  const client = guildSb();
+  if (!client) return;
+  const now = Date.now();
+  if (now - lastGuildChatSentAt < 1000) return;
+  lastGuildChatSentAt = now;
+  const nickname = gchatNickname();
+  input.value = '';
+  appendGuildChatMsg('me', nickname, text);
+  client.from('guild_chat_messages').insert({ guild_id: myGuild.id, device_id: DEVICE_ID, nickname, body: text })
+    .then(({ error }) => { if (error) appendGuildChatMsg('system', '', '전송 실패했어요'); });
+}
+function bumpGuildChatUnread() {
+  if (document.getElementById('guildChatModal').classList.contains('open')) return;
+  guildChatUnread++;
+  updateGuildUnreadBadge();
+}
+function clearGuildChatUnread() { guildChatUnread = 0; updateGuildUnreadBadge(); }
+function updateGuildUnreadBadge() {
+  const badge = document.getElementById('guildUnreadBadge');
+  if (guildChatUnread > 0) { badge.textContent = guildChatUnread > 9 ? '9+' : String(guildChatUnread); badge.classList.add('show'); }
+  else { badge.classList.remove('show'); }
+  updateMenuUnreadBadge(); // ☰ 메뉴 배지에도 합산 반영
+}
+function openGuildChatModal() {
+  if (!myGuild) return;
+  document.getElementById('guildChatStatus').textContent = `${myGuild.emoji || '🏯'} ${myGuild.name} 채팅`;
+  openModal('guildChatModal');
+  clearGuildChatUnread();
+  loadGuildChatHistory();
+}
+function closeGuildChatModal() { closeModal('guildChatModal'); }
+
+// ---- Wiring ----
+async function openGuildModal() {
+  openModal('guildModal');
+  const listEl = document.getElementById('guildList');
+  listEl.innerHTML = '';
+  const loading = document.createElement('div'); loading.id = 'guildEmptyMsg'; loading.textContent = '불러오는 중...';
+  listEl.appendChild(loading);
+  await loadMyGuildFull();
+  renderGuildModal();
+}
+document.getElementById('btnGuild').addEventListener('click', openGuildModal);
+document.getElementById('closeGuild').addEventListener('click', () => closeModal('guildModal'));
+document.getElementById('guildSearchBtn').addEventListener('click', () => searchGuilds(document.getElementById('guildSearchInput').value.trim()));
+document.getElementById('guildSearchInput').addEventListener('keydown', e => { if (e.key === 'Enter') searchGuilds(document.getElementById('guildSearchInput').value.trim()); });
+document.getElementById('guildCreateBtn').addEventListener('click', createGuildSubmit);
+document.getElementById('guildDonateSmall').addEventListener('click', () => donateToGuild(10000));
+document.getElementById('guildDonateBig').addEventListener('click', () => donateToGuild(100000));
+document.getElementById('guildLeaveBtn').addEventListener('click', leaveGuildConfirm);
+document.getElementById('guildChatOpenBtn').addEventListener('click', openGuildChatModal);
+document.getElementById('closeGuildChat').addEventListener('click', closeGuildChatModal);
+document.getElementById('sendGuildChatBtn').addEventListener('click', sendGuildChatMsg);
+document.getElementById('guildChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendGuildChatMsg(); });
+// 조용히 한 번 내 길드 정보를 받아와 골드 보너스 퍼크만 활성화 — 모달을 연 적이
+// 없어도(즉 사냥 중에도) 레벨 보너스가 바로 적용되도록. initPresence와 같은 시점.
+window.addEventListener('load', () => { loadMyGuildFull(); });
+
 // ---------- First-play onboarding tour ----------
 // See the CSS comment above #onboardOverlay for the overall approach.
 const ONBOARD_KEY = 'forestTaleOnboardSeen';
@@ -6943,7 +7515,7 @@ const ONBOARD_STEPS = [
   { sel: '#questText', text: '🎯 화면의 목표를 채우면 보상을 받아요. 다 채우면 자동으로 다음 목표가 나와요.' },
   { sel: '#btnAutoHunt', text: '🤖 이 버튼을 켜두면 앱을 꺼도 계속 사냥해요! 나중에 다시 열면 그동안 번 골드·경험치를 한꺼번에 받아요.' },
   { sel: '#btnWorldBoss', text: '🐉 매일 서버 전체가 함께 깎는 월드보스예요. 하루 3번 도전할 수 있고, 넣은 데미지만큼 바로 골드도 받아요.' },
-  { sel: '#btnMenu', text: '☰ 상태창·몬스터 도감·저장 코드 백업은 이 메뉴 안에 있어요. 이제 모험을 떠나볼까요?' },
+  { sel: '#btnMenu', text: '☰ 상태창·길드·몬스터 도감·저장 코드 백업은 이 메뉴 안에 있어요. 이제 모험을 떠나볼까요?' },
 ];
 let onboardIdx = 0;
 
