@@ -6877,6 +6877,45 @@ let globalChatChannel = null;
 let globalChatHistoryLoaded = false;
 let lastGlobalChatSentAt = 0;
 
+// ---------- 채팅 '내가 보낸 메시지' 판별 (device_id 미사용) ----------
+// 예전에는 서버에서 받아온 row.device_id를 우리 DEVICE_ID와 비교해서
+// '내 메시지'를 구분했다. 문제는 그 비교를 하려면 다른 사람의 device_id도
+// 화면(정확히는 네트워크 응답)에 그대로 실려 와야 한다는 것 — device_id는
+// 길드 기부/월드보스/일일던전 같은 다른 Supabase RPC들의 사실상 유일한
+// "신분증"이라, 채팅창만 열어봐도 다른 플레이어의 device_id를 알아내
+// 그 사람 행세로 저런 요청을 대신 보낼 수 있는 경로가 생긴다.
+// 그래서 device_id를 아예 안 받아오는 대신, 내가 방금 보낸 메시지의
+// (닉네임+내용) 서명을 몇 초간 기억해뒀다가 realtime으로 그 메시지가
+// 그대로 돌아오면 "이건 내가 보낸 거다"라고 판단한다. 전체채팅/길드채팅
+// 각각 독립된 트래커를 쓴다(서로 다른 채널이라 섞일 이유는 없지만, 혹시
+// 같은 닉네임+내용을 동시에 다른 채팅창에 보내는 경우까지 안전하게).
+function createRecentOutgoingChatTracker() {
+  const entries = []; // [{sig, at}]
+  const MAX_AGE_MS = 15000;
+  function sig(nickname, body) { return (nickname || '') + '\u0000' + (body || ''); }
+  function prune(now) { while (entries.length && now - entries[0].at > MAX_AGE_MS) entries.shift(); }
+  return {
+    remember(nickname, body) {
+      const now = Date.now();
+      prune(now);
+      entries.push({ sig: sig(nickname, body), at: now });
+    },
+    // 매칭되면 그 항목을 소비(제거)한다 — 같은 문구를 두 번 보냈을 때
+    // 첫 번째 에코만 소비하고 그 다음 에코는 정상적으로 다시 매칭되게.
+    consume(nickname, body) {
+      const now = Date.now();
+      prune(now);
+      const target = sig(nickname, body);
+      const idx = entries.findIndex(e => e.sig === target);
+      if (idx === -1) return false;
+      entries.splice(idx, 1);
+      return true;
+    },
+  };
+}
+const outgoingGlobalChat = createRecentOutgoingChatTracker();
+const outgoingGuildChat = createRecentOutgoingChatTracker();
+
 function gchatNickname() {
   return (typeof player !== 'undefined' && player && player.nickname) ? player.nickname : '손님';
 }
@@ -6938,7 +6977,7 @@ function initGlobalChatListener() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, payload => {
       // Our own message is appended locally the instant we send it (feels
       // instant instead of waiting on a round-trip) — skip the echo here.
-      if (payload.new.device_id === DEVICE_ID) return;
+      if (outgoingGlobalChat.consume(payload.new.nickname, payload.new.body)) return;
       if (globalChatHistoryLoaded) {
         appendGlobalChatMsg('other', payload.new.nickname, payload.new.body, rowToGlobalChatProfile(payload.new));
       }
@@ -6957,11 +6996,18 @@ async function loadGlobalChatHistory() {
   // postgres_changes (see initGlobalChatListener) only pushes *new* rows
   // from the moment it subscribes, so without this one-time fetch the
   // panel would open empty.
+  // device_id는 더 이상 select하지 않는다 — 남의 device_id가 이 응답에
+  // 실려오는 걸 원천 차단하기 위함(위 outgoingGlobalChat 트래커 설명 참고).
+  // 그 결과 "과거에 내가 보낸 메시지"까지 정확히 구분할 방법은 없어져서
+  // 히스토리 로드 시점의 메시지는 전부 'other' 스타일로 표시된다 — 이번
+  // 세션에서 새로 보내는 메시지는 outgoingGlobalChat 덕분에 여전히 'me'로
+  // 정확히 표시되므로, 실질적으로는 "채팅창을 새로 열었을 때 과거 내 메시지
+  // 말풍선 방향이 살짝 달라지는" 정도의 사소한 화면상 트레이드오프다.
   const { data } = await sb.from('chat_messages')
-    .select(`device_id, nickname, body, job, level, ${PROFILE_FIELDS.map(f => f.col).join(', ')}`)
+    .select(`nickname, body, job, level, ${PROFILE_FIELDS.map(f => f.col).join(', ')}`)
     .order('created_at', { ascending: false }).limit(30);
   if (data) data.reverse().forEach(row => appendGlobalChatMsg(
-    row.device_id === DEVICE_ID ? 'me' : 'other', row.nickname, row.body, rowToGlobalChatProfile(row)
+    'other', row.nickname, row.body, rowToGlobalChatProfile(row)
   ));
   initGlobalChatListener(); // no-op if already subscribed from window 'load'
 }
@@ -6978,6 +7024,7 @@ function sendGlobalChatMsg() {
   const profile = gchatProfile();
   $.globalChatInput.value = '';
   appendGlobalChatMsg('me', nickname, text, profile);
+  outgoingGlobalChat.remember(nickname, text);
   sb.from('chat_messages').insert({
     device_id: DEVICE_ID, nickname, body: text,
     job: profile && profile.job, level: profile && profile.level,
@@ -7693,7 +7740,7 @@ function subscribeGuildChat() {
   if (!client) return;
   guildChatChannel = client.channel('guild-chat-' + myGuild.id)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guild_chat_messages', filter: `guild_id=eq.${myGuild.id}` }, payload => {
-      if (payload.new.device_id === DEVICE_ID) return;
+      if (outgoingGuildChat.consume(payload.new.nickname, payload.new.body)) return;
       if (guildChatHistoryLoaded) appendGuildChatMsg('other', payload.new.nickname, payload.new.body);
       bumpGuildChatUnread();
     })
@@ -7708,9 +7755,14 @@ async function loadGuildChatHistory() {
   const client = guildSb();
   if (!client) { appendGuildChatMsg('system', '', '길드 채팅을 불러올 수 없어요 (인터넷 연결 확인)'); return; }
   guildChatHistoryLoaded = true;
-  const { data } = await client.from('guild_chat_messages').select('device_id,nickname,body')
+  // 전체채팅과 같은 이유로 device_id는 select하지 않는다 — 길드원끼리는
+  // 서로의 device_id를 몰라야 다른 RPC(기부/월드보스 등)에서 서로 행세할
+  // 수 없다. 과거 메시지의 '내 것' 표시는 못 하게 되지만(전체채팅과 같은
+  // 트레이드오프), 이번 세션에 새로 보내는 메시지는 outgoingGuildChat로
+  // 정확히 구분된다.
+  const { data } = await client.from('guild_chat_messages').select('nickname,body')
     .eq('guild_id', myGuild.id).order('created_at', { ascending: false }).limit(30);
-  if (data) data.reverse().forEach(row => appendGuildChatMsg(row.device_id === DEVICE_ID ? 'me' : 'other', row.nickname, row.body));
+  if (data) data.reverse().forEach(row => appendGuildChatMsg('other', row.nickname, row.body));
   subscribeGuildChat();
 }
 function sendGuildChatMsg() {
@@ -7725,6 +7777,7 @@ function sendGuildChatMsg() {
   const nickname = gchatNickname();
   input.value = '';
   appendGuildChatMsg('me', nickname, text);
+  outgoingGuildChat.remember(nickname, text);
   client.from('guild_chat_messages').insert({ guild_id: myGuild.id, device_id: DEVICE_ID, nickname, body: text })
     .then(({ error }) => { if (error) appendGuildChatMsg('system', '', '전송 실패했어요'); });
 }
