@@ -608,6 +608,21 @@
   #guildHomeEmoji { font-size:34px; line-height:1; }
   #guildHomeName { font-size:16px; font-weight:bold; color:#f0e8ff; margin-top:2px; }
   #guildHomeDesc { font-size:10.5px; color:#c8bce8; margin-top:3px; line-height:1.5; }
+  #guildDescEditBtn {
+    background:none; border:none; color:#a89ac0; font-size:10px; text-decoration:underline;
+    cursor:pointer; margin-top:4px; padding:2px 4px;
+  }
+  #guildDescEditRow { display:flex; gap:5px; margin-top:6px; justify-content:center; }
+  #guildDescEditInput {
+    flex:1; max-width:180px; padding:6px 8px; font-size:11.5px; background:rgba(0,0,0,0.35);
+    border:2px solid var(--border-purple); border-radius:8px; color:#f0e8ff;
+  }
+  #guildDescEditInput:focus { outline:none; border-color:#c9a4ff; }
+  #guildDescSaveBtn, #guildDescCancelBtn {
+    flex-shrink:0; font-size:10.5px; padding:6px 8px; border-radius:8px; border:1px solid rgba(255,255,255,0.18);
+    background:rgba(255,255,255,0.08); color:#c8bce8; cursor:pointer;
+  }
+  #guildDescSaveBtn:disabled { opacity:0.5; cursor:default; }
   #guildLevelRow { display:flex; justify-content:space-between; font-size:11px; color:#e8dcff; margin:8px 0 3px; font-weight:bold; }
   #guildExpOuter { width:100%; height:11px; background:rgba(0,0,0,0.4); border-radius:6px; overflow:hidden; border:1px solid rgba(255,255,255,0.1); margin-bottom:4px; }
   #guildExpFill { height:100%; background:linear-gradient(90deg,#c9a4ff,#8a5ae0); transition:width .3s; }
@@ -1199,7 +1214,7 @@
             <div id="guildEmojiPicker"></div>
             <input id="guildNameInput" type="text" maxlength="12" placeholder="길드 이름 (2~12자)">
             <input id="guildDescInput" type="text" maxlength="40" placeholder="한 줄 소개 (선택)">
-            <button id="guildCreateBtn">길드 만들기 (800,000🪙)</button>
+            <button id="guildCreateBtn">길드 만들기 (500,000🪙)</button>
             <div id="guildCreateMsg"></div>
           </div>
           <!-- 길드가 있을 때: 정보/멤버/기부 -->
@@ -1209,6 +1224,12 @@
               <div id="guildHomeEmoji">🏯</div>
               <div id="guildHomeName">길드명</div>
               <div id="guildHomeDesc"></div>
+              <button id="guildDescEditBtn" style="display:none;">✏️ 소개글 수정</button>
+              <div id="guildDescEditRow" style="display:none;">
+                <input id="guildDescEditInput" type="text" maxlength="40" placeholder="한 줄 소개 (선택)">
+                <button id="guildDescSaveBtn">저장</button>
+                <button id="guildDescCancelBtn">취소</button>
+              </div>
             </div>
             <div id="guildLevelRow"><span id="guildLevelText">Lv.1</span><span id="guildExpText">0 / 0</span></div>
             <div id="guildExpOuter"><div id="guildExpFill" style="width:0%"></div></div>
@@ -7173,7 +7194,7 @@ document.getElementById('worldBossRetreatBtn').addEventListener('click', () => f
 // yourself in the same statement if you need the UI to reflect it before
 // the next donation: `update guilds set exp = 5000000, level = 12 where id = <id>;`
 const GUILD_EMOJIS = ['🏯','⚔️','🛡️','🐉','🔥','🌙','⭐','🍀'];
-const GUILD_CREATE_COST = 800000; // keep in sync with the "800,000🪙" label on #guildCreateBtn
+const GUILD_CREATE_COST = 500000; // keep in sync with the "500,000🪙" label on #guildCreateBtn
 const GUILD_MAX_MEMBERS = 30;  // keep in sync with the "/30" label near #guildMemberCount
 
 let myGuild = null;             // 서버가 마지막으로 알려준 길드 row ({id,name,emoji,description,level,exp,member_count,owner_device_id}), 길드 없으면 null
@@ -7377,6 +7398,11 @@ function renderGuildHome() {
   document.getElementById('guildHomeEmoji').textContent = myGuild.emoji || '🏯';
   document.getElementById('guildHomeName').textContent = myGuild.name;
   document.getElementById('guildHomeDesc').textContent = myGuild.description || '';
+  // 소개글 수정 UI는 다시 그릴 때마다 편집 중이 아닌 기본 상태로 되돌리고,
+  // 길드장에게만 "수정" 버튼을 보여준다 (실제 검증은 서버 RPC가 함).
+  document.getElementById('guildDescEditRow').style.display = 'none';
+  document.getElementById('guildHomeDesc').style.display = 'block';
+  document.getElementById('guildDescEditBtn').style.display = (myGuild.owner_device_id === DEVICE_ID) ? 'inline-block' : 'none';
   const info = guildLevelInfo(myGuild.exp);
   document.getElementById('guildLevelText').textContent = `Lv.${info.level}`;
   document.getElementById('guildExpText').textContent = `${fmtGold(info.into)} / ${fmtGold(info.need)}`;
@@ -7433,6 +7459,45 @@ async function donateToGuild(amount) {
     showMsg('연결할 수 없어요 (골드를 돌려드려요)', 1600);
   } finally {
     smallBtn.disabled = false; bigBtn.disabled = false;
+  }
+}
+// 소개글 편집 UI를 열고/닫는다. show=true면 입력창에 현재 값을 채우고 포커스.
+function toggleGuildDescEdit(show) {
+  if (!myGuild) return;
+  document.getElementById('guildHomeDesc').style.display = show ? 'none' : 'block';
+  document.getElementById('guildDescEditBtn').style.display = show ? 'none' : (myGuild.owner_device_id === DEVICE_ID ? 'inline-block' : 'none');
+  document.getElementById('guildDescEditRow').style.display = show ? 'flex' : 'none';
+  if (show) {
+    const input = document.getElementById('guildDescEditInput');
+    input.value = myGuild.description || '';
+    input.focus();
+  }
+}
+// 길드장 전용: 소개글 수정. update_guild_description(p_owner_device_id, p_guild_id,
+// p_description) RPC가 guild.sql에 있어야 한다 (kick_guild_member와 같은 패턴으로
+// 소유권을 서버에서 검증).
+async function saveGuildDescription() {
+  if (!myGuild || myGuild.owner_device_id !== DEVICE_ID) return;
+  const input = document.getElementById('guildDescEditInput');
+  const desc = input.value.trim().slice(0, 40);
+  const client = guildSb();
+  if (!client) { showMsg('연결할 수 없어요', 1200); return; }
+  const saveBtn = document.getElementById('guildDescSaveBtn');
+  const cancelBtn = document.getElementById('guildDescCancelBtn');
+  saveBtn.disabled = true; cancelBtn.disabled = true;
+  try {
+    const { data, error } = await client.rpc('update_guild_description', {
+      p_owner_device_id: DEVICE_ID, p_guild_id: myGuild.id, p_description: desc,
+    });
+    if (error || data !== true) { showMsg('수정에 실패했어요', 1400); return; }
+    myGuild = Object.assign({}, myGuild, { description: desc });
+    toggleGuildDescEdit(false);
+    document.getElementById('guildHomeDesc').textContent = desc;
+    showMsg('소개글을 수정했어요.', 1200);
+  } catch (e) {
+    showMsg('연결할 수 없어요', 1200);
+  } finally {
+    saveBtn.disabled = false; cancelBtn.disabled = false;
   }
 }
 async function leaveGuildConfirm() {
@@ -7563,6 +7628,10 @@ document.getElementById('guildSearchBtn').addEventListener('click', () => search
 document.getElementById('guildSearchInput').addEventListener('keydown', e => { if (e.key === 'Enter') searchGuilds(document.getElementById('guildSearchInput').value.trim()); });
 document.getElementById('guildRefreshBtn').addEventListener('click', () => searchGuilds(document.getElementById('guildSearchInput').value.trim()));
 document.getElementById('guildHomeRefreshBtn').addEventListener('click', refreshGuildHome);
+document.getElementById('guildDescEditBtn').addEventListener('click', () => toggleGuildDescEdit(true));
+document.getElementById('guildDescCancelBtn').addEventListener('click', () => toggleGuildDescEdit(false));
+document.getElementById('guildDescSaveBtn').addEventListener('click', saveGuildDescription);
+document.getElementById('guildDescEditInput').addEventListener('keydown', e => { if (e.key === 'Enter') saveGuildDescription(); });
 document.getElementById('guildCreateBtn').addEventListener('click', createGuildSubmit);
 document.getElementById('guildDonateSmall').addEventListener('click', () => donateToGuild(10000));
 document.getElementById('guildDonateBig').addEventListener('click', () => donateToGuild(100000));
