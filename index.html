@@ -423,6 +423,10 @@
     font-weight:bold; line-height:16px; text-align:center; box-shadow:0 0 0 2px #241a15;
   }
   .unreadBadge.show { display:block; }
+  /* btnGlobalChat already has onlineCountBadge sitting top-right, so its own
+     unread badge (see bumpGlobalChatUnread) is pinned top-left instead so
+     the two never overlap. */
+  .unreadBadge.unreadBadge-left { left:-6px; right:auto; }
 
   /* ---------- First-play onboarding tour ----------
      A one-time, lightweight tooltip tour shown right after a brand-new
@@ -856,7 +860,7 @@
         <button id="btnInventory" class="hudIconBtn" title="상점 / 장비">🎒</button>
         <button id="btnTeleport" class="hudIconBtn" title="텔레포트">🗺️</button>
         <button id="btnChat" class="hudIconBtn" title="채팅 / 친구 연결">💬<span id="chatUnreadBadge" class="unreadBadge"></span></button>
-        <button id="btnGlobalChat" class="hudIconBtn" title="전체 채팅">🌐<span id="onlineCountBadge" class="onlineCountBadge"></span></button>
+        <button id="btnGlobalChat" class="hudIconBtn" title="전체 채팅">🌐<span id="onlineCountBadge" class="onlineCountBadge"></span><span id="globalChatUnreadBadge" class="unreadBadge unreadBadge-left"></span></button>
         <button id="btnWorldBoss" class="hudIconBtn" title="월드보스">🐉</button>
         <button id="btnMenu">☰ 메뉴<span id="menuUnreadBadge" class="unreadBadge"></span></button>
       </div>
@@ -1131,7 +1135,7 @@ const $ = {};
  'randomMatchBtn','msg','mapName','friendsView','copyPeerId','comboText','chatUnreadBadge','chatMessages',
  'buyPotion5','buyPotion10','buyPotion','btnTownWarp','btnStatus','btnMute','btnChat',
  'btnMenu','menuUnreadBadge',
- 'btnGlobalChat','onlineCountBadge','globalChatModal','globalChatMessages','globalChatInput',
+ 'btnGlobalChat','onlineCountBadge','globalChatUnreadBadge','globalChatModal','globalChatMessages','globalChatInput',
  'sendGlobalChatBtn','closeGlobalChat','globalChatStatus',
 ].forEach(id => { $[id] = document.getElementById(id); });
 
@@ -1300,7 +1304,7 @@ const TabLock = (function () {
 // affect saves or game logic at all — it only powers the "새 버전이 있어요"
 // banner below, so someone who already had the tab open when you deployed
 // finds out without having to guess-and-refresh.
-const BUILD_VERSION = '2026-09-07.4-dungeon-sync-visible';
+const BUILD_VERSION = '2026-09-13.1-autohunt-stall-window';
 // 기기 간 전송 모달에도 이 값을 그대로 찍어둔다 — updateBanner는 "새 버전이
 // 있다"만 알려줄 뿐, 지금 이 탭이 정확히 어느 빌드인지는 안 보여준다. 전송이
 // 이상하게 동작할 때 "이게 최신 코드가 맞나?"를 눈으로 바로 확인할 수 있게.
@@ -2277,7 +2281,7 @@ let autoHuntDescending = null; // { plat, dir } while actively walking off a pla
 // on an elevated platform, force a descent regardless of what the normal rules say.
 let autoHuntStuckFrames = 0;
 let autoHuntStuckX = null;
-const AUTO_HUNT_STUCK_LIMIT = 50; // ~0.8s at 60fps before we consider it "stuck"
+const AUTO_HUNT_STUCK_LIMIT = 15; // ~0.25s at 60fps before we consider it "stuck" (was 50/~0.8s — that gap was long enough to read as a freeze)
 
 // Prefer targets we can actually reach; only fall back to an out-of-reach one
 // (e.g. a bat flying high above) if nothing reachable exists, so the bot
@@ -4770,24 +4774,48 @@ function checkPeerIdle() {
 setInterval(checkPeerIdle, 15000);
 
 let chatUnread = 0;
+let globalChatUnread = 0;
+// btnChat and btnGlobalChat each show their own badge in the HUD top row,
+// but the ☰ menu button mirrors a single combined total too, in case the
+// player has the menu open and can't see the HUD row underneath it.
+function updateMenuUnreadBadge() {
+  const total = chatUnread + globalChatUnread;
+  if (total > 0) {
+    $.menuUnreadBadge.textContent = total > 9 ? '9+' : String(total);
+    $.menuUnreadBadge.classList.add('show');
+  } else {
+    $.menuUnreadBadge.classList.remove('show');
+  }
+}
 function bumpChatUnread() {
   // Only worth flagging if the player isn't already looking at the chat panel.
   const modalOpen = $.chatModal.classList.contains('open');
   if (modalOpen) return;
   chatUnread++;
-  const text = chatUnread > 9 ? '9+' : String(chatUnread);
-  // btnChat lives in the HUD top row now, so its own badge is already always
-  // visible — still mirror the count onto the ☰ menu button too, in case the
-  // player has the menu open and can't see the HUD row underneath it.
-  $.chatUnreadBadge.textContent = text;
+  $.chatUnreadBadge.textContent = chatUnread > 9 ? '9+' : String(chatUnread);
   $.chatUnreadBadge.classList.add('show');
-  $.menuUnreadBadge.textContent = text;
-  $.menuUnreadBadge.classList.add('show');
+  updateMenuUnreadBadge();
 }
 function clearChatUnread() {
   chatUnread = 0;
   $.chatUnreadBadge.classList.remove('show');
-  $.menuUnreadBadge.classList.remove('show');
+  updateMenuUnreadBadge();
+}
+// Same idea as bumpChatUnread/clearChatUnread above, but for the global
+// (Supabase) chat button — see initGlobalChatListener below for where this
+// gets called from.
+function bumpGlobalChatUnread() {
+  const modalOpen = $.globalChatModal.classList.contains('open');
+  if (modalOpen) return;
+  globalChatUnread++;
+  $.globalChatUnreadBadge.textContent = globalChatUnread > 9 ? '9+' : String(globalChatUnread);
+  $.globalChatUnreadBadge.classList.add('show');
+  updateMenuUnreadBadge();
+}
+function clearGlobalChatUnread() {
+  globalChatUnread = 0;
+  $.globalChatUnreadBadge.classList.remove('show');
+  updateMenuUnreadBadge();
 }
 function removeRemotePlayersForConnection(connectionPeerId) {
   let changed = false;
@@ -6565,6 +6593,31 @@ function initPresence() {
       if (status === 'SUBSCRIBED') await presenceChannel.track({ at: Date.now() });
     });
 }
+// Subscribes to new global chat messages as early as possible (mirrors
+// initPresence above) — NOT gated on the panel ever having been opened —
+// so a badge can show up on btnGlobalChat exactly like the party chat's
+// unread badge does, even for a player who has never opened 전체채팅 yet.
+// Messages only get rendered into the DOM list once history has actually
+// been loaded (see loadGlobalChatHistory below); before that they just
+// bump the unread count, and the first loadGlobalChatHistory() fetch will
+// pick them up naturally since they're already committed to the table.
+let globalChatListening = false;
+function initGlobalChatListener() {
+  if (typeof supabase === 'undefined' || globalChatListening) return;
+  if (!sb) sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  globalChatListening = true;
+  globalChatChannel = sb.channel('chat')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, payload => {
+      // Our own message is appended locally the instant we send it (feels
+      // instant instead of waiting on a round-trip) — skip the echo here.
+      if (payload.new.device_id === DEVICE_ID) return;
+      if (globalChatHistoryLoaded) {
+        appendGlobalChatMsg('other', payload.new.nickname, payload.new.body, rowToGlobalChatProfile(payload.new));
+      }
+      bumpGlobalChatUnread();
+    })
+    .subscribe();
+}
 async function loadGlobalChatHistory() {
   if (globalChatHistoryLoaded) return;
   if (typeof supabase === 'undefined') {
@@ -6573,23 +6626,16 @@ async function loadGlobalChatHistory() {
   }
   globalChatHistoryLoaded = true; // set first so a slow/failed fetch can't be retried into a duplicate history load
   if (!sb) sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  // postgres_changes below only pushes *new* rows from the moment we
-  // subscribe, so without this one-time fetch the panel would open empty.
+  // postgres_changes (see initGlobalChatListener) only pushes *new* rows
+  // from the moment it subscribes, so without this one-time fetch the
+  // panel would open empty.
   const { data } = await sb.from('chat_messages')
     .select(`device_id, nickname, body, job, level, ${PROFILE_FIELDS.map(f => f.col).join(', ')}`)
     .order('created_at', { ascending: false }).limit(30);
   if (data) data.reverse().forEach(row => appendGlobalChatMsg(
     row.device_id === DEVICE_ID ? 'me' : 'other', row.nickname, row.body, rowToGlobalChatProfile(row)
   ));
-
-  globalChatChannel = sb.channel('chat')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, payload => {
-      // Our own message is appended locally the instant we send it (feels
-      // instant instead of waiting on a round-trip) — skip the echo here.
-      if (payload.new.device_id === DEVICE_ID) return;
-      appendGlobalChatMsg('other', payload.new.nickname, payload.new.body, rowToGlobalChatProfile(payload.new));
-    })
-    .subscribe();
+  initGlobalChatListener(); // no-op if already subscribed from window 'load'
 }
 function sendGlobalChatMsg() {
   const text = $.globalChatInput.value.trim().slice(0, 200);
@@ -6612,6 +6658,7 @@ function sendGlobalChatMsg() {
 }
 $.btnGlobalChat.addEventListener('click', () => {
   openModal('globalChatModal');
+  clearGlobalChatUnread();
   loadGlobalChatHistory();
 });
 $.closeGlobalChat.addEventListener('click', () => {
@@ -6621,6 +6668,7 @@ $.closeGlobalChat.addEventListener('click', () => {
 $.sendGlobalChatBtn.addEventListener('click', sendGlobalChatMsg);
 $.globalChatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendGlobalChatMsg(); });
 window.addEventListener('load', initPresence);
+window.addEventListener('load', initGlobalChatListener);
 
 // ---------- World Boss (Supabase) ----------
 // 전 서버가 함께 깎는 보스 체력 풀. 실시간으로 같은 화면을 보는 건 아니고,
