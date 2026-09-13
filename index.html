@@ -676,6 +676,8 @@
     background:linear-gradient(180deg,var(--gold-a),var(--gold-b)); color:#4a2a10;
   }
   #guildDonateRow button:disabled { background:#4a4460; color:#8a7fa8; }
+  #guildDonateStatus { font-size:10.5px; color:#a898cc; text-align:center; margin:-6px 0 12px; }
+  #guildDonateStatus.limit-reached { color:#ff9a9a; }
   #guildMembersTitle { font-size:11.5px; font-weight:bold; color:#ffe9b0; margin-bottom:5px; }
   .guildMemberRow {
     display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px dashed rgba(255,255,255,0.12); font-size:11.5px; color:#e8dcff;
@@ -686,6 +688,7 @@
   .guildMemberRow .gmName.owner::before { content:'👑 '; }
   .guildMemberRow .gmName.me { color:#ffd166; }
   .guildMemberRow .gmContrib { font-size:10px; color:#8fe0c8; flex-shrink:0; }
+  .guildMemberRow .gmToday { font-size:9px; color:#d8b8ff; flex-shrink:0; margin-left:4px; }
   .guildMemberRow .gmKick {
     flex-shrink:0; background:rgba(255,90,90,0.15); color:#ff9a9a; border:1px solid rgba(255,90,90,0.35);
     border-radius:6px; font-size:9.5px; padding:3px 6px; margin-left:4px; cursor:pointer;
@@ -1295,6 +1298,7 @@
               <button id="guildDonateSmall" data-amt="10000">10,000🪙 기부</button>
               <button id="guildDonateBig" data-amt="100000">100,000🪙 기부</button>
             </div>
+            <div id="guildDonateStatus"></div>
             <div id="guildMembersTitle">멤버 (<span id="guildMemberCount">0</span>/30)</div>
             <div id="guildMembersList"></div>
             <button id="guildChatOpenBtn">💬 길드 채팅 열기</button>
@@ -1596,7 +1600,7 @@ const TabLock = (function () {
 // affect saves or game logic at all — it only powers the "새 버전이 있어요"
 // banner below, so someone who already had the tab open when you deployed
 // finds out without having to guess-and-refresh.
-const BUILD_VERSION = '2026-09-13.3-guild';
+const BUILD_VERSION = '2026-09-13.4-guild-daily';
 // 기기 간 전송 모달에도 이 값을 그대로 찍어둔다 — updateBanner는 "새 버전이
 // 있다"만 알려줄 뿐, 지금 이 탭이 정확히 어느 빌드인지는 안 보여준다. 전송이
 // 이상하게 동작할 때 "이게 최신 코드가 맞나?"를 눈으로 바로 확인할 수 있게.
@@ -7317,7 +7321,7 @@ async function loadMyGuildFull() {
   try {
     const [{ data: guildRow }, { data: members }] = await Promise.all([
       client.from('guilds').select('*').eq('id', guildId).maybeSingle(),
-      client.from('guild_members').select('device_id,nickname,job,level,contribution').eq('guild_id', guildId).order('contribution', { ascending: false }),
+      client.from('guild_members_with_today').select('device_id,nickname,job,level,contribution,today_contribution,today_donate_count').eq('guild_id', guildId).order('contribution', { ascending: false }),
     ]);
     if (!guildRow) { myGuild = null; myGuildMembers = []; updateGuildPerk(); return false; }
     myGuild = guildRow;
@@ -7448,6 +7452,11 @@ function renderGuildMembers() {
     name.textContent = `${playerJobLabel(m.job)} ${m.nickname || '?'} · Lv.${m.level || 1}`;
     const contrib = document.createElement('span'); contrib.className = 'gmContrib'; contrib.textContent = fmtGold(m.contribution || 0) + '🪙';
     row.appendChild(rank); row.appendChild(name); row.appendChild(contrib);
+    // 오늘 하나라도 기부했으면만 작은 배지로 오늘 기부액을 덧붙인다 (0이면 굳이 안 보여줌).
+    if (m.today_contribution > 0) {
+      const today = document.createElement('span'); today.className = 'gmToday'; today.textContent = `(오늘 ${fmtGold(m.today_contribution)}🪙)`;
+      row.appendChild(today);
+    }
     // 길드장 본인 눈에만, 자신을 제외한 멤버 옆에 추방 버튼을 붙인다.
     if (myGuild.owner_device_id === DEVICE_ID && m.device_id !== DEVICE_ID) {
       const kickBtn = document.createElement('button');
@@ -7478,6 +7487,7 @@ function renderGuildHome() {
     ? `✨ 길드 레벨 보너스: 골드 획득 +${pct}%`
     : '✨ 길드 레벨이 오르면 전 멤버에게 골드 획득 보너스가 붙어요';
   document.getElementById('guildMemberCount').textContent = String(myGuildMembers.length);
+  renderGuildDonateStatus();
   renderGuildMembers();
 }
 function renderGuildBrowse() {
@@ -7489,8 +7499,37 @@ function renderGuildBrowse() {
 function renderGuildModal() {
   if (myGuild) renderGuildHome(); else renderGuildBrowse();
 }
+// ---------- 길드 기부 일일 횟수 제한 ----------
+// 서버(guild_members.today_donate_count / today_contribution, RPC 안에서 체크)가
+// 진짜 기준이다 — 여기 상수는 화면 표시용 라벨일 뿐, 실제 차단은 RPC의
+// "daily_limit_reached" 예외로 이뤄진다. myGuildMembers는 로그인 시/새로고침
+// 시 guild_members_with_today 뷰에서 이미 오늘 값까지 채워져서 온다.
+const GUILD_DONATE_DAILY_LIMIT = 5;
+function myGuildRow() { return myGuildMembers.find(m => m.device_id === DEVICE_ID); }
+function guildDonatesLeftToday() {
+  const row = myGuildRow();
+  const count = row ? (row.today_donate_count || 0) : 0;
+  return Math.max(0, GUILD_DONATE_DAILY_LIMIT - count);
+}
+function renderGuildDonateStatus() {
+  const row = myGuildRow();
+  const count = row ? (row.today_donate_count || 0) : 0;
+  const amount = row ? (row.today_contribution || 0) : 0;
+  const left = Math.max(0, GUILD_DONATE_DAILY_LIMIT - count);
+  const el = document.getElementById('guildDonateStatus');
+  if (!el) return;
+  el.textContent = amount > 0
+    ? `오늘 남은 기부 횟수: ${left}/${GUILD_DONATE_DAILY_LIMIT} · 오늘 기부한 금액: ${fmtGold(amount)}🪙`
+    : `오늘 남은 기부 횟수: ${left}/${GUILD_DONATE_DAILY_LIMIT}`;
+  el.classList.toggle('limit-reached', left <= 0);
+  const smallBtn = document.getElementById('guildDonateSmall');
+  const bigBtn = document.getElementById('guildDonateBig');
+  if (smallBtn) smallBtn.disabled = left <= 0;
+  if (bigBtn) bigBtn.disabled = left <= 0;
+}
 async function donateToGuild(amount) {
   if (!myGuild) return;
+  if (guildDonatesLeftToday() <= 0) { showMsg(`오늘 기부 횟수를 다 썼어요 (${GUILD_DONATE_DAILY_LIMIT}/${GUILD_DONATE_DAILY_LIMIT})`, 1600); return; }
   if (player.gold < amount) { showMsg('골드가 부족해요', 1200); return; }
   const client = guildSb();
   if (!client) { showMsg('연결할 수 없어요', 1200); return; }
@@ -7508,13 +7547,25 @@ async function donateToGuild(amount) {
       // 실패하면 방금 낸 골드를 정확히 그대로 돌려준다 — addGold()는 패시브/길드
       // 보너스 배율을 다시 곱해버리므로 여기선 일부러 쓰지 않는다.
       player.gold += amount; recordEconomyEvent('guild_donate_refund', amount, 0); updateHUD();
-      showMsg('기부에 실패했어요 (골드를 돌려드려요)', 1600);
+      if (error && /daily_limit_reached/.test(error.message || '')) {
+        // 다른 기기에서 방금 먼저 기부해서 화면에 남아있던 잔여 횟수가 낡은
+        // 경우 등 — 서버가 진짜 기준이니 최신 값으로 다시 맞춰준다.
+        showMsg(`오늘 기부 횟수를 다 썼어요 (${GUILD_DONATE_DAILY_LIMIT}/${GUILD_DONATE_DAILY_LIMIT})`, 1600);
+        await loadMyGuildFull();
+        renderGuildModal();
+      } else {
+        showMsg('기부에 실패했어요 (골드를 돌려드려요)', 1600);
+      }
       return;
     }
     const row = Array.isArray(data) ? data[0] : data;
-    myGuild = Object.assign({}, myGuild, row);
-    const myRow = myGuildMembers.find(m => m.device_id === DEVICE_ID);
-    if (myRow) myRow.contribution = (myRow.contribution || 0) + amount;
+    myGuild = Object.assign({}, myGuild, { level: row.level, exp: row.exp });
+    const myRow = myGuildRow();
+    if (myRow) {
+      myRow.contribution = (myRow.contribution || 0) + amount;
+      myRow.today_donate_count = row.today_donate_count;
+      myRow.today_contribution = row.today_contribution;
+    }
     myGuildMembers.sort((a, b) => (b.contribution || 0) - (a.contribution || 0));
     updateGuildPerk();
     const afterLevel = guildLevelInfo(myGuild.exp).level;
@@ -7524,7 +7575,9 @@ async function donateToGuild(amount) {
     player.gold += amount; recordEconomyEvent('guild_donate_refund', amount, 0); updateHUD();
     showMsg('연결할 수 없어요 (골드를 돌려드려요)', 1600);
   } finally {
-    smallBtn.disabled = false; bigBtn.disabled = false;
+    // 실패해서 잠깐 잠갔던 것만 풀어준다 — 오늘 횟수를 다 썼다면 계속 잠긴
+    // 채로 둔다 (renderGuildDonateStatus가 그 상태를 그려준다).
+    renderGuildDonateStatus();
   }
 }
 // 소개글 편집 UI를 열고/닫는다. show=true면 입력창에 현재 값을 채우고 포커스.
