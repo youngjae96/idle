@@ -7248,6 +7248,13 @@ async function submitWorldBossDamage() {
     if (error || !data) return;
     const row = Array.isArray(data) ? data[0] : data;
     const applied = row.applied_damage || 0;
+    // 서버의 안티치트 DPS 캡(v_max_dps)에 걸려 dmg 전체가 반영 안 될 수 있다.
+    // 인정 안 된 차액은 버리지 말고 로컬에 되돌려놔서 다음 동기화 주기에
+    // 다시 시도되게 한다 (보스가 이미 죽었으면 되돌려봐야 의미 없으니 제외).
+    const leftover = dmg - applied;
+    if (leftover > 0 && row.status !== 'defeated') {
+      worldBossDamageThisFight += leftover;
+    }
     worldBossState = Object.assign({}, worldBossState, row, {
       my_damage: (worldBossState && worldBossState.my_damage || 0) + applied
     });
