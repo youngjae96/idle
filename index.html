@@ -7245,8 +7245,17 @@ async function fetchMyGuildId() {
 // 비운다 (예: 다른 기기에서 이미 탈퇴/추방된 경우에도 다음 새로고침에 반영됨).
 async function loadMyGuildFull() {
   const client = guildSb();
+  const prevGuildId = myGuild ? myGuild.id : null;
   if (!client) { myGuild = null; myGuildMembers = []; updateGuildPerk(); return false; }
   const guildId = await fetchMyGuildId();
+  // 다른 기기에서 탈퇴/추방돼 길드가 바뀌었거나 없어진 경우, 이전 길드의 채팅
+  // 구독(guildChatChannel)과 히스토리 로드 플래그가 남아있으면 새 길드에서
+  // subscribeGuildChat/loadGuildChatHistory가 아예 동작하지 않게 되므로 초기화한다.
+  if (guildId !== prevGuildId) {
+    unsubscribeGuildChat();
+    const box = document.getElementById('guildChatMessages');
+    if (box) box.innerHTML = '';
+  }
   if (!guildId) { myGuild = null; myGuildMembers = []; updateGuildPerk(); return false; }
   try {
     const [{ data: guildRow }, { data: members }] = await Promise.all([
