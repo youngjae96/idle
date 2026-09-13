@@ -1079,6 +1079,7 @@
         <div class="hudIconGroup">
           <button id="btnTeleport" class="hudIconBtn secondary" title="텔레포트">🗺️</button>
           <button id="btnGlobalChat" class="hudIconBtn secondary" title="전체 채팅">🌐<span id="onlineCountBadge" class="onlineCountBadge"></span><span id="globalChatUnreadBadge" class="unreadBadge unreadBadge-left"></span></button>
+          <button id="btnGuildChat" class="hudIconBtn secondary" title="길드 채팅" style="display:none;">🏯<span id="guildChatHudUnreadBadge" class="unreadBadge unreadBadge-left"></span></button>
           <button id="btnWorldBoss" class="hudIconBtn secondary" title="월드보스">🐉</button>
         </div>
         <div class="hudIconGroup">
@@ -1264,22 +1265,25 @@
         <div id="guildScroll">
           <!-- 길드가 없을 때: 검색/가입/생성 -->
           <div id="guildBrowseView">
+            <button id="guildBackToHomeBtn" style="display:none; margin-bottom:8px;">← 내 길드로 돌아가기</button>
             <div id="guildSearchRow">
               <input id="guildSearchInput" type="text" maxlength="12" placeholder="길드 이름 검색">
               <button id="guildSearchBtn">검색</button>
               <button id="guildRefreshBtn" title="새로고침">🔄</button>
             </div>
             <div id="guildList"></div>
-            <div id="guildCreateDivider">또는 새로 만들기</div>
-            <div id="guildEmojiPicker"></div>
-            <input id="guildNameInput" type="text" maxlength="12" placeholder="길드 이름 (2~12자)">
-            <input id="guildDescInput" type="text" maxlength="40" placeholder="한 줄 소개 (선택)">
-            <button id="guildCreateBtn">길드 만들기 (500,000🪙)</button>
-            <div id="guildCreateMsg"></div>
+            <div id="guildCreateSection">
+              <div id="guildCreateDivider">또는 새로 만들기</div>
+              <div id="guildEmojiPicker"></div>
+              <input id="guildNameInput" type="text" maxlength="12" placeholder="길드 이름 (2~12자)">
+              <input id="guildDescInput" type="text" maxlength="40" placeholder="한 줄 소개 (선택)">
+              <button id="guildCreateBtn">길드 만들기 (500,000🪙)</button>
+              <div id="guildCreateMsg"></div>
+            </div>
           </div>
           <!-- 길드가 있을 때: 정보/멤버/기부 -->
           <div id="guildHomeView" style="display:none;">
-            <div id="guildHomeToolbar"><button id="guildHomeRefreshBtn" title="새로고침">🔄 새로고침</button></div>
+            <div id="guildHomeToolbar"><button id="guildBrowseFromHomeBtn" title="다른 길드 보기">🔍 길드 목록</button> <button id="guildHomeRefreshBtn" title="새로고침">🔄 새로고침</button></div>
             <div id="guildHomeHeader">
               <div id="guildHomeEmoji">🏯</div>
               <div id="guildHomeName">길드명</div>
@@ -6447,7 +6451,7 @@ async function startSyncSend(attempt) {
   statusEl.textContent = '';
   let ok = false;
   try {
-    const { data, error } = await client.rpc('create_save_transfer', { p_code: code, p_payload: payload });
+    const { data, error } = await client.rpc('create_save_transfer', { p_code: code, p_payload: payload, p_device_id: DEVICE_ID });
     ok = !error && data === true;
   } catch (e) { ok = false; }
   // 그 사이 탭을 전환했거나 모달을 닫았다 다시 열었으면(teardownSync가 이미
@@ -6513,7 +6517,7 @@ async function startSyncReceive() {
   // 기기는 계속 대기 상태 그대로 남는다.
   const mergeResult = applyImportedSaveData(parsed.save, parsed.dungeonUsage);
   if (!mergeResult) { statusEl.textContent = '취소했어요.'; return; }
-  try { await client.rpc('complete_save_transfer', { p_code: code }); } catch (e) {}
+  try { await client.rpc('complete_save_transfer', { p_code: code, p_new_device_id: DEVICE_ID }); } catch (e) {}
   let extra = '';
   if (mergeResult.applied && mergeResult.carriedSeconds > 0) {
     extra = ` (일일던전 사용시간 ${fmtDuration(mergeResult.carriedSeconds)} 반영됨)`;
@@ -7288,6 +7292,9 @@ function updateGuildPerk() {
   const info = myGuild ? guildLevelInfo(myGuild.exp) : null;
   // 레벨당 +1%, 최대 +20% — 길드가 없거나 서버 연결이 안 되면 자연히 0.
   guildGoldBonusPct = info ? Math.min(0.20, (info.level - 1) * 0.01) : 0;
+  // 상단바 길드 채팅 바로가기 아이콘 — 길드에 가입돼 있을 때만 보이게.
+  const btn = document.getElementById('btnGuildChat');
+  if (btn) btn.style.display = myGuild ? '' : 'none';
 }
 
 // 조용히(에러를 UI에 띄우지 않고) 내가 속한 길드 id만 확인 — 페이지 로드 시
@@ -7371,8 +7378,14 @@ async function searchGuilds(term) {
     }
     listEl.innerHTML = '';
     data.forEach(g => {
+      const isMine = myGuild && myGuild.id === g.id;
       const full = g.member_count >= GUILD_MAX_MEMBERS;
-      listEl.appendChild(buildGuildRow(g, full ? '만석' : '가입', full, (btn) => {
+      let label, disabled;
+      if (isMine) { label = '내 길드'; disabled = true; }
+      else if (myGuild) { label = '가입 불가'; disabled = true; }
+      else if (full) { label = '만석'; disabled = true; }
+      else { label = '가입'; disabled = false; }
+      listEl.appendChild(buildGuildRow(g, label, disabled, (btn) => {
         btn.disabled = true; btn.textContent = '가입 중...';
         joinGuild(g.id, g.name).finally(() => { btn.disabled = full; btn.textContent = full ? '만석' : '가입'; });
       }));
@@ -7493,8 +7506,12 @@ function renderGuildHome() {
 function renderGuildBrowse() {
   document.getElementById('guildHomeView').style.display = 'none';
   document.getElementById('guildBrowseView').style.display = 'block';
+  // 이미 길드가 있으면(=홈에서 "길드 목록 보기"로 들어온 경우) 새 길드
+  // 만들기 섹션과 "돌아가기" 버튼을 보여주고, 길드가 없으면 원래대로 숨긴다.
+  document.getElementById('guildBackToHomeBtn').style.display = myGuild ? 'block' : 'none';
+  document.getElementById('guildCreateSection').style.display = myGuild ? 'none' : 'block';
   renderGuildEmojiPicker();
-  searchGuilds('');
+  searchGuilds(document.getElementById('guildSearchInput').value.trim());
 }
 function renderGuildModal() {
   if (myGuild) renderGuildHome(); else renderGuildBrowse();
@@ -7719,8 +7736,14 @@ function bumpGuildChatUnread() {
 function clearGuildChatUnread() { guildChatUnread = 0; updateGuildUnreadBadge(); }
 function updateGuildUnreadBadge() {
   const badge = document.getElementById('guildUnreadBadge');
-  if (guildChatUnread > 0) { badge.textContent = guildChatUnread > 9 ? '9+' : String(guildChatUnread); badge.classList.add('show'); }
+  const hudBadge = document.getElementById('guildChatHudUnreadBadge');
+  const label = guildChatUnread > 9 ? '9+' : String(guildChatUnread);
+  if (guildChatUnread > 0) { badge.textContent = label; badge.classList.add('show'); }
   else { badge.classList.remove('show'); }
+  if (hudBadge) {
+    if (guildChatUnread > 0) { hudBadge.textContent = label; hudBadge.classList.add('show'); }
+    else { hudBadge.classList.remove('show'); }
+  }
   updateMenuUnreadBadge(); // ☰ 메뉴 배지에도 합산 반영
 }
 function openGuildChatModal() {
@@ -7748,6 +7771,8 @@ document.getElementById('guildSearchBtn').addEventListener('click', () => search
 document.getElementById('guildSearchInput').addEventListener('keydown', e => { if (e.key === 'Enter') searchGuilds(document.getElementById('guildSearchInput').value.trim()); });
 document.getElementById('guildRefreshBtn').addEventListener('click', () => searchGuilds(document.getElementById('guildSearchInput').value.trim()));
 document.getElementById('guildHomeRefreshBtn').addEventListener('click', refreshGuildHome);
+document.getElementById('guildBrowseFromHomeBtn').addEventListener('click', renderGuildBrowse);
+document.getElementById('guildBackToHomeBtn').addEventListener('click', renderGuildHome);
 document.getElementById('guildDescEditBtn').addEventListener('click', () => toggleGuildDescEdit(true));
 document.getElementById('guildDescCancelBtn').addEventListener('click', () => toggleGuildDescEdit(false));
 document.getElementById('guildDescSaveBtn').addEventListener('click', saveGuildDescription);
@@ -7757,6 +7782,7 @@ document.getElementById('guildDonateSmall').addEventListener('click', () => dona
 document.getElementById('guildDonateBig').addEventListener('click', () => donateToGuild(100000));
 document.getElementById('guildLeaveBtn').addEventListener('click', leaveGuildConfirm);
 document.getElementById('guildChatOpenBtn').addEventListener('click', openGuildChatModal);
+document.getElementById('btnGuildChat').addEventListener('click', openGuildChatModal);
 document.getElementById('closeGuildChat').addEventListener('click', closeGuildChatModal);
 document.getElementById('sendGuildChatBtn').addEventListener('click', sendGuildChatMsg);
 document.getElementById('guildChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendGuildChatMsg(); });
