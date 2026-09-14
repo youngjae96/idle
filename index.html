@@ -1135,8 +1135,8 @@
           <div class="info"><span class="n">🧪 체력 물약</span>보유 <b id="potionCount">0</b>개 · HP 30% 이하 시 자동 사용</div>
           <div style="display:flex; gap:4px;">
             <button id="buyPotion" style="flex:1;">1개 5🪙</button>
-            <button id="buyPotion5" style="flex:1;">5개 25🪙</button>
-            <button id="buyPotion10" style="flex:1;">10개 50🪙</button>
+            <button id="buyPotion5" style="flex:1;">10개 50🪙</button>
+            <button id="buyPotion10" style="flex:1;">100개 500🪙</button>
           </div>
         </div>
         <div id="shopTabs" style="display:flex; gap:6px; margin:8px 0;">
@@ -1601,19 +1601,18 @@ const TabLock = (function () {
 })();
 
 // ---------- Update checker ----------
-// BUILD_VERSION은 이제 "build 표시용" 참고 라벨일 뿐, 업데이트 감지 자체와는
+// BUILD_VERSION은 "build 표시용" 참고 라벨일 뿐, 업데이트 감지 자체와는
 // 무관하다 (안 바꿔도 새 버전 감지에 전혀 지장 없음) — 기기 간 전송 모달에
-// "이게 최신 코드가 맞나?" 눈으로 확인하는 용도로만 남겨둔다. 바꾸고 싶을 때만
-// 바꾸면 되고, 깜빡하고 안 바꿔도 아래 해시 비교가 알아서 새 버전을 잡아낸다.
-const BUILD_VERSION = '2026-09-13.4-guild-daily';
+// "이게 최신 코드가 맞나?" 눈으로 확인하는 용도로만 남겨둔다.
+const BUILD_VERSION = '2026-09-14.2-update-check-auto';
 {
   const buildTag = document.getElementById('buildVersionTag');
   if (buildTag) buildTag.textContent = 'build ' + BUILD_VERSION;
 }
-// 파일 내용 전체를 간단히 해시해서 비교한다 — 문자열 하나만 살짝 바꿔도
-// 해시가 달라지므로, "배포할 때마다 버전 문자열 수동으로 올리기"를 깜빡해도
-// 실제 파일이 바뀌었으면 무조건 감지된다. 암호학적으로 강할 필요는 없고
-// (변조 방지 목적이 아니라 단순 변경 감지용) 빠르고 충돌 잘 안 나면 충분하다.
+// 파일 내용 전체를 간단히 해시해서 비교한다 — 문자열 하나만 살짝 바뀌어도
+// 해시가 달라지므로, 사람이 버전 문자열을 안 올려도 실제 파일이 바뀌면
+// 감지된다. 암호학적으로 강할 필요는 없고(변조 방지 목적이 아니라 단순 변경
+// 감지용) 빠르고 충돌 잘 안 나면 충분하다.
 function simpleHash(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) {
@@ -1621,29 +1620,55 @@ function simpleHash(str) {
   }
   return h;
 }
-let currentPageHash = null; // 이 탭이 처음 로드됐을 때의 파일 내용 해시 — 비교 기준선
+let currentPageHash = null; // 이 탭에서 fetch로 잡은 파일 내용 해시 — 비교 기준선
 async function capturePageHash() {
   try {
     const res = await fetch(location.pathname + '?_cb=' + Date.now(), { cache: 'no-store' });
     if (!res.ok) return;
     currentPageHash = simpleHash(await res.text());
   } catch (e) {
-    // offline 등으로 실패하면 다음 체크 때 다시 시도된다 (currentPageHash가
-    // 계속 null이면 checkForUpdate가 아직 비교 기준이 없다고 보고 그냥 넘어감)
+    // offline 등으로 실패하면 다음 체크 때 다시 시도된다
   }
 }
 capturePageHash();
+
+// 이 문서가 실제로 서버에서 내려받아진 시점(Last-Modified 헤더) — 네트워크
+// 요청 없이 브라우저가 페이지 로드 시점에 이미 알고 있는 값이라 fetch 기반
+// currentPageHash처럼 "아직 못 잡았을 수도 있는" 레이스 컨디션이 없다. 이게
+// 바로 예전 버그(모바일에서 켜자마자 백그라운드로 가서 currentPageHash를
+// 못 잡은 채 한참 있다가, 그 사이 배포가 일어나도 새로고침 배너가 안 뜨던
+// 현상)를 근본적으로 없애는 값 — 사람이 버전 문자열을 매번 바꿔줄 필요가
+// 없다. Last-Modified 헤더가 없는 배포 환경이면 브라우저가 "그냥 지금 시각"을
+// 대신 채워 넣는데, 그 경우 페이지 로드 시각과 사실상 같으므로 5분 이내로
+// 붙어있으면 "진짜 헤더 아님"으로 보고 이 방식은 그냥 건너뛴다(해시 방식만
+// 사용).
+const localLastModified = (() => {
+  const t = Date.parse(document.lastModified);
+  if (!Number.isFinite(t)) return null;
+  return (Date.now() - t > 5 * 60 * 1000) ? t : null;
+})();
+
 let updateAvailable = false;
 async function checkForUpdate() {
   if (updateAvailable) return; // already showing the banner, no need to re-check
-  if (currentPageHash === null) { capturePageHash(); return; } // 기준선을 아직 못 잡았으면 이번엔 그거부터
   try {
     // cache: 'no-store' + a cache-busting query param so we don't just get
     // back our own cached copy of this page and compare it to itself.
     const res = await fetch(location.pathname + '?_cb=' + Date.now(), { cache: 'no-store' });
     if (!res.ok) return;
+
+    let lastModifiedChanged = false;
+    if (localLastModified !== null) {
+      const remoteT = Date.parse(res.headers.get('Last-Modified'));
+      if (Number.isFinite(remoteT)) lastModifiedChanged = Math.abs(remoteT - localLastModified) > 1000;
+    }
+
     const text = await res.text();
-    if (simpleHash(text) !== currentPageHash) {
+    const hash = simpleHash(text);
+    const hashChanged = currentPageHash !== null && hash !== currentPageHash;
+    if (currentPageHash === null) currentPageHash = hash; // 기준선을 아직 못 잡았으면 지금 걸로 채워둔다
+
+    if (lastModifiedChanged || hashChanged) {
       updateAvailable = true;
       document.getElementById('updateBanner').classList.add('show');
       // 배너만 띄우고 자동 새로고침은 하지 않는다 — 새로고침은 사용자가
@@ -1660,6 +1685,8 @@ document.getElementById('updateBannerBtn').addEventListener('click', () => locat
 // later" without needing a background timer to survive that gap).
 setInterval(checkForUpdate, 5 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
+
+
 
 // Some Android browsers mis-measure the viewport when a page is opened
 // directly from a content:// URI (e.g. tapping a downloaded file), rendering
@@ -4396,8 +4423,8 @@ function updateHUD() {
   const shopOpen = document.getElementById('shopModal').classList.contains('open');
   if (shopOpen) {
     $.buyPotion.disabled = player.gold < GAME_BALANCE.potionPrice;
-    $.buyPotion5.disabled = player.gold < GAME_BALANCE.potionPrice * 5;
-    $.buyPotion10.disabled = player.gold < GAME_BALANCE.potionPrice * 10;
+    $.buyPotion5.disabled = player.gold < GAME_BALANCE.potionPrice * 10;
+    $.buyPotion10.disabled = player.gold < GAME_BALANCE.potionPrice * 100;
   }
 
   // skill cooldown ring
@@ -5959,8 +5986,8 @@ function buyPotions(count, cost, reason) {
   spawnFloatText(player.x+player.w/2, player.y, `🧪 +${count}`, '#5ae0a8');
 }
 $.buyPotion.addEventListener('click', () => buyPotions(1, GAME_BALANCE.potionPrice, 'potion'));
-$.buyPotion5.addEventListener('click', () => buyPotions(5, GAME_BALANCE.potionPrice * 5, 'potion_bundle'));
-$.buyPotion10.addEventListener('click', () => buyPotions(10, GAME_BALANCE.potionPrice * 10, 'potion_bundle10'));
+$.buyPotion5.addEventListener('click', () => buyPotions(10, GAME_BALANCE.potionPrice * 10, 'potion_bundle10'));
+$.buyPotion10.addEventListener('click', () => buyPotions(100, GAME_BALANCE.potionPrice * 100, 'potion_bundle100'));
 
 document.querySelectorAll('.shopTabBtn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -5971,9 +5998,30 @@ document.querySelectorAll('.shopTabBtn').forEach(btn => {
   });
 });
 
+let enhanceInfoOpen = false;
 function renderEnhanceList() {
   const list = $.itemList;
   list.innerHTML = '';
+
+  // Compact, collapsed-by-default legend for the rarity/effect system so it
+  // doesn't eat permanent space in the shop — just a small ℹ️ toggle that
+  // expands into one line when tapped, and collapses back to nothing.
+  const infoRow = document.createElement('div');
+  infoRow.style.cssText = 'display:flex; justify-content:flex-end; margin-bottom:2px;';
+  const infoBtn = document.createElement('button');
+  infoBtn.textContent = enhanceInfoOpen ? 'ℹ️ 등급 안내 ▲' : 'ℹ️ 등급 안내';
+  infoBtn.style.cssText = 'font-size:10.5px; padding:2px 8px; opacity:0.8; background:none; border:1px solid rgba(200,188,232,0.4); border-radius:12px; color:#c8bce8;';
+  infoBtn.addEventListener('click', () => { enhanceInfoOpen = !enhanceInfoOpen; renderEnhanceList(); });
+  infoRow.appendChild(infoBtn);
+  list.appendChild(infoRow);
+  if (enhanceInfoOpen) {
+    const legend = document.createElement('div');
+    legend.style.cssText = 'font-size:10.5px; color:#c8bce8; text-align:right; margin-bottom:6px; line-height:1.5;';
+    const tierChain = RARITY_TIERS.map(t => `<span style="color:${t.color};font-weight:bold;">${t.name}</span>`).join(' → ');
+    legend.innerHTML = `${tierChain}<br>강화 등급이 오를수록 타격·오라 이펙트가 화려해져요`;
+    list.appendChild(legend);
+  }
+
   const slots = [
     { key:'weapon', label:'⚔️ 무기 슬롯', enhanceField:'weaponEnhance', bonusPerLevel:ENHANCE_ATK_PER_LEVEL, bonusLabel:'공격력' },
     { key:'armor', label:'🛡️ 방어구 슬롯', enhanceField:'armorEnhance', bonusPerLevel:ENHANCE_HP_PER_LEVEL, bonusLabel:'최대체력' },
