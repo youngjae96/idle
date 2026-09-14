@@ -1160,6 +1160,7 @@
         <div class="statAllocRow"><span>INT (마법력 / MP / 회복)</span><span id="val_int">0</span><button id="btn_int">+</button></div>
         <div class="statAllocRow"><span>LUK (치명타)</span><span id="val_luk">0</span><button id="btn_luk">+</button></div>
         <div class="statRow">남은 포인트: <b id="statPoints">0</b></div>
+        <button id="btnResetStats" style="margin-bottom:6px;">🔄 스탯 초기화 (🪙100,000)</button>
         <button id="closeStatus">닫기</button>
       </div>
     </div>
@@ -2253,6 +2254,7 @@ const GAME_BALANCE = Object.freeze({
   offlineEfficiency: 0.7,          // offline-farm gold/exp are worth this fraction of live-play rates
   autoPotionHpThreshold: 0.3,      // auto-hunt/offline-farm drink a potion when HP falls below this fraction
   potionPrice: 5,                  // gold cost per potion — single source of truth for shop buttons + offline auto-buy
+  statResetCost: 100000,           // gold cost to reset allocated stat points back into the pool
   critDmgMult: 1.8,                // crit hits deal this multiple of normal damage (live dealDamage + offline sim)
   autoAtkIntervalSec: 26 / 60,     // assumed seconds-per-swing used by offline/estimate kill-time math
   minKillTimeSec: 0.35,            // floor on simulated per-kill time so very high atk can't divide-by-near-zero
@@ -4791,6 +4793,8 @@ function renderStatusPanel() {
     document.getElementById('val_' + k).textContent = player.stats[k];
     document.getElementById('btn_' + k).disabled = player.statPoints <= 0;
   }
+  const totalAllocated = player.stats.str + player.stats.dex + player.stats.int + player.stats.luk;
+  document.getElementById('btnResetStats').disabled = totalAllocated <= 0 || player.gold < GAME_BALANCE.statResetCost;
   renderHuntRateEstimate();
 }
 
@@ -4861,9 +4865,28 @@ function allocateStat(key) {
   renderStatusPanel();
   sfxCoin();
 }
+// 지금까지 찍은 스탯 포인트를 모두 되돌려 다시 분배할 수 있게 한다.
+// 레벨업으로 얻은 포인트 총량은 stats 합 + 남은 statPoints로 보존되므로
+// 별도 카운터 없이 이 둘을 더한 뒤 stats만 0으로 비우면 된다.
+function resetStats() {
+  const s = player.stats;
+  const cost = GAME_BALANCE.statResetCost;
+  const totalAllocated = (s.str || 0) + (s.dex || 0) + (s.int || 0) + (s.luk || 0);
+  if (totalAllocated <= 0) { showMsg('되돌릴 스탯이 없어요.', 1200); return; }
+  if (player.gold < cost) { showMsg(`골드가 부족해요 (🪙${fmtGold(cost)} 필요)`, 1500); return; }
+  if (!confirm(`🪙${fmtGold(cost)}을 내고 찍은 스탯 포인트를 모두 되돌릴까요?`)) return;
+  player.gold -= cost;
+  player.statPoints += totalAllocated;
+  s.str = 0; s.dex = 0; s.int = 0; s.luk = 0;
+  refreshStats();
+  renderStatusPanel();
+  sfxCoin();
+  showMsg('✨ 스탯이 초기화되었어요!', 1500);
+}
 $.btnStatus.addEventListener('click', openStatus);
 document.getElementById('btnInventory').addEventListener('click', openShop);
 document.getElementById('closeStatus').addEventListener('click', closeStatus);
+document.getElementById('btnResetStats').addEventListener('click', resetStats);
 
 // ---------- Monster bestiary (몬스터 도감) ----------
 function openBestiary() { renderBestiaryPanel(); openModal('bestiaryModal'); }
