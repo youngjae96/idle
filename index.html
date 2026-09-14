@@ -1600,29 +1600,49 @@ const TabLock = (function () {
 })();
 
 // ---------- Update checker ----------
-// Bump this string on every release you push to GitHub Pages. This does NOT
-// affect saves or game logic at all — it only powers the "새 버전이 있어요"
-// banner below, so someone who already had the tab open when you deployed
-// finds out without having to guess-and-refresh.
+// BUILD_VERSION은 이제 "build 표시용" 참고 라벨일 뿐, 업데이트 감지 자체와는
+// 무관하다 (안 바꿔도 새 버전 감지에 전혀 지장 없음) — 기기 간 전송 모달에
+// "이게 최신 코드가 맞나?" 눈으로 확인하는 용도로만 남겨둔다. 바꾸고 싶을 때만
+// 바꾸면 되고, 깜빡하고 안 바꿔도 아래 해시 비교가 알아서 새 버전을 잡아낸다.
 const BUILD_VERSION = '2026-09-13.4-guild-daily';
-// 기기 간 전송 모달에도 이 값을 그대로 찍어둔다 — updateBanner는 "새 버전이
-// 있다"만 알려줄 뿐, 지금 이 탭이 정확히 어느 빌드인지는 안 보여준다. 전송이
-// 이상하게 동작할 때 "이게 최신 코드가 맞나?"를 눈으로 바로 확인할 수 있게.
 {
   const buildTag = document.getElementById('buildVersionTag');
   if (buildTag) buildTag.textContent = 'build ' + BUILD_VERSION;
 }
+// 파일 내용 전체를 간단히 해시해서 비교한다 — 문자열 하나만 살짝 바꿔도
+// 해시가 달라지므로, "배포할 때마다 버전 문자열 수동으로 올리기"를 깜빡해도
+// 실제 파일이 바뀌었으면 무조건 감지된다. 암호학적으로 강할 필요는 없고
+// (변조 방지 목적이 아니라 단순 변경 감지용) 빠르고 충돌 잘 안 나면 충분하다.
+function simpleHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+let currentPageHash = null; // 이 탭이 처음 로드됐을 때의 파일 내용 해시 — 비교 기준선
+async function capturePageHash() {
+  try {
+    const res = await fetch(location.pathname + '?_cb=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    currentPageHash = simpleHash(await res.text());
+  } catch (e) {
+    // offline 등으로 실패하면 다음 체크 때 다시 시도된다 (currentPageHash가
+    // 계속 null이면 checkForUpdate가 아직 비교 기준이 없다고 보고 그냥 넘어감)
+  }
+}
+capturePageHash();
 let updateAvailable = false;
 async function checkForUpdate() {
   if (updateAvailable) return; // already showing the banner, no need to re-check
+  if (currentPageHash === null) { capturePageHash(); return; } // 기준선을 아직 못 잡았으면 이번엔 그거부터
   try {
     // cache: 'no-store' + a cache-busting query param so we don't just get
     // back our own cached copy of this page and compare it to itself.
     const res = await fetch(location.pathname + '?_cb=' + Date.now(), { cache: 'no-store' });
     if (!res.ok) return;
     const text = await res.text();
-    const match = text.match(/BUILD_VERSION\s*=\s*'([^']+)'/);
-    if (match && match[1] && match[1] !== BUILD_VERSION) {
+    if (simpleHash(text) !== currentPageHash) {
       updateAvailable = true;
       document.getElementById('updateBanner').classList.add('show');
       // 배너만 띄우고 자동 새로고침은 하지 않는다 — 새로고침은 사용자가
