@@ -202,7 +202,7 @@
   /* btnMute/btnTownWarp used to float over the canvas as separate circular
      icons; they now live as rows inside #menuModal (see .menuItemBtn below)
      so only their state modifiers remain here. */
-  #btnMute.off { opacity:0.55; }
+  #btnMute.off, #btnShake.off { opacity:0.55; }
   #btnTownWarp.cooling { opacity:0.4; }
 
   #bossBar {
@@ -1256,6 +1256,7 @@
         <button id="btnBestiary" class="menuItemBtn"><span class="miEmoji">📖</span> 몬스터 도감</button>
         <button id="btnTownWarp" class="menuItemBtn" title="마을로 귀환"><span class="miEmoji">🏠</span> 마을로 귀환</button>
         <button id="btnMute" class="menuItemBtn" title="소리 켜기/끄기"><span class="miEmoji">🔊</span> 소리 켜기/끄기</button>
+        <button id="btnShake" class="menuItemBtn" title="화면 흔들림 켜기/끄기"><span class="miEmoji">📳</span> 화면 흔들림 켜기/끄기</button>
         <button id="btnSaveCode" class="menuItemBtn" title="저장 코드 백업/복원"><span class="miEmoji">💾</span> 기기 간 이어하기</button>
         <button id="closeMenu">닫기</button>
       </div>
@@ -1434,7 +1435,7 @@ const $ = {};
 ['myPeerId','chatModal','newGameLink','btnAutoHunt','startBtn','itemList','chatInput','btnSkill',
  'toggleFriendPanel','syncReceiveStatus','syncReceiveInput','scTabSend','scTabReceive','saveCodeMsg',
  'randomMatchBtn','msg','mapName','friendsView','copyPeerId','comboText','chatUnreadBadge','chatMessages',
- 'buyPotion5','buyPotion10','buyPotion','btnTownWarp','btnStatus','btnMute','btnChat',
+ 'buyPotion5','buyPotion10','buyPotion','btnTownWarp','btnStatus','btnMute','btnShake','btnChat',
  'btnMenu','menuUnreadBadge',
  'btnGlobalChat','onlineCountBadge','globalChatUnreadBadge','globalChatModal','globalChatMessages','globalChatInput',
  'sendGlobalChatBtn','closeGlobalChat','globalChatStatus',
@@ -1848,6 +1849,21 @@ $.btnMute.addEventListener('click', () => {
 });
 updateMuteBtn();
 
+// 화면 흔들림(치명타/콤보 등 전투 연출) 켜기/끄기. 멀미 유발 등의 이유로 끄고
+// 싶은 사용자를 위한 옵션 — 기본값은 켬(기존 동작 유지).
+let shakeOn = lsGet('forestTaleShake') !== '0';
+function updateShakeBtn() {
+  const btn = $.btnShake;
+  btn.querySelector('.miEmoji').textContent = shakeOn ? '📳' : '🚫';
+  btn.classList.toggle('off', !shakeOn);
+}
+$.btnShake.addEventListener('click', () => {
+  shakeOn = !shakeOn;
+  lsSet('forestTaleShake', shakeOn ? '1' : '0');
+  updateShakeBtn();
+});
+updateShakeBtn();
+
 $.btnTownWarp.addEventListener('click', () => {
   if (!running) return;
   if (currentMap === 'town') { showMsg('이미 마을에 있어요.', 900); return; }
@@ -1887,6 +1903,7 @@ function sfxQuest() { beep(600,0.1); setTimeout(()=>beep(900,0.16),100); }
 function sfxSkill() { beep(110, 0.22, 'sawtooth', 0.09, 60); setTimeout(()=>beep(400,0.12,'square',0.05),40); }
 
 function screenShake(big = false) {
+  if (!shakeOn) return;
   const el = document.getElementById('canvasWrap');
   el.classList.remove('shake', 'shake-big');
   void el.offsetWidth;
