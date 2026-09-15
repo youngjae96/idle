@@ -1157,6 +1157,7 @@
           <button class="shopTabBtn" data-tab="armor" style="flex:1;">🛡️ 방어구</button>
           <button class="shopTabBtn" data-tab="enhance" style="flex:1;">✨ 강화</button>
           <button class="shopTabBtn" data-tab="passive" style="flex:1;">🌟 패시브</button>
+          <button class="shopTabBtn" data-tab="pet" style="flex:1;">🐾 펫</button>
         </div>
         <div id="itemList" style="max-height:220px; overflow-y:auto; touch-action:auto;"></div>
         <button id="closeShop">닫기</button>
@@ -2293,6 +2294,39 @@ function passiveGoldMult(passives) { return 1 + passiveLevel(passives, 'gold') *
 function passiveExpMult(passives) { return 1 + passiveLevel(passives, 'exp') * PASSIVES.exp.perLevel; }
 function enhanceCost(level) { return Math.round(20 * Math.pow(level + 1, 2.1)); }
 
+// ---------- Pets (collected via rare kill-drop "eggs", one equipped at a time) ----------
+// Two-stage luck layer: kills (including offline/auto-hunt — see
+// maybePetEggDrop and computeOfflineProgress) have a small chance to drop an
+// *egg* into player.petEggs, a plain stockpile count. Eggs do nothing by
+// themselves — the player has to spend gold to hatch one (see
+// hatchPetEgg/renderPetList), which only *might* yield a pet
+// (petEggHatchSuccessChance); the rest of the time it's a "꽝" (miss) that
+// still burns the egg and the gold. This is deliberately less generous than
+// the old "kill → guaranteed instant pet" version, and is a gold sink (like
+// PASSIVES) as well as a luck layer now. Only the currently-equipped pet's
+// bonus is active; switching is free and instant (see renderPetList), so
+// there's no reason to ever leave the slot empty once at least one pet is
+// owned.
+const PETS = [
+  { id:'fox',    name:'황금여우',   emoji:'🦊', bonus:{ gold:0.08 },          desc:'골드 획득량 +8%' },
+  { id:'owl',    name:'지혜부엉이', emoji:'🦉', bonus:{ exp:0.08 },           desc:'경험치 획득량 +8%' },
+  { id:'bear',   name:'아기곰',     emoji:'🐻', bonus:{ atk:3 },              desc:'공격력 +3' },
+  { id:'turtle', name:'거북이',     emoji:'🐢', bonus:{ hp:20 },              desc:'최대체력 +20' },
+  { id:'dragonling', name:'새끼용', emoji:'🐉', bonus:{ gold:0.05, exp:0.05 }, desc:'골드·경험치 획득량 각 +5%' },
+];
+function petDef(id) { return PETS.find(p => p.id === id); }
+// Bonus object of the currently-equipped pet, or {} if none equipped/owned —
+// every reader below treats a missing key as 0, so this never needs a
+// separate "no pet" branch at the call site.
+function equippedPetBonus(pl) {
+  const id = pl && pl.equippedPetId;
+  if (!id || !pl.pets || !pl.pets.includes(id)) return {};
+  const pet = petDef(id);
+  return pet ? pet.bonus : {};
+}
+function petGoldMult(pl) { return 1 + (equippedPetBonus(pl).gold || 0); }
+function petExpMult(pl) { return 1 + (equippedPetBonus(pl).exp || 0); }
+
 // ---------- Tunable balance knobs ----------
 // Every number here used to be hardcoded inline at its point of use, in some
 // cases copy-pasted into more than one place (see computeCombatStats and
@@ -2314,6 +2348,8 @@ const GAME_BALANCE = Object.freeze({
   autoPotionHpThreshold: 0.3,      // auto-hunt/offline-farm drink a potion when HP falls below this fraction
   potionPrice: 5,                  // gold cost per potion — single source of truth for shop buttons + offline auto-buy
   statResetCost: 100000,           // gold cost to reset allocated stat points back into the pool
+  petEggHatchCost: 3000,           // gold spent per egg-hatch attempt (spent whether it succeeds or whiffs)
+  petEggHatchSuccessChance: 0.35,  // odds a hatch attempt actually yields a pet — the rest is a "꽝" (miss)
   critDmgMult: 1.8,                // crit hits deal this multiple of normal damage (live dealDamage + offline sim)
   autoAtkIntervalSec: 26 / 60,     // assumed seconds-per-swing used by offline/estimate kill-time math
   minKillTimeSec: 0.35,            // floor on simulated per-kill time so very high atk can't divide-by-near-zero
@@ -2396,19 +2432,20 @@ function computeCritChance(stats) {
 // (job/level/gear/stats) — used both for the live player (refreshStats) and
 // for simulating an offline-farming character (computeOfflineProgress) so
 // the two can never silently disagree about how strong a character is.
-function computeCombatStats(jobKey, level, weaponId, armorId, stats, weaponEnhance, armorEnhance, passives, bestiary) {
+function computeCombatStats(jobKey, level, weaponId, armorId, stats, weaponEnhance, armorEnhance, passives, bestiary, petBonus) {
   const job = JOBS[jobKey] || JOBS.warrior;
   const weapon = WEAPONS.find(w => w.id === weaponId) || WEAPONS[0];
   const armor = ARMORS.find(a => a.id === armorId) || ARMORS[0];
   const s = stats || {};
   const B = GAME_BALANCE;
   const bb = bestiaryBonusFor(bestiary);
+  const pb = petBonus || {};
   let atk = job.baseAtk + (level - 1) * B.atkPerLevel + weapon.atk + (weaponEnhance || 0) * ENHANCE_ATK_PER_LEVEL
     + (s.str || 0) * B.atkPerStr + (s.dex || 0) * B.atkPerDex + (s.luk || 0) * B.atkPerLuk
-    + passiveLevel(passives, 'atk') * PASSIVES.atk.perLevel + bb.atk;
+    + passiveLevel(passives, 'atk') * PASSIVES.atk.perLevel + bb.atk + (pb.atk || 0);
   if (jobKey === 'mage') atk += (s.int || 0) * B.atkPerIntMage;
   const maxHp = job.baseHp + (level - 1) * B.hpPerLevel + armor.hp + (armorEnhance || 0) * ENHANCE_HP_PER_LEVEL + (s.str || 0) * B.hpPerStr
-    + passiveLevel(passives, 'hp') * PASSIVES.hp.perLevel + bb.hp;
+    + passiveLevel(passives, 'hp') * PASSIVES.hp.perLevel + bb.hp + (pb.hp || 0);
   let def = (job.baseDef || 0) + (s.str || 0) * B.defPerStr + armor.hp * B.defPerArmorHp + (armorEnhance || 0) * ENHANCE_DEF_PER_LEVEL + bb.def;
   if (jobKey === 'warrior') def *= B.warriorDefMult;
   return { atk, maxHp, def, job, weapon, armor };
@@ -2522,12 +2559,13 @@ let player = {
   job:'warrior', stats:{str:0,dex:0,int:0,luk:0}, statPoints:0, potions:0,
   weaponId:'w0', armorId:'a0', ownedWeapons:['w0'], ownedArmors:['a0'],
   weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0},
+  pets:[], equippedPetId:null, petEggs:0, defeatedBosses:[],
 };
 
 function refreshStats() {
   const s = player.stats;
   const lvl = player.level;
-  const { atk, maxHp, def, job } = computeCombatStats(player.job, lvl, player.weaponId, player.armorId, s, player.weaponEnhance, player.armorEnhance, player.passives, player.bestiary);
+  const { atk, maxHp, def, job } = computeCombatStats(player.job, lvl, player.weaponId, player.armorId, s, player.weaponEnhance, player.armorEnhance, player.passives, player.bestiary, equippedPetBonus(player));
 
   const maxMp = job.baseMp + (lvl - 1) * job.mpGrowth + s.int * 3;
   const crit = computeCritChance(s);
@@ -2568,15 +2606,20 @@ function updatePlayer() {
     }
   }
 
-  if (moving && player.onGround) player.walkT += 0.28; else if (player.onGround) player.walkT = 0;
-
   player.vy += GRAVITY;
   if (player.vy > 15) player.vy = 15;
+  const prevX = player.x;
   player.x += player.vx;
   player.y += player.vy;
 
   if (player.x < 0) player.x = 0;
   if (player.x + player.w > map.width) player.x = map.width - player.w;
+
+  // Animate the walk cycle off real displacement, not off intent. Driving it
+  // from `moving` alone meant a character pinned against a wall or a map edge
+  // still churned its legs at full speed while going nowhere.
+  if (moving && player.onGround && Math.abs(player.x - prevX) > 0.15) player.walkT += 0.28;
+  else if (player.onGround) player.walkT = 0;
 
   player.onGround = false;
   for (const p of map.platforms) {
@@ -2801,8 +2844,25 @@ function autoHuntStep(map) {
   // could otherwise flip the decision back to "chase toward the target
   // horizontally" and back again — which looked like marching in place at
   // the edge instead of ever stepping off.
-  if (autoHuntDescending && (!plat || plat !== autoHuntDescending.plat)) {
-    autoHuntDescending = null; // actually left the platform (or lost footing elsewhere) — done
+  if (autoHuntDescending) {
+    // Only let go of the descend commitment once we're genuinely past the
+    // platform: feet below its top surface (so re-landing on it is physically
+    // impossible), or standing on some *other* surface.
+    //
+    // Clearing it the instant we stopped touching the platform was the bug
+    // behind "jogs in place at the very tip of the ledge". Stepping off the
+    // edge makes onGround false, so plat goes null on the very next frame and
+    // the descend state was dropped while we were still only a fraction of a
+    // pixel below the surface. The generic chase branch then took over, and if
+    // the target sat underneath the platform it steered us straight back over
+    // the ledge — where the one-way landing check still accepted us (prevBottom
+    // was still level with p.y) and stood us back up on the platform. Descend →
+    // step off → get pulled back → land → descend, about two frames per lap:
+    // on screen, a character pinned at the edge with its legs whirring.
+    const dp = autoHuntDescending.plat;
+    const clearedSurface = player.y + player.h > dp.y + 8;
+    const landedElsewhere = player.onGround && plat && plat !== dp;
+    if (clearedSurface || landedElsewhere) autoHuntDescending = null;
   }
   if (!autoHuntDescending && plat && plat.y < GROUND_Y - 4 && (dy > 40 || forceDescend)) {
     const leftGap = player.x - plat.x;
@@ -2813,6 +2873,13 @@ function autoHuntStep(map) {
   const needDescend = !!autoHuntDescending;
 
   if (needDescend) {
+    // Safety valve: if we're walking toward an edge but our x isn't actually
+    // changing (the chosen edge runs into the map boundary, say), try the other
+    // edge rather than pushing into a wall forever.
+    if (autoHuntStuckFrames >= AUTO_HUNT_STUCK_LIMIT) {
+      autoHuntDescending.dir *= -1;
+      autoHuntStuckFrames = 0;
+    }
     player.vx = autoHuntDescending.dir * MOVE_SPEED;
     player.facing = autoHuntDescending.dir;
     moving = true;
@@ -3051,6 +3118,7 @@ function killMonster(map, m) {
   addGold(droppedGold, 'kill');
   addExp(m.expReward, 'kill');
   recordBestiaryKill(m.name, 1);
+  maybePetEggDrop(m);
   sfxKill();
   spawnParticles(m.x + m.w/2, m.y + m.h/2, m.type==='boss'?30:10, { color: m.type==='boss'?'#ffd166':'#7fe07f', size: m.type==='boss'?5:3, spread: m.type==='boss'?10:5 });
   spawnFloatText(m.x + m.w/2, m.y - 10, `+${fmtGold(droppedGold)}🪙`, '#ffd166');
@@ -3059,6 +3127,17 @@ function killMonster(map, m) {
     screenShake();
     showMsg(`🎉 ${m.name}을(를) 처치했습니다! 진정한 영웅이 되었습니다!`, 3400);
     spawnFloatText(player.x + player.w/2, player.y - 30, '🏆 보스 격파!', '#ffd166');
+    // Record the map's one-time story boss as permanently cleared (world
+    // boss instances are excluded via isWorldBoss — those are meant to be
+    // re-fightable, once per day, up to WORLD_BOSS_DAILY_ATTEMPTS). Without
+    // this, startCommon() had no way to know a boss was already beaten, so
+    // every "이어하기"/reload silently revived every boss on every map —
+    // trivially re-farmable gold/exp/pet-egg-chance (12% vs a normal
+    // monster's 0.004%) just by refreshing the page.
+    if (!m.isWorldBoss) {
+      if (!Array.isArray(player.defeatedBosses)) player.defeatedBosses = [];
+      if (!player.defeatedBosses.includes(currentMap)) player.defeatedBosses.push(currentMap);
+    }
   } else {
     showMsg(`${m.name}을(를) 처치했습니다!`, 900);
     m.respawnAt = Date.now() + 3000 + Math.random()*3000;
@@ -3077,6 +3156,69 @@ function killMonster(map, m) {
   }
   if (worldBossFightActive && m === worldBossMonsterRef) finalizeWorldBossFight(true);
   updateHUD();
+}
+
+// ---------- Pet egg drops ----------
+// Small per-kill chance (bosses roll much higher, matching how much rarer a
+// boss kill is) to find a "pet egg" — just adds to player.petEggs. Hatching
+// it into an actual pet is a separate, later, gold-costing gamble; see
+// hatchPetEgg.
+//
+// PET_DROP_CHANCE is tuned against the *worst case* kill volume, not a
+// casual session: at minKillTimeSec's floor, a maxed-out character grinding
+// literally 24/7 (live auto-hunt + offline farming both count toward this,
+// since offline just simulates the same kill loop in fast-forward) can hit
+// roughly 200,000-250,000 non-boss kills/day. 0.00004 (0.004%) keeps that
+// extreme case to ~8-12 eggs/day; anyone playing less than nonstop gets
+// proportionally fewer, which is intended — this is meant to stay a slow
+// collection grind, not something a single binge session clears out.
+const PET_DROP_CHANCE = 0.00004;
+const PET_DROP_CHANCE_BOSS = 0.12;
+function maybePetEggDrop(m) {
+  const chance = m.type === 'boss' ? PET_DROP_CHANCE_BOSS : PET_DROP_CHANCE;
+  if (Math.random() > chance) return;
+  player.petEggs = (player.petEggs || 0) + 1;
+  showMsg(`🥚 펫 알을 주웠어요! (보유: ${player.petEggs}개, 펫 메뉴에서 까볼 수 있어요)`, 2400);
+  spawnFloatText(player.x + player.w/2, player.y - 20, '🥚 알 획득!', '#ffd166');
+  updateHUD();
+}
+
+// ---------- Pet egg hatching (gold-cost gamble, triggered from renderPetList) ----------
+// Spends one egg + petEggHatchCost gold for a petEggHatchSuccessChance shot
+// at a random pet the player doesn't already own. Failure is a real "꽝" —
+// the egg and gold are gone either way, nothing is refunded. If the roll
+// succeeds but every pet is already owned, it converts to a modest gold
+// consolation instead of doing nothing (mirrors the old full-collection
+// case). Returns a result object for the caller (renderPetList) to render;
+// does nothing and returns null if the player can't afford/doesn't have an
+// egg, so callers should keep the hatch button disabled in that case too.
+function hatchPetEgg() {
+  if ((player.petEggs || 0) <= 0) return null;
+  if (player.gold < GAME_BALANCE.petEggHatchCost) return null;
+  player.petEggs -= 1;
+  spendGold(GAME_BALANCE.petEggHatchCost, 'pet_hatch');
+  if (!player.pets) player.pets = [];
+
+  if (Math.random() > GAME_BALANCE.petEggHatchSuccessChance) {
+    sfxCoin();
+    updateHUD();
+    return { result: 'miss' };
+  }
+
+  const unowned = PETS.filter(p => !player.pets.includes(p.id));
+  if (!unowned.length) {
+    const bonus = 200 + player.level * 10;
+    addGold(bonus, 'pet_dup');
+    updateHUD();
+    return { result: 'dup', bonus };
+  }
+
+  const pet = unowned[Math.floor(Math.random() * unowned.length)];
+  player.pets.push(pet.id);
+  if (!player.equippedPetId) { player.equippedPetId = pet.id; refreshStats(); }
+  sfxLevelUp();
+  updateHUD();
+  return { result: 'pet', pet };
 }
 
 // ---------- Monster ----------
@@ -4893,8 +5035,13 @@ function estimateHuntRate(mapId) {
   const mitigatedAtk = Math.max(1, avg.atk * (100 / (100 + (player.def || 0))));
 
   const killsPerHour = 3600 / timePerKill;
-  const goldPerHour = Math.round(killsPerHour * avg.gold * GAME_BALANCE.goldGainMultiplier);
-  const expPerHour = Math.round(killsPerHour * avg.exp);
+  // addGold/addExp are the actual single source of truth for every gold/exp
+  // gain (live kills AND offline farming both funnel through them) — this
+  // forecast has to apply the exact same multipliers (passives, equipped
+  // pet, guild perk) or it silently understates what the player will really
+  // earn, especially with a gold/exp pet (🦊/🦉/🐉) equipped.
+  const goldPerHour = Math.round(killsPerHour * avg.gold * passiveGoldMult(player.passives) * petGoldMult(player) * GAME_BALANCE.goldGainMultiplier * (1 + (typeof guildGoldBonusPct !== 'undefined' ? guildGoldBonusPct : 0)));
+  const expPerHour = Math.round(killsPerHour * avg.exp * passiveExpMult(player.passives) * petExpMult(player));
 
   // How many hits (~kills, since one hit lands per kill-cycle in the sim)
   // it takes to fall from full HP down through the auto-potion threshold —
@@ -6149,6 +6296,85 @@ function renderPassiveList() {
   }
 }
 
+function renderPetList() {
+  const list = $.itemList;
+  list.innerHTML = '';
+  if (!player.pets) player.pets = [];
+  if (!player.petEggs) player.petEggs = 0;
+
+  const introRow = document.createElement('div');
+  introRow.style.cssText = 'font-size:10.5px; color:#c8bce8; margin-bottom:8px; line-height:1.5; text-align:center;';
+  introRow.textContent = `🥚 몬스터를 처치하면 가끔 펫 알을 주워요. 알을 까면 확률로 펫을 얻어요(꽝도 있어요). 펫 중 1마리만 장착할 수 있어요. (${player.pets.length}/${PETS.length} 수집)`;
+  list.appendChild(introRow);
+
+  const hatchRow = document.createElement('div');
+  hatchRow.className = 'shop-item';
+  const hatchInfo = document.createElement('div');
+  hatchInfo.className = 'info';
+  const successPct = Math.round(GAME_BALANCE.petEggHatchSuccessChance * 100);
+  hatchInfo.innerHTML = `<span class="n">🥚 알 까기 (보유 ${player.petEggs}개)</span>비용 ${fmtGold(GAME_BALANCE.petEggHatchCost)}🪙 · 성공확률 ${successPct}% (실패 시 꽝)`;
+  hatchRow.appendChild(hatchInfo);
+  const hatchBtn = document.createElement('button');
+  hatchBtn.textContent = `까기 (-${fmtGold(GAME_BALANCE.petEggHatchCost)}🪙)`;
+  const canHatch = player.petEggs > 0 && player.gold >= GAME_BALANCE.petEggHatchCost;
+  hatchBtn.disabled = !canHatch;
+  hatchBtn.addEventListener('click', () => {
+    const outcome = hatchPetEgg();
+    if (!outcome) { renderPetList(); return; }
+    if (outcome.result === 'pet') {
+      showMsg(`🥚 알에서 ${outcome.pet.emoji} ${outcome.pet.name}이(가) 나왔어요! (펫 메뉴에서 확인)`, 2800);
+      spawnFloatText(player.x + player.w/2, player.y - 20, `🥚 NEW! ${outcome.pet.emoji}`, '#ffd166');
+    } else if (outcome.result === 'dup') {
+      showMsg(`🥚 성공했지만 이미 다 모았어요! 대신 +${fmtGold(outcome.bonus)}🪙`, 2400);
+    } else {
+      showMsg('💨 꽝! 알이 부화하지 않았어요.', 1800);
+    }
+    renderPetList();
+  });
+  hatchRow.appendChild(hatchBtn);
+  list.appendChild(hatchRow);
+
+  for (const pet of PETS) {
+    const isOwned = player.pets.includes(pet.id);
+    const isEquipped = player.equippedPetId === pet.id;
+
+    const row = document.createElement('div');
+    row.className = 'shop-item';
+    const info = document.createElement('div');
+    info.className = 'info';
+    if (isOwned) {
+      info.innerHTML = `<span class="n ${isEquipped ? 'item-equipped' : 'item-owned'}">${pet.emoji} ${pet.name}${isEquipped ? ' (장착중)' : ''}</span>${pet.desc}`;
+    } else {
+      info.innerHTML = `<span class="n">❓ ???</span>알을 까서 해금 (몬스터 처치 시 알 획득)`;
+    }
+    row.appendChild(info);
+
+    const btn = document.createElement('button');
+    if (!isOwned) {
+      btn.textContent = '미보유';
+      btn.disabled = true;
+    } else if (isEquipped) {
+      btn.textContent = '해제';
+      btn.addEventListener('click', () => {
+        player.equippedPetId = null;
+        refreshStats();
+        sfxCoin();
+        renderPetList();
+      });
+    } else {
+      btn.textContent = '장착';
+      btn.addEventListener('click', () => {
+        player.equippedPetId = pet.id;
+        refreshStats();
+        sfxCoin();
+        renderPetList();
+      });
+    }
+    row.appendChild(btn);
+    list.appendChild(row);
+  }
+}
+
 function equipShopItem(item, owned, price = 0) {
   if (price && !spendGold(price, 'equipment')) return;
   if (price) owned.push(item.id);
@@ -6162,6 +6388,7 @@ function equipShopItem(item, owned, price = 0) {
 function renderShopList() {
   if (shopTab === 'enhance') { renderEnhanceList(); return; }
   if (shopTab === 'passive') { renderPassiveList(); return; }
+  if (shopTab === 'pet') { renderPetList(); return; }
   const list = $.itemList;
   list.innerHTML = '';
   const items = shopTab === 'weapon' ? WEAPONS : ARMORS;
@@ -6285,14 +6512,14 @@ function addGold(amount, reason='reward') {
   // multiplier from the player's guild level — 0 until guild.sql is set up
   // and/or the player has actually joined a guild, so this is a no-op for
   // anyone not using that feature.
-  const value = Math.max(0, Math.round((Number(amount) || 0) * passiveGoldMult(player.passives) * GAME_BALANCE.goldGainMultiplier * (1 + (typeof guildGoldBonusPct !== 'undefined' ? guildGoldBonusPct : 0))));
+  const value = Math.max(0, Math.round((Number(amount) || 0) * passiveGoldMult(player.passives) * petGoldMult(player) * GAME_BALANCE.goldGainMultiplier * (1 + (typeof guildGoldBonusPct !== 'undefined' ? guildGoldBonusPct : 0))));
   if (!value) return 0;
   player.gold += value;
   recordEconomyEvent(reason, value, 0);
   return value;
 }
 function addExp(amount, reason='exp') {
-  const value = Math.max(0, Math.round((Number(amount) || 0) * passiveExpMult(player.passives)));
+  const value = Math.max(0, Math.round((Number(amount) || 0) * passiveExpMult(player.passives) * petExpMult(player)));
   if (!value) return 0;
   gainExp(value);
   recordEconomyEvent(reason, 0, value);
@@ -6319,7 +6546,7 @@ function spendGold(amount, reason='purchase') {
 // means a returning player's stats, items, or progress silently reset to
 // defaults instead of carrying over. Migrating explicitly here keeps that
 // under your control instead of leaving it to sanitizeSaveData's defaults.
-const SAVE_SCHEMA_VERSION = 2;
+const SAVE_SCHEMA_VERSION = 5;
 const SAVE_MIGRATIONS = {
   // Example for the next time the shape changes:
   // 2: (data) => {
@@ -6331,6 +6558,28 @@ const SAVE_MIGRATIONS = {
     if (!data.player.passives || typeof data.player.passives !== 'object') {
       data.player.passives = { atk:0, hp:0, gold:0, exp:0 };
     }
+    return data;
+  },
+  3: (data) => {
+    // Pets (kill-drop collection) added — older saves have neither field yet.
+    if (!Array.isArray(data.player.pets)) data.player.pets = [];
+    if (typeof data.player.equippedPetId !== 'string') data.player.equippedPetId = null;
+    return data;
+  },
+  4: (data) => {
+    // Pet eggs became a spendable stockpile (hatch-for-gold-gamble) instead
+    // of an instant guaranteed pet — older saves have no egg count yet.
+    if (typeof data.player.petEggs !== 'number') data.player.petEggs = 0;
+    return data;
+  },
+  5: (data) => {
+    // Bosses now stay dead across reloads instead of silently reviving on
+    // every 이어하기 (see killMonster/startCommon) — older saves have no
+    // record of which map bosses were already cleared. Can't retroactively
+    // know what an existing player has or hasn't beaten, so this starts
+    // everyone's list empty; already-cleared bosses just become killable
+    // (and drop-eligible) one more time going forward, never infinitely.
+    if (!Array.isArray(data.player.defeatedBosses)) data.player.defeatedBosses = [];
     return data;
   },
 };
@@ -6414,6 +6663,16 @@ function sanitizeSaveData(data) {
     }
   }
   p.bestiary = cleanBestiary;
+  // Same rebuild-from-scratch approach as passives/bestiary above — only
+  // known pet ids from PETS survive, duplicates collapse to one.
+  const validPetIds = new Set(PETS.map(pet => pet.id));
+  p.pets = Array.isArray(p.pets) ? [...new Set(p.pets)].filter(id => validPetIds.has(id)) : [];
+  p.equippedPetId = (typeof p.equippedPetId === 'string' && p.pets.includes(p.equippedPetId)) ? p.equippedPetId : null;
+  p.petEggs = Math.round(clampNum(p.petEggs, 0, 999, 0));
+  // Only real map ids with a boss survive — same rebuild-from-scratch
+  // approach as pets/passives/bestiary above.
+  const validBossMapIds = new Set(['field','dungeon','moonshrine10','moonshrine20','moonshrine30','beach','lava','frost','abyss','sky','ruins','throne','voidrift','ashwaste','genesis']);
+  p.defeatedBosses = Array.isArray(p.defeatedBosses) ? [...new Set(p.defeatedBosses)].filter(id => validBossMapIds.has(id)) : [];
   p.potions = Math.round(clampNum(p.potions, 0, 999, 0));
   const cleanOwned = (owned, items, starterId) => {
     if (!Array.isArray(owned)) return [starterId];
@@ -6469,6 +6728,9 @@ function serializeSave() {
       weaponEnhance: player.weaponEnhance, armorEnhance: player.armorEnhance,
       potions: player.potions, nickname: player.nickname, passives: player.passives,
       bestiary: player.bestiary || {},
+      pets: player.pets || [], equippedPetId: player.equippedPetId || null,
+      petEggs: player.petEggs || 0,
+      defeatedBosses: player.defeatedBosses || [],
     },
   };
 }
@@ -6757,7 +7019,7 @@ function computeOfflineProgress(save) {
   if (!avg) return null;
 
   const lvl = save.player.level;
-  const { atk, maxHp, def } = computeCombatStats(save.player.job, lvl, save.player.weaponId, save.player.armorId, save.player.stats, save.player.weaponEnhance, save.player.armorEnhance, save.player.passives, save.player.bestiary);
+  const { atk, maxHp, def } = computeCombatStats(save.player.job, lvl, save.player.weaponId, save.player.armorId, save.player.stats, save.player.weaponEnhance, save.player.armorEnhance, save.player.passives, save.player.bestiary, equippedPetBonus(save.player));
   const mitigatedMonsterAtk = avg.atk * (100 / (100 + (def || 0)));
 
   // Mirror dealDamage's crit rule (crit chance -> critDmgMult dmg) as an
@@ -6770,7 +7032,7 @@ function computeOfflineProgress(save) {
   const timePerKill = estimateTimePerKill(avg.hp, atk, critPct);
 
   let hp = maxHp, potions = save.player.potions || 0;
-  let timeUsed = 0, kills = 0, gold = 0, exp = 0, potionsUsed = 0, potionsBought = 0, deaths = 0;
+  let timeUsed = 0, kills = 0, gold = 0, exp = 0, potionsUsed = 0, potionsBought = 0, deaths = 0, eggsGained = 0;
   const totalSeconds = elapsedMs / 1000;
 
   // Mirrors live play: dying sends the player to town and auto-hunt turns
@@ -6783,6 +7045,12 @@ function computeOfflineProgress(save) {
     hp -= mitigatedMonsterAtk;
     gold += avg.gold;
     exp += avg.exp;
+    // Same drop chance as a live non-boss kill (maybePetEggDrop) — bosses
+    // don't respawn so they're excluded from this steady-state pool anyway.
+    // Rolled per simulated kill (rather than an expected-value shortcut like
+    // gold/exp above) so egg counts stay a real, chunky random outcome
+    // instead of a smoothed average that never feels like a drop.
+    if (Math.random() < PET_DROP_CHANCE) eggsGained++;
 
     if (hp <= 0) {
       deaths = 1;
@@ -6817,7 +7085,7 @@ function computeOfflineProgress(save) {
     // pre-existing stock should come off it. Computed once here (rather than
     // at each call site) so nothing can apply this subtraction differently.
     potionsFromStock: potionsUsed - potionsBought,
-    deaths,
+    deaths, eggsGained,
   };
 }
 function formatDuration(ms) {
@@ -6836,6 +7104,7 @@ function showOfflineModal(result) {
     extra += `<br>🪙 물약이 떨어져서 ${result.potionsBought}개를 자동구매했어요. (-${fmtGold(result.potionsBought * GAME_BALANCE.potionPrice)}🪙, 획득 골드에 이미 반영됨)`;
   }
   if (result.deaths > 0) extra += `<br>💀 쓰러져서 골드 일부를 잃고 사냥이 중단됐어요.`;
+  if (result.eggsGained > 0) extra += `<br>🥚 펫 알 ${result.eggsGained}개를 주웠어요! (펫 메뉴에서 까볼 수 있어요)`;
   document.getElementById('offlineText').innerHTML =
     `${formatDuration(result.elapsedMs)} 동안 자동으로 사냥해서<br>` +
     `🪙 골드 +${fmtGold(result.gold)} · ✨ 경험치 +${result.exp} 획득했어요!${extra}`;
@@ -6857,10 +7126,22 @@ $.newGameLink.addEventListener('click', () => {
 });
 
 function startCommon() {
-  [MAPS.field, MAPS.dungeon, MAPS.moonshrine10, MAPS.moonshrine20, MAPS.moonshrine30, MAPS.beach, MAPS.lava, MAPS.frost, MAPS.abyss, MAPS.sky, MAPS.ruins, MAPS.throne, MAPS.voidrift, MAPS.ashwaste, MAPS.genesis].forEach(map => map.monsters.forEach(m => {
-    m.dead = false; m.hp = m.maxHp; m.x = m.startX; if (m.type==='bat') m.y = m.baseY;
-    if (m.type === 'boss') { m.state = 'chase'; m.actionCooldown = 90; m.engaged = false; }
-  }));
+  // Bosses are meant to be one-time-per-map kills (see comment in
+  // estimateHuntRate) — skip reviving a map's story boss if it's already in
+  // player.defeatedBosses, so it doesn't come back to life on every
+  // page-reload/이어하기 (see the comment in killMonster for why that
+  // mattered). World-boss instances aren't part of this list — they're
+  // spliced out of map.monsters right after each attempt, so they're never
+  // still sitting here to be (or not be) revived.
+  const defeatedBossMaps = new Set(player.defeatedBosses || []);
+  ['field','dungeon','moonshrine10','moonshrine20','moonshrine30','beach','lava','frost','abyss','sky','ruins','throne','voidrift','ashwaste','genesis'].forEach(id => {
+    const map = MAPS[id];
+    map.monsters.forEach(m => {
+      if (m.type === 'boss' && defeatedBossMaps.has(id)) return;
+      m.dead = false; m.hp = m.maxHp; m.x = m.startX; if (m.type==='bat') m.y = m.baseY;
+      if (m.type === 'boss') { m.state = 'chase'; m.actionCooldown = 90; m.engaged = false; }
+    });
+  });
   initClouds(MAPS.town.width);
   $.mapName.textContent = MAPS[currentMap].name;
   $.btnSkill.firstChild.textContent = JOBS[player.job].skillEmoji;
@@ -6882,7 +7163,8 @@ function beginGame(job, nickname) {
     level:1, exp:0, expNeeded:20, hp:30, maxHp:30, atk:5, mp:20, maxMp:20, crit:5, gold:10,
     job, stats:{str:0,dex:0,int:0,luk:0}, statPoints:0, potions:0, nickname, deviceId: DEVICE_ID,
     weaponId:'w0', armorId:'a0', ownedWeapons:['w0'], ownedArmors:['a0'],
-    weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0}, bestiary:{} };
+    weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0}, bestiary:{},
+    pets:[], equippedPetId:null, petEggs:0, defeatedBosses:[] };
   currentMap = 'town';
   quest = { count: 0, target: questTargetForTier(1), reward: questRewardForTier(1), tier: 1 };
   refreshStats();
@@ -6899,6 +7181,7 @@ function continueGame(save) {
     hp:1, maxHp:1, atk:5, mp:1, maxMp:1, crit:5, potions:0,
     nickname: '모험가' + Math.floor(100 + Math.random()*900), deviceId: DEVICE_ID,
     weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0}, bestiary:{},
+    pets:[], equippedPetId:null, petEggs:0, defeatedBosses:[],
     ...save.player,
   };
   currentMap = MAPS[save.currentMap] ? save.currentMap : 'town';
@@ -6929,6 +7212,7 @@ function continueGame(save) {
     addGold(offline.gold, 'offline');
     player.potions = Math.max(0, (player.potions || 0) - offline.potionsFromStock);
     addExp(offline.exp, 'offline');
+    player.petEggs = (player.petEggs || 0) + (offline.eggsGained || 0);
     applyOfflineBestiary(MAPS[currentMap], offline.kills);
     saveGame();
     setTimeout(() => showOfflineModal(offline), 300);
@@ -7031,6 +7315,7 @@ function markBack() {
     addGold(offline.gold, 'offline');
     player.potions = Math.max(0, (player.potions || 0) - offline.potionsFromStock);
     addExp(offline.exp, 'offline');
+    player.petEggs = (player.petEggs || 0) + (offline.eggsGained || 0);
     applyOfflineBestiary(MAPS[currentMap], offline.kills);
     saveGame();
     updateHUD();
@@ -7423,6 +7708,7 @@ async function enterWorldBossFight() {
   // 비슷하게 유지된다.
   const spawnX = Math.max(60, Math.min(map.width - 100, player.x + player.facing * 160));
   const boss = makeFixedBoss(WORLD_BOSS_KEY, spawnX);
+  boss.isWorldBoss = true; // distinct from the map's own one-time story boss — see killMonster/startCommon
   const TARGET_HITS = 25; // 튜닝 포인트: 전투 하나가 대략 이 정도 타격 후 끝나도록
   const avgDmgPerHit = player.atk * 1.05; // dealDamage의 랜덤/크리 평균 보정 근사치
   boss.hp = Math.max(boss.hp, Math.round(avgDmgPerHit * TARGET_HITS));
