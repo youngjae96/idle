@@ -255,6 +255,19 @@
   #worldBossHpFill { height:100%; background:linear-gradient(90deg,#ff3a3a,#ffb85a); transition:width .3s; }
   #worldBossHpLabel { font-size:12px; color:#ffe0c8; margin-bottom:6px; }
   #worldBossRankLine { font-size:10.5px; color:#d8b8a8; margin-bottom:8px; }
+  #worldBossTop10Btn {
+    width:100%; background:rgba(255,214,128,0.12); color:#ffe08a; border:1px solid rgba(255,214,128,0.4);
+    border-radius:10px; padding:6px 8px; font-size:11.5px; margin-bottom:6px;
+  }
+  #worldBossTop10Btn:active { background:rgba(255,214,128,0.22); }
+  #worldBossTop10List { display:none; max-height:150px; overflow-y:auto; margin-bottom:8px; border-radius:8px; background:rgba(0,0,0,0.25); padding:2px 0; }
+  #worldBossTop10List.show { display:block; }
+  #worldBossTop10List .wbRankRow { display:flex; align-items:center; gap:8px; padding:4px 10px; font-size:11px; color:#e8dcff; }
+  #worldBossTop10List .wbRankRow.me { background:rgba(255,214,128,0.15); }
+  #worldBossTop10List .wbRankNum { width:18px; flex-shrink:0; font-weight:bold; color:#ffd166; text-align:center; }
+  #worldBossTop10List .wbRankName { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #worldBossTop10List .wbRankDmg { flex-shrink:0; color:#ffb27a; }
+  #worldBossTop10List .wbRankEmpty { padding:10px; text-align:center; font-size:11px; color:#a898cc; }
   #worldBossRewardInfo { font-size:10.5px; color:#c8bce8; margin-bottom:8px; line-height:1.5; }
   #worldBossStatusText { font-size:11.5px; color:#d8b8a8; margin-bottom:12px; min-height:14px; }
   #enterWorldBossBtn {
@@ -1206,6 +1219,8 @@
         <div id="worldBossHpLabel">불러오는 중...</div>
         <div id="worldBossRewardInfo">💰 가한 데미지만큼 실시간 골드 획득 · 오늘 보스를 처치하면 기여도 비례 처치 보너스 지급</div>
         <div id="worldBossRankLine"></div>
+        <button id="worldBossTop10Btn" type="button">🏆 오늘의 랭킹 TOP 10</button>
+        <div id="worldBossTop10List"></div>
         <div id="worldBossStatusText"></div>
         <button id="enterWorldBossBtn" disabled>도전하기</button>
         <button id="closeWorldBoss">닫기</button>
@@ -7319,10 +7334,40 @@ function subscribeWorldBossRealtime() {
     .subscribe();
 }
 
+// ---------- 오늘의 월드보스 TOP 10 랭킹 ----------
+let worldBossTop10Loaded = false;
+function escapeHtmlWB(s) { const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+async function loadWorldBossTop10() {
+  const listEl = document.getElementById('worldBossTop10List');
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="wbRankEmpty">불러오는 중...</div>';
+  const client = worldBossSb();
+  if (!client) { listEl.innerHTML = '<div class="wbRankEmpty">연결할 수 없어요</div>'; return; }
+  try {
+    const { data, error } = await client.rpc('get_world_boss_top10', { p_date_key: todayKey() });
+    if (error || !Array.isArray(data) || data.length === 0) {
+      listEl.innerHTML = '<div class="wbRankEmpty">아직 오늘 기록이 없어요</div>';
+      return;
+    }
+    listEl.innerHTML = data.map(row => {
+      const mine = row.device_id === DEVICE_ID;
+      return `<div class="wbRankRow${mine ? ' me' : ''}"><span class="wbRankNum">${row.rank}</span><span class="wbRankName">${escapeHtmlWB(row.nickname)}${mine ? ' (나)' : ''}</span><span class="wbRankDmg">${fmtGold(row.damage)}</span></div>`;
+    }).join('');
+  } catch (e) { listEl.innerHTML = '<div class="wbRankEmpty">불러오지 못했어요</div>'; }
+}
+function toggleWorldBossTop10() {
+  const listEl = document.getElementById('worldBossTop10List');
+  if (!listEl) return;
+  const willShow = !listEl.classList.contains('show');
+  listEl.classList.toggle('show', willShow);
+  if (willShow) loadWorldBossTop10();
+}
+
 async function openWorldBossModal() {
   openModal('worldBossModal');
   document.getElementById('worldBossHpLabel').textContent = '불러오는 중...';
   document.getElementById('worldBossStatusText').textContent = '';
+  document.getElementById('worldBossTop10List').classList.remove('show');
   document.getElementById('enterWorldBossBtn').disabled = true;
   const row = await fetchWorldBossState();
   if (!row) {
@@ -7351,7 +7396,7 @@ async function enterWorldBossFight() {
     const dateKey = todayKey();
     let ok = false, networkFailed = false;
     try {
-      const { data, error } = await client.rpc('enter_world_boss', { p_device_id: DEVICE_ID, p_date_key: dateKey });
+      const { data, error } = await client.rpc('enter_world_boss', { p_device_id: DEVICE_ID, p_date_key: dateKey, p_nickname: gchatNickname() });
       ok = !error && data === true;
       networkFailed = !!error;
     } catch (e) { ok = false; networkFailed = true; }
@@ -7452,6 +7497,7 @@ async function finalizeWorldBossFight(won) {
 document.getElementById('btnWorldBoss').addEventListener('click', openWorldBossModal);
 document.getElementById('closeWorldBoss').addEventListener('click', () => closeModal('worldBossModal'));
 document.getElementById('enterWorldBossBtn').addEventListener('click', enterWorldBossFight);
+document.getElementById('worldBossTop10Btn').addEventListener('click', toggleWorldBossTop10);
 document.getElementById('worldBossRetreatBtn').addEventListener('click', () => finalizeWorldBossFight(false));
 
 // ---------- Guild (길드, Supabase) ----------
