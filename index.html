@@ -4454,9 +4454,10 @@ function updateHUD() {
   $.btnAutoHunt.classList.toggle('cooling', currentMap === 'town');
   const shopOpen = document.getElementById('shopModal').classList.contains('open');
   if (shopOpen) {
-    $.buyPotion.disabled = player.gold < GAME_BALANCE.potionPrice;
-    $.buyPotion5.disabled = player.gold < GAME_BALANCE.potionPrice * 10;
-    $.buyPotion10.disabled = player.gold < GAME_BALANCE.potionPrice * 100;
+    const full = (player.potions || 0) >= MAX_POTIONS;
+    $.buyPotion.disabled = full || player.gold < GAME_BALANCE.potionPrice;
+    $.buyPotion5.disabled = full || player.gold < GAME_BALANCE.potionPrice * 10;
+    $.buyPotion10.disabled = full || player.gold < GAME_BALANCE.potionPrice * 100;
   }
 
   // skill cooldown ring
@@ -6011,11 +6012,19 @@ function drawRemotePlayers() {
 for (const k of ['str','dex','int','luk']) {
   document.getElementById('btn_' + k).addEventListener('click', () => allocateStat(k));
 }
+const MAX_POTIONS = 999; // sanitizeSaveData의 클램프 상한과 반드시 일치시켜야 함
 function buyPotions(count, cost, reason) {
-  if (!spendGold(cost, reason)) return;
-  player.potions = (player.potions || 0) + count;
+  const room = MAX_POTIONS - (player.potions || 0);
+  if (room <= 0) { showMsg(`물약은 최대 ${MAX_POTIONS}개까지만 보관할 수 있어요`, 1600); return; }
+  // 요청한 개수보다 남은 자리가 적으면, 실제로 채울 수 있는 만큼만 사고
+  // 비용도 그 비율만큼만 청구한다 — 어차피 못 받을 물약값을 미리 떼가지 않기 위함.
+  const actualCount = Math.min(count, room);
+  const actualCost = actualCount === count ? cost : Math.ceil(cost * (actualCount / count));
+  if (!spendGold(actualCost, reason)) return;
+  player.potions = (player.potions || 0) + actualCount;
   sfxCoin(); updateHUD();
-  spawnFloatText(player.x+player.w/2, player.y, `🧪 +${count}`, '#5ae0a8');
+  spawnFloatText(player.x+player.w/2, player.y, `🧪 +${actualCount}`, '#5ae0a8');
+  if (actualCount < count) showMsg(`물약 보관 한도(${MAX_POTIONS}개)에 도달해 ${actualCount}개만 구매했어요`, 2000);
 }
 $.buyPotion.addEventListener('click', () => buyPotions(1, GAME_BALANCE.potionPrice, 'potion'));
 $.buyPotion5.addEventListener('click', () => buyPotions(10, GAME_BALANCE.potionPrice * 10, 'potion_bundle10'));
