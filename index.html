@@ -2308,13 +2308,49 @@ function enhanceCost(level) { return Math.round(20 * Math.pow(level + 1, 2.1)); 
 // there's no reason to ever leave the slot empty once at least one pet is
 // owned.
 const PETS = [
-  { id:'fox',    name:'황금여우',   emoji:'🦊', bonus:{ gold:0.08 },          desc:'골드 획득량 +8%' },
-  { id:'owl',    name:'지혜부엉이', emoji:'🦉', bonus:{ exp:0.08 },           desc:'경험치 획득량 +8%' },
-  { id:'bear',   name:'아기곰',     emoji:'🐻', bonus:{ atk:3 },              desc:'공격력 +3' },
-  { id:'turtle', name:'거북이',     emoji:'🐢', bonus:{ hp:20 },              desc:'최대체력 +20' },
-  { id:'dragonling', name:'새끼용', emoji:'🐉', bonus:{ gold:0.05, exp:0.05 }, desc:'골드·경험치 획득량 각 +5%' },
+  { id:'fox',    name:'황금여우',   emoji:'🦊', bonus:{ gold:0.08 } },
+  { id:'owl',    name:'지혜부엉이', emoji:'🦉', bonus:{ exp:0.08 } },
+  { id:'bear',   name:'아기곰',     emoji:'🐻', bonus:{ atk:3 } },
+  { id:'turtle', name:'거북이',     emoji:'🐢', bonus:{ hp:20 } },
+  { id:'dragonling', name:'새끼용', emoji:'🐉', bonus:{ gold:0.05, exp:0.05 } },
 ];
 function petDef(id) { return PETS.find(p => p.id === id); }
+// ---------- Pet stars (duplicate growth) ----------
+// A hatch that rolls a pet the player already owns isn't wasted: it adds a
+// star to that pet (player.petStars[id], 0 by default), and every star scales
+// that pet's whole bonus by petStarStep. So 🦊 at ★3 is gold +8% * 1.6 =
+// +12.8%. Stars are capped at petStarMax; a duplicate of an already-maxed pet
+// falls through to the gold consolation instead, so eggs are never a dead end.
+// Bonuses are stored as *base* values in PETS and scaled at read time — never
+// baked into the stored bonus — so retuning a pet still affects existing saves.
+function petStarOf(pl, id) {
+  const raw = pl && pl.petStars ? Number(pl.petStars[id]) : 0;
+  if (!Number.isFinite(raw)) return 0;
+  return Math.min(GAME_BALANCE.petStarMax, Math.max(0, Math.round(raw)));
+}
+function scalePetBonus(bonus, star) {
+  const mult = 1 + GAME_BALANCE.petStarStep * star;
+  const out = {};
+  for (const k in bonus) out[k] = bonus[k] * mult;
+  return out;
+}
+// Human-readable bonus line, generated from the *actual* (star-scaled) numbers
+// rather than a hardcoded string, so the pet list can never advertise the base
+// value while the player is getting the upgraded one.
+function describePetBonus(b) {
+  const pct = v => `${Math.round(v * 1000) / 10}%`;
+  const num = v => `${Math.round(v * 10) / 10}`;
+  const parts = [];
+  if (b.gold && b.exp) parts.push(`골드·경험치 획득량 각 +${pct(b.gold)}`);
+  else if (b.gold) parts.push(`골드 획득량 +${pct(b.gold)}`);
+  else if (b.exp) parts.push(`경험치 획득량 +${pct(b.exp)}`);
+  if (b.atk) parts.push(`공격력 +${num(b.atk)}`);
+  if (b.hp) parts.push(`최대체력 +${num(b.hp)}`);
+  return parts.join(' · ');
+}
+function petStarLabel(star) {
+  return star > 0 ? '★'.repeat(star) + '☆'.repeat(GAME_BALANCE.petStarMax - star) : '';
+}
 // Bonus object of the currently-equipped pet, or {} if none equipped/owned —
 // every reader below treats a missing key as 0, so this never needs a
 // separate "no pet" branch at the call site.
@@ -2322,7 +2358,7 @@ function equippedPetBonus(pl) {
   const id = pl && pl.equippedPetId;
   if (!id || !pl.pets || !pl.pets.includes(id)) return {};
   const pet = petDef(id);
-  return pet ? pet.bonus : {};
+  return pet ? scalePetBonus(pet.bonus, petStarOf(pl, id)) : {};
 }
 function petGoldMult(pl) { return 1 + (equippedPetBonus(pl).gold || 0); }
 function petExpMult(pl) { return 1 + (equippedPetBonus(pl).exp || 0); }
@@ -2350,6 +2386,9 @@ const GAME_BALANCE = Object.freeze({
   statResetCost: 100000,           // gold cost to reset allocated stat points back into the pool
   petEggHatchCost: 3000,           // gold spent per egg-hatch attempt (spent whether it succeeds or whiffs)
   petEggHatchSuccessChance: 0.35,  // odds a hatch attempt actually yields a pet — the rest is a "꽝" (miss)
+  petStarMax: 5,                   // max duplicate-growth stars a single pet can hold
+  petStarStep: 0.2,                // each star adds this fraction of the pet's BASE bonus (★5 = double)
+  petDupChance: 0.3,               // on a successful hatch, odds of rolling a duplicate (star-up) instead of a new pet — only applies when the player already owns at least one and some are still un-maxed
   critDmgMult: 1.8,                // crit hits deal this multiple of normal damage (live dealDamage + offline sim)
   autoAtkIntervalSec: 26 / 60,     // assumed seconds-per-swing used by offline/estimate kill-time math
   minKillTimeSec: 0.35,            // floor on simulated per-kill time so very high atk can't divide-by-near-zero
@@ -2559,7 +2598,7 @@ let player = {
   job:'warrior', stats:{str:0,dex:0,int:0,luk:0}, statPoints:0, potions:0,
   weaponId:'w0', armorId:'a0', ownedWeapons:['w0'], ownedArmors:['a0'],
   weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0},
-  pets:[], equippedPetId:null, petEggs:0, defeatedBosses:[],
+  pets:[], petStars:{}, equippedPetId:null, petEggs:0, defeatedBosses:[],
 };
 
 function refreshStats() {
@@ -3185,11 +3224,12 @@ function maybePetEggDrop(m) {
 
 // ---------- Pet egg hatching (gold-cost gamble, triggered from renderPetList) ----------
 // Spends one egg + petEggHatchCost gold for a petEggHatchSuccessChance shot
-// at a random pet the player doesn't already own. Failure is a real "꽝" —
-// the egg and gold are gone either way, nothing is refunded. If the roll
-// succeeds but every pet is already owned, it converts to a modest gold
-// consolation instead of doing nothing (mirrors the old full-collection
-// case). Returns a result object for the caller (renderPetList) to render;
+// at a random pet. A successful roll gives a pet the player doesn't own yet,
+// or — with petDupChance odds, and always once the collection is complete — a
+// duplicate, which turns into a ★ on an owned pet (see the pet-star comment
+// above PETS). Failure is a real "꽝" — the egg and gold are gone either way,
+// nothing is refunded. Only if every pet is owned AND every one of them is
+// star-capped does it fall back to a modest gold consolation. Returns a result object for the caller (renderPetList) to render;
 // does nothing and returns null if the player can't afford/doesn't have an
 // egg, so callers should keep the hatch button disabled in that case too.
 function hatchPetEgg() {
@@ -3206,7 +3246,27 @@ function hatchPetEgg() {
   }
 
   const unowned = PETS.filter(p => !player.pets.includes(p.id));
+  if (!player.petStars || typeof player.petStars !== 'object') player.petStars = {};
+  // Pets already owned but not yet maxed can absorb a duplicate as a star.
+  const upgradable = player.pets.filter(id => petDef(id) && petStarOf(player, id) < GAME_BALANCE.petStarMax);
+  // Roll a duplicate either because there's nothing new left to give, or
+  // because the dup roll came up. Weighted toward new pets on purpose:
+  // collecting all five should still be the faster of the two tracks.
+  const wantDup = upgradable.length > 0 && (!unowned.length || Math.random() < GAME_BALANCE.petDupChance);
+  if (wantDup) {
+    const id = upgradable[Math.floor(Math.random() * upgradable.length)];
+    const star = petStarOf(player, id) + 1;
+    player.petStars[id] = star;
+    // Only the equipped pet's bonus is live, so recompute stats just for that
+    // case — starring a benched pet changes nothing until it's equipped.
+    if (player.equippedPetId === id) refreshStats();
+    sfxLevelUp();
+    updateHUD();
+    return { result: 'star', pet: petDef(id), star };
+  }
   if (!unowned.length) {
+    // Everything owned AND every pet maxed — fall back to the gold payout so
+    // late-game eggs still mean something.
     const bonus = 200 + player.level * 10;
     addGold(bonus, 'pet_dup');
     updateHUD();
@@ -6304,7 +6364,7 @@ function renderPetList() {
 
   const introRow = document.createElement('div');
   introRow.style.cssText = 'font-size:10.5px; color:#c8bce8; margin-bottom:8px; line-height:1.5; text-align:center;';
-  introRow.textContent = `🥚 몬스터를 처치하면 가끔 펫 알을 주워요. 알을 까면 확률로 펫을 얻어요(꽝도 있어요). 펫 중 1마리만 장착할 수 있어요. (${player.pets.length}/${PETS.length} 수집)`;
+  introRow.textContent = `🥚 몬스터를 처치하면 가끔 펫 알을 주워요. 알을 까면 확률로 펫을 얻어요(꽝도 있어요). 이미 가진 펫이 또 나오면 ★가 붙어 능력치가 ${Math.round(GAME_BALANCE.petStarStep * 100)}%씩 강해져요(최대 ★${GAME_BALANCE.petStarMax}). 펫 중 1마리만 장착할 수 있어요. (${player.pets.length}/${PETS.length} 수집)`;
   list.appendChild(introRow);
 
   const hatchRow = document.createElement('div');
@@ -6324,6 +6384,10 @@ function renderPetList() {
     if (outcome.result === 'pet') {
       showMsg(`🥚 알에서 ${outcome.pet.emoji} ${outcome.pet.name}이(가) 나왔어요! (펫 메뉴에서 확인)`, 2800);
       spawnFloatText(player.x + player.w/2, player.y - 20, `🥚 NEW! ${outcome.pet.emoji}`, '#ffd166');
+    } else if (outcome.result === 'star') {
+      const bonus = scalePetBonus(outcome.pet.bonus, outcome.star);
+      showMsg(`⭐ ${outcome.pet.emoji} ${outcome.pet.name}이(가) ★${outcome.star}(으)로 성장! → ${describePetBonus(bonus)}`, 2800);
+      spawnFloatText(player.x + player.w/2, player.y - 20, `⭐ ${outcome.pet.emoji} ★${outcome.star}`, '#ffd166');
     } else if (outcome.result === 'dup') {
       showMsg(`🥚 성공했지만 이미 다 모았어요! 대신 +${fmtGold(outcome.bonus)}🪙`, 2400);
     } else {
@@ -6343,7 +6407,12 @@ function renderPetList() {
     const info = document.createElement('div');
     info.className = 'info';
     if (isOwned) {
-      info.innerHTML = `<span class="n ${isEquipped ? 'item-equipped' : 'item-owned'}">${pet.emoji} ${pet.name}${isEquipped ? ' (장착중)' : ''}</span>${pet.desc}`;
+      const star = petStarOf(player, pet.id);
+      const bonus = scalePetBonus(pet.bonus, star);
+      const starTag = star > 0 ? ` <span style="color:#ffd166;">${petStarLabel(star)}</span>` : '';
+      const growth = star > 0 ? ` <span style="color:#7fd6a0;">(중복 ${star}회 성장)</span>` : '';
+      const maxed = star >= GAME_BALANCE.petStarMax ? ' <span style="color:#c8bce8;">MAX</span>' : '';
+      info.innerHTML = `<span class="n ${isEquipped ? 'item-equipped' : 'item-owned'}">${pet.emoji} ${pet.name}${isEquipped ? ' (장착중)' : ''}${starTag}${maxed}</span>${describePetBonus(bonus)}${growth}`;
     } else {
       info.innerHTML = `<span class="n">❓ ???</span>알을 까서 해금 (몬스터 처치 시 알 획득)`;
     }
@@ -6546,7 +6615,7 @@ function spendGold(amount, reason='purchase') {
 // means a returning player's stats, items, or progress silently reset to
 // defaults instead of carrying over. Migrating explicitly here keeps that
 // under your control instead of leaving it to sanitizeSaveData's defaults.
-const SAVE_SCHEMA_VERSION = 5;
+const SAVE_SCHEMA_VERSION = 6;
 const SAVE_MIGRATIONS = {
   // Example for the next time the shape changes:
   // 2: (data) => {
@@ -6580,6 +6649,13 @@ const SAVE_MIGRATIONS = {
     // everyone's list empty; already-cleared bosses just become killable
     // (and drop-eligible) one more time going forward, never infinitely.
     if (!Array.isArray(data.player.defeatedBosses)) data.player.defeatedBosses = [];
+    return data;
+  },
+  6: (data) => {
+    // Duplicate pets now grow the pet (stars) instead of being impossible to
+    // get — older saves have no star map. Everyone starts at ★0, which is
+    // exactly the bonus they already had, so nothing changes retroactively.
+    if (!data.player.petStars || typeof data.player.petStars !== 'object') data.player.petStars = {};
     return data;
   },
 };
@@ -6668,6 +6744,16 @@ function sanitizeSaveData(data) {
   const validPetIds = new Set(PETS.map(pet => pet.id));
   p.pets = Array.isArray(p.pets) ? [...new Set(p.pets)].filter(id => validPetIds.has(id)) : [];
   p.equippedPetId = (typeof p.equippedPetId === 'string' && p.pets.includes(p.equippedPetId)) ? p.equippedPetId : null;
+  // Stars only survive for pets actually owned, and only within 0..petStarMax —
+  // same rebuild-from-scratch treatment as the pet list itself.
+  const cleanPetStars = {};
+  if (p.petStars && typeof p.petStars === 'object') {
+    for (const id of p.pets) {
+      const star = Math.round(clampNum(p.petStars[id], 0, GAME_BALANCE.petStarMax, 0));
+      if (star > 0) cleanPetStars[id] = star;
+    }
+  }
+  p.petStars = cleanPetStars;
   p.petEggs = Math.round(clampNum(p.petEggs, 0, 999, 0));
   // Only real map ids with a boss survive — same rebuild-from-scratch
   // approach as pets/passives/bestiary above.
@@ -6728,7 +6814,7 @@ function serializeSave() {
       weaponEnhance: player.weaponEnhance, armorEnhance: player.armorEnhance,
       potions: player.potions, nickname: player.nickname, passives: player.passives,
       bestiary: player.bestiary || {},
-      pets: player.pets || [], equippedPetId: player.equippedPetId || null,
+      pets: player.pets || [], petStars: player.petStars || {}, equippedPetId: player.equippedPetId || null,
       petEggs: player.petEggs || 0,
       defeatedBosses: player.defeatedBosses || [],
     },
@@ -7164,7 +7250,7 @@ function beginGame(job, nickname) {
     job, stats:{str:0,dex:0,int:0,luk:0}, statPoints:0, potions:0, nickname, deviceId: DEVICE_ID,
     weaponId:'w0', armorId:'a0', ownedWeapons:['w0'], ownedArmors:['a0'],
     weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0}, bestiary:{},
-    pets:[], equippedPetId:null, petEggs:0, defeatedBosses:[] };
+    pets:[], petStars:{}, equippedPetId:null, petEggs:0, defeatedBosses:[] };
   currentMap = 'town';
   quest = { count: 0, target: questTargetForTier(1), reward: questRewardForTier(1), tier: 1 };
   refreshStats();
@@ -7181,7 +7267,7 @@ function continueGame(save) {
     hp:1, maxHp:1, atk:5, mp:1, maxMp:1, crit:5, potions:0,
     nickname: '모험가' + Math.floor(100 + Math.random()*900), deviceId: DEVICE_ID,
     weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0}, bestiary:{},
-    pets:[], equippedPetId:null, petEggs:0, defeatedBosses:[],
+    pets:[], petStars:{}, equippedPetId:null, petEggs:0, defeatedBosses:[],
     ...save.player,
   };
   currentMap = MAPS[save.currentMap] ? save.currentMap : 'town';
