@@ -7702,6 +7702,16 @@ async function loadGlobalChatHistory() {
 function sendGlobalChatMsg() {
   const text = $.globalChatInput.value.trim().slice(0, 200);
   if (!text || !sb) return;
+  // 캐릭터를 만들거나(beginGame) 이어하기(continueGame)해서 startCommon()이
+  // running=true로 켜지기 전엔 player가 아직 완성되지 않은 상태 — 이때 보내면
+  // gchatNickname()이 '손님'으로 폴백해서 신고 불가능한 트롤 메시지가 된다.
+  // jobSelectModal은 캔버스 영역만 덮고 HUD 버튼 줄은 그 위에 그대로 있어서
+  // 채팅 버튼 자체는 눌리기 때문에, 전송 시점에 막는다.
+  if (!running) {
+    $.globalChatInput.value = '';
+    appendGlobalChatMsg('system', '', '캐릭터를 만들거나 이어하기를 먼저 해주세요.');
+    return;
+  }
   if (isSelfBlocked()) { $.globalChatInput.value = ''; return; }
   // Simple 1-per-second throttle — not real spam protection (that belongs
   // in an RLS policy / rate limit on the table), just stops accidental
@@ -8058,7 +8068,12 @@ async function syncGuildLevel() {
   if (!myGuild) return;
   const client = guildSb();
   if (!client) return;
-  try { await client.rpc('sync_guild_member_level', { p_device_id: DEVICE_ID, p_level: player.level }); } catch (e) {}
+  try {
+    const { error } = await client.rpc('sync_guild_member_level', { p_device_id: DEVICE_ID, p_level: player.level });
+    if (error) console.warn('[guild] syncGuildLevel 실패 — sync_guild_member_level 함수의 실행 권한(GRANT)을 확인하세요:', error);
+  } catch (e) {
+    console.warn('[guild] syncGuildLevel 예외:', e);
+  }
 }
 
 // exp -> {level, into, need}. plpgsql의 guild_level_info()와 반드시 같은 커브를
@@ -8258,7 +8273,13 @@ function renderGuildMembers() {
     const rank = document.createElement('span'); rank.className = 'gmRank'; rank.textContent = String(i + 1);
     const name = document.createElement('span');
     name.className = 'gmName' + (m.device_id === myGuild.owner_device_id ? ' owner' : '') + (m.device_id === DEVICE_ID ? ' me' : '');
-    name.textContent = `${playerJobLabel(m.job)} ${m.nickname || '?'} · Lv.${m.level || 1}`;
+    // 내 행이면서 서버에 저장된 레벨(m.level)이 실제 내 레벨(player.level)과
+    // 다르면, 동기화(syncGuildLevel)가 아직 안 됐거나 실패한 상태 — F12 콘솔
+    // 없이도 바로 확인할 수 있게 눈에 보이는 경고를 붙인다. openGuildModal이
+    // 이미 방금 syncGuildLevel + 재조회를 했으므로, 여기서도 다르다면 그
+    // 시도조차 서버에 반영되지 못했다는 뜻이다(권한/네트워크 문제 등).
+    const mismatch = m.device_id === DEVICE_ID && typeof player !== 'undefined' && player && m.level !== player.level;
+    name.textContent = `${playerJobLabel(m.job)} ${m.nickname || '?'} · Lv.${m.level || 1}` + (mismatch ? ` (⚠️ 실제 Lv.${player.level}, 동기화 안 됨)` : '');
     const contrib = document.createElement('span'); contrib.className = 'gmContrib'; contrib.textContent = fmtGold(m.contribution || 0) + '🪙';
     row.appendChild(rank); row.appendChild(name); row.appendChild(contrib);
     // 오늘 하나라도 기부했으면만 작은 배지로 오늘 기부액을 덧붙인다 (0이면 굳이 안 보여줌).
@@ -8568,6 +8589,11 @@ async function openGuildModal() {
   listEl.innerHTML = '';
   const loading = document.createElement('div'); loading.id = 'guildEmptyMsg'; loading.textContent = '불러오는 중...';
   listEl.appendChild(loading);
+  await loadMyGuildFull();
+  // 길드창을 여는 시점에도 내 레벨을 한 번 더 서버에 보고 — 접속 시 동기화를
+  // 놓쳤어도 여기서 보정. 성공했으면 방금 보낸 새 레벨이 바로 보이도록
+  // 목록을 한 번 더 받아온다 (실패하면 어차피 기존 값 그대로라 다시 받아도 무해).
+  await syncGuildLevel();
   await loadMyGuildFull();
   renderGuildModal();
 }
