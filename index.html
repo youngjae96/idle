@@ -7757,6 +7757,8 @@ $.btnGlobalChat.addEventListener('click', () => {
   openModal('globalChatModal');
   switchChatTab('global');
 });
+$.chatTabGlobalBtn.addEventListener('click', () => switchChatTab('global'));
+$.chatTabGuildBtn.addEventListener('click', () => switchChatTab('guild'));
 $.closeGlobalChat.addEventListener('click', () => {
   closeModal('globalChatModal');
   document.getElementById('globalChatPlayerDetail').classList.remove('show');
