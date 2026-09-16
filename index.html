@@ -722,28 +722,10 @@
     background:rgba(255,90,90,0.18); color:#ff9a9a; border:1px solid rgba(255,90,90,0.4);
   }
 
-  /* Guild chat mirrors global chat's floating (non-backdrop) panel style. */
-  #guildChatModal {
-    position:fixed; inset:0; background:transparent; pointer-events:none;
-    display:none; align-items:flex-start; justify-content:flex-end; z-index:9999;
-    padding:54px 10px 10px 10px;
-  }
-  #guildChatModal.open { display:flex; }
-  #guildChatPanel {
-    pointer-events:auto;
-    width:min(84vw, 300px); height:min(56dvh, 400px); max-height:56dvh;
-    display:flex; flex-direction:column; overflow:hidden;
-    background:linear-gradient(180deg, rgba(40,28,56,0.94), rgba(24,16,34,0.94));
-    border:2px solid #c9a4ff; border-radius:14px; padding:10px;
-    box-shadow:0 10px 28px rgba(0,0,0,0.55); backdrop-filter: blur(3px);
-    animation:panelRise .22s ease-out both;
-  }
-  #guildChatPanelTop { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:8px; }
-  #guildChatStatus { font-size:11px; color:#e0d0ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  #closeGuildChat {
-    flex-shrink:0; width:26px; height:26px; padding:0; line-height:1; font-size:13px; font-weight:bold;
-    background:rgba(255,255,255,0.1); color:#f0e8ff; border:1px solid #8a6aaa; border-radius:8px;
-  }
+  /* Guild chat no longer has its own floating modal — it's a tab pane inside
+     #globalChatModal now (see .chatTabRow below and switchChatTab() in the
+     script). Its message-list/input styling stays, just re-scoped as pane
+     content instead of a whole panel. */
   #guildChatMessages { flex:1; min-height:120px; max-height:none; overflow-y:auto; background:rgba(0,0,0,0.3); border-radius:10px; padding:8px; margin-bottom:8px; }
   #guildChatInputRow { display:flex; gap:6px; }
   #guildChatInput {
@@ -780,7 +762,7 @@
   #offlineModal, #offlinePanel, #saveCodeModal, #saveCodePanel, #saveCodeScroll,
   #itemList, #teleportList, #errorPanel, #menuModal, #menuPanel, #bestiaryModal, #bestiaryPanel, #bestiaryList,
   #globalChatModal, #globalChatPanel, #globalChatMessages,
-  #guildModal, #guildPanel, #guildScroll, #guildList, #guildChatModal, #guildChatPanel, #guildChatMessages {
+  #guildModal, #guildPanel, #guildScroll, #guildList, #guildChatMessages {
     touch-action:auto; -webkit-overflow-scrolling:touch;
   }
   #chatPanel h2 { color:#ffb27a; font-size:15px; margin-bottom:8px; text-align:center; }
@@ -916,6 +898,23 @@
   }
   #globalChatPanelTop { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:8px; }
   #globalChatStatus { font-size:11px; color:#c8d8e8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* Tabs merging 전체채팅/길드채팅 into one floating panel — see
+     switchChatTab() in the script. The guild tab itself is hidden entirely
+     when the player isn't in a guild (same condition as the old #btnGuildChat
+     HUD button). */
+  #chatTabRow { display:flex; gap:6px; margin-bottom:8px; flex-shrink:0; }
+  .chatTabBtn {
+    position:relative; flex:1; padding:6px 4px; font-size:11.5px; font-weight:bold;
+    background:rgba(255,255,255,0.06); color:#a8b8c8; border:1px solid rgba(255,255,255,0.14);
+    border-radius:8px;
+  }
+  .chatTabBtn.active { background:linear-gradient(180deg,#6fc7ff,#2a7ae0); color:#0a1a2a; border-color:#6fc7ff; }
+  .chatTabDot {
+    display:none; position:absolute; top:-3px; right:-3px; width:9px; height:9px;
+    border-radius:50%; background:#ff5a5a; box-shadow:0 0 0 2px #1a2432;
+  }
+  .chatTabDot.show { display:block; }
+  #chatTabGlobalPane, #chatTabGuildPane { flex:1; min-height:0; display:flex; flex-direction:column; }
   #closeGlobalChat {
     flex-shrink:0; width:26px; height:26px; padding:0; line-height:1; font-size:13px; font-weight:bold;
     background:rgba(255,255,255,0.1); color:#f0e8ff; border:1px solid #6a8aaa; border-radius:8px;
@@ -1398,7 +1397,8 @@
   </div>
 </div>
 
-<!-- Global chat (Supabase) — separate panel/ids from #chatModal above on
+<!-- Global + guild chat, merged into one floating panel as two tabs — see
+     switchChatTab() in the script. Separate from #chatModal above on
      purpose, see the CSS comment near .onlineCountBadge for why. -->
 <div id="globalChatModal">
   <div id="globalChatPanel">
@@ -1406,28 +1406,24 @@
       <span id="globalChatStatus">🌐 전체 채팅</span>
       <button id="closeGlobalChat">✕</button>
     </div>
+    <div id="chatTabRow">
+      <button id="chatTabGlobalBtn" class="chatTabBtn active" data-tab="global">🌐 전체<span id="chatTabGlobalDot" class="chatTabDot"></span></button>
+      <button id="chatTabGuildBtn" class="chatTabBtn" data-tab="guild" style="display:none;">🏯 길드<span id="chatTabGuildDot" class="chatTabDot"></span></button>
+    </div>
     <div id="globalChatPlayerDetail"></div>
-    <div id="globalChatMessages"></div>
-    <div id="globalChatInputRow">
-      <input id="globalChatInput" type="text" maxlength="200" placeholder="메시지 입력...">
-      <button id="sendGlobalChatBtn">전송</button>
+    <div id="chatTabGlobalPane">
+      <div id="globalChatMessages"></div>
+      <div id="globalChatInputRow">
+        <input id="globalChatInput" type="text" maxlength="200" placeholder="메시지 입력...">
+        <button id="sendGlobalChatBtn">전송</button>
+      </div>
     </div>
-  </div>
-</div>
-
-<!-- Guild chat — same "floating panel, no backdrop" treatment as global
-     chat, but scoped to guild_chat_messages / a per-guild realtime channel
-     (see openGuildChatModal/subscribeGuildChat in the script). -->
-<div id="guildChatModal">
-  <div id="guildChatPanel">
-    <div id="guildChatPanelTop">
-      <span id="guildChatStatus">🏯 길드 채팅</span>
-      <button id="closeGuildChat">✕</button>
-    </div>
-    <div id="guildChatMessages"></div>
-    <div id="guildChatInputRow">
-      <input id="guildChatInput" type="text" maxlength="200" placeholder="메시지 입력...">
-      <button id="sendGuildChatBtn">전송</button>
+    <div id="chatTabGuildPane" style="display:none;">
+      <div id="guildChatMessages"></div>
+      <div id="guildChatInputRow">
+        <input id="guildChatInput" type="text" maxlength="200" placeholder="메시지 입력...">
+        <button id="sendGuildChatBtn">전송</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1571,6 +1567,7 @@ const $ = {};
  'btnMenu','menuUnreadBadge',
  'btnGlobalChat','onlineCountBadge','globalChatUnreadBadge','globalChatModal','globalChatMessages','globalChatInput',
  'sendGlobalChatBtn','closeGlobalChat','globalChatStatus',
+ 'chatTabGlobalBtn','chatTabGuildBtn','chatTabGlobalPane','chatTabGuildPane','chatTabGlobalDot','chatTabGuildDot',
 ].forEach(id => { $[id] = document.getElementById(id); });
 
 // Show runtime errors on the page so mobile testing does not require DevTools.
@@ -5141,7 +5138,7 @@ function loop(nowMs) {
 // to be open, so tapping a different menu button doesn't leave two panels
 // stacked on top of each other — the player never has to close one by hand
 // before opening the next.
-const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'globalChatModal', 'worldBossModal', 'guildModal', 'guildChatModal'];
+const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'globalChatModal', 'worldBossModal', 'guildModal'];
 function openModal(id) {
   for (const modalId of MODAL_IDS) {
     if (modalId !== id) document.getElementById(modalId).classList.remove('open');
@@ -5576,21 +5573,47 @@ function clearChatUnread() {
   $.chatUnreadBadge.classList.remove('show');
   updateMenuUnreadBadge();
 }
+// 전체채팅/길드채팅이 한 패널 안에 탭으로 합쳐져 있어서(#globalChatModal —
+// switchChatTab 참고), 배지를 "지금 그 탭을 보고 있는가"까지 따져서 올려야
+// 한다. 패널이 열려 있어도 다른 탭을 보고 있으면 여전히 안읽음으로 센다.
+let activeChatTab = 'global';
 // Same idea as bumpChatUnread/clearChatUnread above, but for the global
 // (Supabase) chat button — see initGlobalChatListener below for where this
 // gets called from.
 function bumpGlobalChatUnread() {
   const modalOpen = $.globalChatModal.classList.contains('open');
-  if (modalOpen) return;
+  if (modalOpen && activeChatTab === 'global') return;
   globalChatUnread++;
   $.globalChatUnreadBadge.textContent = globalChatUnread > 9 ? '9+' : String(globalChatUnread);
   $.globalChatUnreadBadge.classList.add('show');
+  if (modalOpen) $.chatTabGlobalDot.classList.add('show'); // 패널은 열려있지만 길드 탭을 보고 있는 경우
   updateMenuUnreadBadge();
 }
 function clearGlobalChatUnread() {
   globalChatUnread = 0;
   $.globalChatUnreadBadge.classList.remove('show');
+  $.chatTabGlobalDot.classList.remove('show');
   updateMenuUnreadBadge();
+}
+// 합쳐진 패널의 탭 전환 — btnGlobalChat/btnGuildChat 클릭과 guildChatOpenBtn이
+// 모두 이 함수를 거쳐 특정 탭을 연다(openGuildChatModal 참고). 탭을 바꾸는
+// 순간 그 탭의 안읽음은 바로 비운다(사람이 지금 그 내용을 보고 있으니까).
+function switchChatTab(tab) {
+  activeChatTab = tab;
+  const isGuild = tab === 'guild';
+  $.chatTabGlobalBtn.classList.toggle('active', !isGuild);
+  $.chatTabGuildBtn.classList.toggle('active', isGuild);
+  $.chatTabGlobalPane.style.display = isGuild ? 'none' : 'flex';
+  $.chatTabGuildPane.style.display = isGuild ? 'flex' : 'none';
+  if (isGuild) {
+    $.globalChatStatus.textContent = myGuild ? `${myGuild.emoji || '🏯'} ${myGuild.name} 채팅` : '🏯 길드 채팅';
+    clearGuildChatUnread();
+    loadGuildChatHistory();
+  } else {
+    $.globalChatStatus.textContent = '🌐 전체 채팅';
+    clearGlobalChatUnread();
+    loadGlobalChatHistory();
+  }
 }
 function removeRemotePlayersForConnection(connectionPeerId) {
   let changed = false;
@@ -7732,8 +7755,7 @@ function sendGlobalChatMsg() {
 }
 $.btnGlobalChat.addEventListener('click', () => {
   openModal('globalChatModal');
-  clearGlobalChatUnread();
-  loadGlobalChatHistory();
+  switchChatTab('global');
 });
 $.closeGlobalChat.addEventListener('click', () => {
   closeModal('globalChatModal');
@@ -8098,6 +8120,13 @@ function updateGuildPerk() {
   // 상단바 길드 채팅 바로가기 아이콘 — 길드에 가입돼 있을 때만 보이게.
   const btn = document.getElementById('btnGuildChat');
   if (btn) btn.style.display = myGuild ? '' : 'none';
+  // 합쳐진 채팅 패널의 길드 탭도 같은 조건으로 보이거나 숨는다. 길드를
+  // 나갔는데 마침 길드 탭을 보고 있었다면 전체채팅 탭으로 되돌린다.
+  const tabBtn = document.getElementById('chatTabGuildBtn');
+  if (tabBtn) {
+    tabBtn.style.display = myGuild ? '' : 'none';
+    if (!myGuild && activeChatTab === 'guild') switchChatTab('global');
+  }
 }
 
 // 조용히(에러를 UI에 띄우지 않고) 내가 속한 길드 id만 확인 — 페이지 로드 시
@@ -8556,7 +8585,8 @@ function sendGuildChatMsg() {
     .then(({ error }) => { if (error) appendGuildChatMsg('system', '', '전송 실패했어요'); });
 }
 function bumpGuildChatUnread() {
-  if (document.getElementById('guildChatModal').classList.contains('open')) return;
+  const modalOpen = document.getElementById('globalChatModal').classList.contains('open');
+  if (modalOpen && activeChatTab === 'guild') return;
   guildChatUnread++;
   updateGuildUnreadBadge();
 }
@@ -8564,6 +8594,7 @@ function clearGuildChatUnread() { guildChatUnread = 0; updateGuildUnreadBadge();
 function updateGuildUnreadBadge() {
   const badge = document.getElementById('guildUnreadBadge');
   const hudBadge = document.getElementById('guildChatHudUnreadBadge');
+  const tabDot = document.getElementById('chatTabGuildDot');
   const label = guildChatUnread > 9 ? '9+' : String(guildChatUnread);
   if (guildChatUnread > 0) { badge.textContent = label; badge.classList.add('show'); }
   else { badge.classList.remove('show'); }
@@ -8571,16 +8602,16 @@ function updateGuildUnreadBadge() {
     if (guildChatUnread > 0) { hudBadge.textContent = label; hudBadge.classList.add('show'); }
     else { hudBadge.classList.remove('show'); }
   }
+  if (tabDot) tabDot.classList.toggle('show', guildChatUnread > 0);
   updateMenuUnreadBadge(); // ☰ 메뉴 배지에도 합산 반영
 }
+// 길드 홈의 "💬 길드 채팅 열기" 버튼과 HUD의 🏯 버튼 둘 다 이 함수를 거쳐
+// 합쳐진 패널(#globalChatModal)을 길드 탭으로 연다.
 function openGuildChatModal() {
   if (!myGuild) return;
-  document.getElementById('guildChatStatus').textContent = `${myGuild.emoji || '🏯'} ${myGuild.name} 채팅`;
-  openModal('guildChatModal');
-  clearGuildChatUnread();
-  loadGuildChatHistory();
+  openModal('globalChatModal');
+  switchChatTab('guild');
 }
-function closeGuildChatModal() { closeModal('guildChatModal'); }
 
 // ---- Wiring ----
 async function openGuildModal() {
@@ -8615,7 +8646,6 @@ document.getElementById('guildDonateBig').addEventListener('click', () => donate
 document.getElementById('guildLeaveBtn').addEventListener('click', leaveGuildConfirm);
 document.getElementById('guildChatOpenBtn').addEventListener('click', openGuildChatModal);
 document.getElementById('btnGuildChat').addEventListener('click', openGuildChatModal);
-document.getElementById('closeGuildChat').addEventListener('click', closeGuildChatModal);
 document.getElementById('sendGuildChatBtn').addEventListener('click', sendGuildChatMsg);
 document.getElementById('guildChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendGuildChatMsg(); });
 // 조용히 한 번 내 길드 정보를 받아와 골드 보너스 퍼크만 활성화 — 모달을 연 적이
