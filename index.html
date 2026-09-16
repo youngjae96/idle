@@ -553,6 +553,12 @@
   .menuItemBtn .miEmoji { font-size:16px; width:20px; text-align:center; flex-shrink:0; }
   .menuItemBtn.off { opacity:0.6; }
   .menuItemBtn.cooling { opacity:0.5; }
+  /* 소리 켜기/끄기(btnMute)는 on/off 스위치, 이 슬라이더는 켜져 있을 때의
+     음량 세기를 조절하는 별개 컨트롤 — 0으로 내려도 btnMute 상태 자체는
+     안 바뀐다(꺼짐 아이콘 대신 그냥 소리가 안 날 뿐). */
+  #menuVolumeRow { cursor:default; }
+  #volumeSlider { flex:1; accent-color:#ffd166; height:18px; }
+  #volumeValueText { width:34px; text-align:right; font-size:11px; opacity:0.8; flex-shrink:0; }
   #closeMenu { margin-top:2px; padding:9px; flex-shrink:0; }
 
   /* ---------- [CSS] Monster bestiary (몬스터 도감) ---------- 데이터/계산은
@@ -1277,6 +1283,11 @@
         <button id="btnBestiary" class="menuItemBtn"><span class="miEmoji">📖</span> 몬스터 도감</button>
         <button id="btnTownWarp" class="menuItemBtn" title="마을로 귀환"><span class="miEmoji">🏠</span> 마을로 귀환</button>
         <button id="btnMute" class="menuItemBtn" title="소리 켜기/끄기"><span class="miEmoji">🔊</span> 소리 켜기/끄기</button>
+        <div id="menuVolumeRow" class="menuItemBtn">
+          <span class="miEmoji">🔉</span>
+          <input id="volumeSlider" type="range" min="0" max="100" step="1" value="100">
+          <span id="volumeValueText">100%</span>
+        </div>
         <button id="btnShake" class="menuItemBtn" title="화면 흔들림 켜기/끄기"><span class="miEmoji">📳</span> 화면 흔들림 켜기/끄기</button>
         <button id="btnSaveCode" class="menuItemBtn" title="저장 코드 백업/복원"><span class="miEmoji">💾</span> 기기 간 이어하기</button>
         <button id="closeMenu">닫기</button>
@@ -1563,6 +1574,7 @@ const $ = {};
  'toggleFriendPanel','syncReceiveStatus','syncReceiveInput','scTabSend','scTabReceive','saveCodeMsg',
  'randomMatchBtn','msg','mapName','friendsView','copyPeerId','comboText','chatUnreadBadge','chatMessages',
  'buyPotion5','buyPotion10','buyPotion','btnTownWarp','btnStatus','btnMute','btnShake','btnChat',
+ 'volumeSlider','volumeValueText',
  'btnMenu','menuUnreadBadge',
  'btnGlobalChat','onlineCountBadge','globalChatUnreadBadge','globalChatModal','globalChatMessages','globalChatInput',
  'sendGlobalChatBtn','closeGlobalChat','globalChatStatus',
@@ -1893,7 +1905,16 @@ const COYOTE_FRAMES = 6, JUMP_BUFFER_FRAMES = 8;
 
 // ⚠️ 범용 이름 전역 — 재선언/재사용 금지: keys
 let keys = {};
+// 채팅창 등 텍스트 입력창에 포커스가 있을 때는 게임 단축키(스페이스=점프,
+// F=공격, D=스킬, Q=자동사냥, 방향키)를 완전히 무시한다 — 이게 없으면 PC에서
+// 채팅 치다가 스페이스바 눌렀을 때 띄어쓰기 대신 캐릭터가 점프하고, Q를
+// 치면 자동사냥이 켜졌다 꺼졌다 하는 등 타이핑이 곧바로 게임 입력으로
+// 새는 문제가 있었다.
+function isTypingIntoField(el) {
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+}
 document.addEventListener('keydown', e => {
+  if (isTypingIntoField(document.activeElement)) return;
   keys[e.code] = true;
   if (e.code === 'KeyF') tryAttack();
   if (e.code === 'KeyD') trySkill();
@@ -1979,6 +2000,24 @@ $.btnMute.addEventListener('click', () => {
 });
 updateMuteBtn();
 
+// 음량 세기 슬라이더 — btnMute(켜기/끄기)와는 별개로, 켜져 있을 때 SFX/BGM
+// 게인에 곱해지는 0~1 배율. beep()/bgmNote()에서 사용(아래 참고).
+let masterVolume = (() => {
+  const v = parseFloat(lsGet('forestTaleVolume'));
+  return isNaN(v) ? 1 : Math.min(1, Math.max(0, v));
+})();
+function updateVolumeSliderUI() {
+  const pct = Math.round(masterVolume * 100);
+  $.volumeSlider.value = pct;
+  $.volumeValueText.textContent = pct + '%';
+}
+$.volumeSlider.addEventListener('input', () => {
+  masterVolume = Math.min(1, Math.max(0, Number($.volumeSlider.value) / 100));
+  lsSet('forestTaleVolume', String(masterVolume));
+  updateVolumeSliderUI();
+});
+updateVolumeSliderUI();
+
 // 화면 흔들림(치명타/콤보 등 전투 연출) 켜기/끄기. 멀미 유발 등의 이유로 끄고
 // 싶은 사용자를 위한 옵션 — 기본값은 켬(기존 동작 유지).
 let shakeOn = lsGet('forestTaleShake') !== '0';
@@ -2006,14 +2045,14 @@ $.btnTownWarp.addEventListener('click', () => {
 
 const SFX_VOLUME_MULT = 6.5;
 function beep(freq, duration, type='sine', vol=0.08, glideTo=null) {
-  if (!audioCtx || !soundOn) return;
+  if (!audioCtx || !soundOn || masterVolume <= 0) return;
   try {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = type;
     osc.frequency.value = freq;
     if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, audioCtx.currentTime + duration);
-    gain.gain.value = Math.min(1, vol * SFX_VOLUME_MULT);
+    gain.gain.value = Math.min(1, vol * SFX_VOLUME_MULT) * masterVolume;
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start();
@@ -2111,7 +2150,7 @@ const BGM_THEMES = {
 };
 let bgmTheme = null, bgmTimer = null, bgmToken = 0, bgmStep = 0;
 function bgmNote(freq, duration, type, vol) {
-  if (!audioCtx) return;
+  if (!audioCtx || masterVolume <= 0) return;
   try {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -2119,7 +2158,7 @@ function bgmNote(freq, duration, type, vol) {
     gain.gain.value = 0.0001;
     osc.connect(gain); gain.connect(audioCtx.destination);
     const t0 = audioCtx.currentTime;
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.001, vol), t0 + 0.04);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.001, vol * masterVolume), t0 + 0.04);
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
     osc.start(t0);
     osc.stop(t0 + duration + 0.03);
