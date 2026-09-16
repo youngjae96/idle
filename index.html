@@ -900,7 +900,7 @@
   #globalChatStatus { font-size:11px; color:#c8d8e8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   /* Tabs merging 전체채팅/길드채팅 into one floating panel — see
      switchChatTab() in the script. The guild tab itself is hidden entirely
-     when the player isn't in a guild (same condition as the old #btnGuildChat
+     when the player isn't in a guild
      HUD button). */
   #chatTabRow { display:flex; gap:6px; margin-bottom:8px; flex-shrink:0; }
   .chatTabBtn {
@@ -1098,7 +1098,6 @@
         <div class="hudIconGroup">
           <button id="btnTeleport" class="hudIconBtn secondary" title="텔레포트">🗺️</button>
           <button id="btnGlobalChat" class="hudIconBtn secondary" title="전체 채팅">🌐<span id="onlineCountBadge" class="onlineCountBadge"></span><span id="globalChatUnreadBadge" class="unreadBadge unreadBadge-left"></span></button>
-          <button id="btnGuildChat" class="hudIconBtn secondary" title="길드 채팅" style="display:none;">🏯<span id="guildChatHudUnreadBadge" class="unreadBadge unreadBadge-left"></span></button>
           <button id="btnWorldBoss" class="hudIconBtn secondary" title="월드보스">🐉</button>
         </div>
         <div class="hudIconGroup">
@@ -5577,6 +5576,17 @@ function clearChatUnread() {
 // switchChatTab 참고), 배지를 "지금 그 탭을 보고 있는가"까지 따져서 올려야
 // 한다. 패널이 열려 있어도 다른 탭을 보고 있으면 여전히 안읽음으로 센다.
 let activeChatTab = 'global';
+// 🌐 버튼 하나로 합쳐졌으니 배지도 전체+길드 안읽음 합계를 보여준다 — 어느 쪽에
+// 새 메시지가 왔는지는 패널을 열었을 때 탭 위의 점(chatTabDot)으로 구분한다.
+function updateChatHudBadge() {
+  const total = globalChatUnread + guildChatUnread;
+  if (total > 0) {
+    $.globalChatUnreadBadge.textContent = total > 9 ? '9+' : String(total);
+    $.globalChatUnreadBadge.classList.add('show');
+  } else {
+    $.globalChatUnreadBadge.classList.remove('show');
+  }
+}
 // Same idea as bumpChatUnread/clearChatUnread above, but for the global
 // (Supabase) chat button — see initGlobalChatListener below for where this
 // gets called from.
@@ -5584,19 +5594,18 @@ function bumpGlobalChatUnread() {
   const modalOpen = $.globalChatModal.classList.contains('open');
   if (modalOpen && activeChatTab === 'global') return;
   globalChatUnread++;
-  $.globalChatUnreadBadge.textContent = globalChatUnread > 9 ? '9+' : String(globalChatUnread);
-  $.globalChatUnreadBadge.classList.add('show');
+  updateChatHudBadge();
   if (modalOpen) $.chatTabGlobalDot.classList.add('show'); // 패널은 열려있지만 길드 탭을 보고 있는 경우
   updateMenuUnreadBadge();
 }
 function clearGlobalChatUnread() {
   globalChatUnread = 0;
-  $.globalChatUnreadBadge.classList.remove('show');
+  updateChatHudBadge();
   $.chatTabGlobalDot.classList.remove('show');
   updateMenuUnreadBadge();
 }
-// 합쳐진 패널의 탭 전환 — btnGlobalChat/btnGuildChat 클릭과 guildChatOpenBtn이
-// 모두 이 함수를 거쳐 특정 탭을 연다(openGuildChatModal 참고). 탭을 바꾸는
+// 합쳐진 패널의 탭 전환 — 패널 안 탭 버튼 클릭과 guildChatOpenBtn(길드 홈의
+// "채팅 열기" 버튼)이 모두 이 함수를 거쳐 특정 탭을 연다. 탭을 바꾸는
 // 순간 그 탭의 안읽음은 바로 비운다(사람이 지금 그 내용을 보고 있으니까).
 function switchChatTab(tab) {
   activeChatTab = tab;
@@ -8119,10 +8128,7 @@ function updateGuildPerk() {
   const info = myGuild ? guildLevelInfo(myGuild.exp) : null;
   // 레벨당 +1%, 최대 +20% — 길드가 없거나 서버 연결이 안 되면 자연히 0.
   guildGoldBonusPct = info ? Math.min(0.20, (info.level - 1) * 0.01) : 0;
-  // 상단바 길드 채팅 바로가기 아이콘 — 길드에 가입돼 있을 때만 보이게.
-  const btn = document.getElementById('btnGuildChat');
-  if (btn) btn.style.display = myGuild ? '' : 'none';
-  // 합쳐진 채팅 패널의 길드 탭도 같은 조건으로 보이거나 숨는다. 길드를
+  // 합쳐진 채팅 패널의 길드 탭 — 길드에 가입돼 있을 때만 보이게. 길드를
   // 나갔는데 마침 길드 탭을 보고 있었다면 전체채팅 탭으로 되돌린다.
   const tabBtn = document.getElementById('chatTabGuildBtn');
   if (tabBtn) {
@@ -8594,17 +8600,13 @@ function bumpGuildChatUnread() {
 }
 function clearGuildChatUnread() { guildChatUnread = 0; updateGuildUnreadBadge(); }
 function updateGuildUnreadBadge() {
-  const badge = document.getElementById('guildUnreadBadge');
-  const hudBadge = document.getElementById('guildChatHudUnreadBadge');
+  const badge = document.getElementById('guildUnreadBadge'); // ☰ 메뉴의 🏯 길드 버튼 배지 (채팅과 별개)
   const tabDot = document.getElementById('chatTabGuildDot');
   const label = guildChatUnread > 9 ? '9+' : String(guildChatUnread);
   if (guildChatUnread > 0) { badge.textContent = label; badge.classList.add('show'); }
   else { badge.classList.remove('show'); }
-  if (hudBadge) {
-    if (guildChatUnread > 0) { hudBadge.textContent = label; hudBadge.classList.add('show'); }
-    else { hudBadge.classList.remove('show'); }
-  }
   if (tabDot) tabDot.classList.toggle('show', guildChatUnread > 0);
+  updateChatHudBadge(); // 🌐 버튼의 합산 배지에도 반영
   updateMenuUnreadBadge(); // ☰ 메뉴 배지에도 합산 반영
 }
 // 길드 홈의 "💬 길드 채팅 열기" 버튼과 HUD의 🏯 버튼 둘 다 이 함수를 거쳐
@@ -8647,7 +8649,6 @@ document.getElementById('guildDonateSmall').addEventListener('click', () => dona
 document.getElementById('guildDonateBig').addEventListener('click', () => donateToGuild(100000));
 document.getElementById('guildLeaveBtn').addEventListener('click', leaveGuildConfirm);
 document.getElementById('guildChatOpenBtn').addEventListener('click', openGuildChatModal);
-document.getElementById('btnGuildChat').addEventListener('click', openGuildChatModal);
 document.getElementById('sendGuildChatBtn').addEventListener('click', sendGuildChatMsg);
 document.getElementById('guildChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendGuildChatMsg(); });
 // 조용히 한 번 내 길드 정보를 받아와 골드 보너스 퍼크만 활성화 — 모달을 연 적이
