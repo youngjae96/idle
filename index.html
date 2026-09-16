@@ -1094,7 +1094,7 @@
         <span id="dungeonTimer" style="display:none; color:#ffd166;"></span>
         <span id="dungeonOfflineNotice" style="display:none; color:#ff9a9a; font-size:10px;" title="이 던전은 앱을 꺼두거나 화면을 벗어나도 사냥이 진행되지 않아요.">🚫오프라인 불가</span>
         <span>Lv.<b id="lvl">1</b></span>
-        <span>🪙 <b id="gold">0</b></span>
+        <span>💰 <b id="gold">0</b></span>
       </div>
       <div style="display:flex; gap:0; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
         <div class="hudIconGroup">
@@ -1158,9 +1158,9 @@
         <div class="shop-item" style="flex-direction:column; align-items:stretch; gap:6px;">
           <div class="info"><span class="n">🧪 체력 물약</span>보유 <b id="potionCount">0</b>개 · HP 30% 이하 시 자동 사용</div>
           <div style="display:flex; gap:4px;">
-            <button id="buyPotion" style="flex:1;">1개 5🪙</button>
-            <button id="buyPotion5" style="flex:1;">10개 50🪙</button>
-            <button id="buyPotion10" style="flex:1;">100개 500🪙</button>
+            <button id="buyPotion" style="flex:1;">1개 5💰</button>
+            <button id="buyPotion5" style="flex:1;">10개 50💰</button>
+            <button id="buyPotion10" style="flex:1;">100개 500💰</button>
           </div>
         </div>
         <div id="shopTabs" style="display:flex; gap:6px; margin:8px 0;">
@@ -1185,7 +1185,7 @@
         <div class="statAllocRow"><span>INT (마법력 / MP / 회복)</span><span id="val_int">0</span><button id="btn_int">+</button></div>
         <div class="statAllocRow"><span>LUK (치명타)</span><span id="val_luk">0</span><button id="btn_luk">+</button></div>
         <div class="statRow">남은 포인트: <b id="statPoints">0</b></div>
-        <button id="btnResetStats" style="margin-bottom:6px;">🔄 스탯 초기화 (🪙100,000)</button>
+        <button id="btnResetStats" style="margin-bottom:6px;">🔄 스탯 초기화 (💰100,000)</button>
         <button id="closeStatus">닫기</button>
       </div>
     </div>
@@ -1311,7 +1311,7 @@
               <div id="guildEmojiPicker"></div>
               <input id="guildNameInput" type="text" maxlength="12" placeholder="길드 이름 (2~12자)">
               <input id="guildDescInput" type="text" maxlength="40" placeholder="한 줄 소개 (선택)">
-              <button id="guildCreateBtn">길드 만들기 (500,000🪙)</button>
+              <button id="guildCreateBtn">길드 만들기 (500,000💰)</button>
               <div id="guildCreateMsg"></div>
             </div>
           </div>
@@ -1333,8 +1333,8 @@
             <div id="guildExpOuter"><div id="guildExpFill" style="width:0%"></div></div>
             <div id="guildPerkLine"></div>
             <div id="guildDonateRow">
-              <button id="guildDonateSmall" data-amt="10000">10,000🪙 기부</button>
-              <button id="guildDonateBig" data-amt="100000">100,000🪙 기부</button>
+              <button id="guildDonateSmall" data-amt="10000">10,000💰 기부</button>
+              <button id="guildDonateBig" data-amt="100000">100,000💰 기부</button>
             </div>
             <div id="guildDonateStatus"></div>
             <div id="guildMembersTitle">멤버 (<span id="guildMemberCount">0</span>/10)</div>
@@ -2430,7 +2430,7 @@ function rarityBadgeHtml(level) {
 const PASSIVES = {
   atk:  { name:'⚔️ 공격력 단련', statLabel:'공격력', unit:'flat', perLevel:0.6,  baseCost:120, costGrowth:1.32 },
   hp:   { name:'❤️ 체력 단련',   statLabel:'최대체력', unit:'flat', perLevel:5,    baseCost:120, costGrowth:1.32 },
-  gold: { name:'🪙 재물운',      statLabel:'골드 획득량', unit:'pct', perLevel:0.02, baseCost:400, costGrowth:1.4 },
+  gold: { name:'💰 재물운',      statLabel:'골드 획득량', unit:'pct', perLevel:0.02, baseCost:400, costGrowth:1.4 },
   exp:  { name:'✨ 학습 속도',   statLabel:'경험치 획득량', unit:'pct', perLevel:0.02, baseCost:400, costGrowth:1.4 },
 };
 function passiveCost(key, level) {
@@ -3317,7 +3317,7 @@ function killMonster(map, m) {
   maybePetEggDrop(m);
   sfxKill();
   spawnParticles(m.x + m.w/2, m.y + m.h/2, m.type==='boss'?30:10, { color: m.type==='boss'?'#ffd166':'#7fe07f', size: m.type==='boss'?5:3, spread: m.type==='boss'?10:5 });
-  spawnFloatText(m.x + m.w/2, m.y - 10, `+${fmtGold(droppedGold)}🪙`, '#ffd166');
+  spawnFloatText(m.x + m.w/2, m.y - 10, `+${fmtGold(droppedGold)}💰`, '#ffd166');
 
   if (m.type === 'boss') {
     screenShake();
@@ -3343,8 +3343,8 @@ function killMonster(map, m) {
   if (quest.count >= quest.target) {
     addGold(quest.reward, 'quest');
     sfxQuest();
-    showMsg(`🎯 퀘스트 완료! 보상 +${fmtGold(quest.reward)}🪙`, 2200);
-    spawnFloatText(player.x + player.w/2, player.y - 20, `퀘스트 완료! +${fmtGold(quest.reward)}🪙`, '#c65ae0');
+    showMsg(`🎯 퀘스트 완료! 보상 +${fmtGold(quest.reward)}💰`, 2200);
+    spawnFloatText(player.x + player.w/2, player.y - 20, `퀘스트 완료! +${fmtGold(quest.reward)}💰`, '#c65ae0');
     quest.tier++;
     quest.count = 0;
     quest.target = questTargetForTier(quest.tier);
@@ -4810,7 +4810,7 @@ function updateHUD() {
   ui.width('mpBar', Math.max(0, player.mp/player.maxMp*100) + '%');
   ui.text('mpText', `${Math.max(0,Math.round(player.mp))}/${player.maxMp}`);
   ui.width('expBar', (player.exp/player.expNeeded*100) + '%');
-  ui.text('questText', `사냥터에서 몬스터 ${quest.target}마리 처치하기 (${quest.count}/${quest.target}) → 보상 ${fmtGold(quest.reward)}🪙`);
+  ui.text('questText', `사냥터에서 몬스터 ${quest.target}마리 처치하기 (${quest.count}/${quest.target}) → 보상 ${fmtGold(quest.reward)}💰`);
   ui.width('questBar', (quest.count/quest.target*100) + '%');
 
   document.getElementById('potionCount').textContent = player.potions || 0;
@@ -5285,7 +5285,7 @@ function renderHuntRateEstimate() {
     return;
   }
   el.style.display = '';
-  el.textContent = `⏱️ 이 사냥터 기준 시간당 예상: 처치 ${Math.round(rate.killsPerHour)}마리 · 🪙+${fmtGold(rate.goldPerHour)} · ✨+${rate.expPerHour} · 🧪 ${rate.potionsPerHour.toFixed(1)}개 소모`;
+  el.textContent = `⏱️ 이 사냥터 기준 시간당 예상: 처치 ${Math.round(rate.killsPerHour)}마리 · 💰+${fmtGold(rate.goldPerHour)} · ✨+${rate.expPerHour} · 🧪 ${rate.potionsPerHour.toFixed(1)}개 소모`;
 }
 function allocateStat(key) {
   if (player.statPoints <= 0) return;
@@ -5303,8 +5303,8 @@ function resetStats() {
   const cost = GAME_BALANCE.statResetCost;
   const totalAllocated = (s.str || 0) + (s.dex || 0) + (s.int || 0) + (s.luk || 0);
   if (totalAllocated <= 0) { showMsg('되돌릴 스탯이 없어요.', 1200); return; }
-  if (player.gold < cost) { showMsg(`골드가 부족해요 (🪙${fmtGold(cost)} 필요)`, 1500); return; }
-  if (!confirm(`🪙${fmtGold(cost)}을 내고 찍은 스탯 포인트를 모두 되돌릴까요?`)) return;
+  if (player.gold < cost) { showMsg(`골드가 부족해요 (💰${fmtGold(cost)} 필요)`, 1500); return; }
+  if (!confirm(`💰${fmtGold(cost)}을 내고 찍은 스탯 포인트를 모두 되돌릴까요?`)) return;
   player.gold -= cost;
   player.statPoints += totalAllocated;
   s.str = 0; s.dex = 0; s.int = 0; s.luk = 0;
@@ -6503,7 +6503,7 @@ function renderEnhanceList() {
       info.innerHTML = `${badge} <span class="n">${slot.label} +${level} → +${level + 1}</span>성공확률 ${rate}% · ${slot.bonusLabel} +${slot.bonusPerLevel} · 실패해도 아이템은 그대로${rankUpNote}`;
       row.appendChild(info);
       const btn = document.createElement('button');
-      btn.textContent = fmtGold(cost) + '🪙';
+      btn.textContent = fmtGold(cost) + '💰';
       btn.disabled = player.gold < cost;
       btn.addEventListener('click', () => {
         if (!spendGold(cost, 'enhance')) return;
@@ -6543,7 +6543,7 @@ function renderPassiveList() {
     row.appendChild(info);
 
     const btn = document.createElement('button');
-    btn.textContent = fmtGold(cost) + '🪙';
+    btn.textContent = fmtGold(cost) + '💰';
     btn.disabled = player.gold < cost;
     btn.addEventListener('click', () => {
       if (!spendGold(cost, 'passive_' + key)) return;
@@ -6574,10 +6574,10 @@ function renderPetList() {
   const hatchInfo = document.createElement('div');
   hatchInfo.className = 'info';
   const successPct = Math.round(GAME_BALANCE.petEggHatchSuccessChance * 100);
-  hatchInfo.innerHTML = `<span class="n">🥚 알 까기 (보유 ${player.petEggs}개)</span>비용 ${fmtGold(GAME_BALANCE.petEggHatchCost)}🪙 · 성공확률 ${successPct}% (실패 시 꽝)`;
+  hatchInfo.innerHTML = `<span class="n">🥚 알 까기 (보유 ${player.petEggs}개)</span>비용 ${fmtGold(GAME_BALANCE.petEggHatchCost)}💰 · 성공확률 ${successPct}% (실패 시 꽝)`;
   hatchRow.appendChild(hatchInfo);
   const hatchBtn = document.createElement('button');
-  hatchBtn.textContent = `까기 (-${fmtGold(GAME_BALANCE.petEggHatchCost)}🪙)`;
+  hatchBtn.textContent = `까기 (-${fmtGold(GAME_BALANCE.petEggHatchCost)}💰)`;
   const canHatch = player.petEggs > 0 && player.gold >= GAME_BALANCE.petEggHatchCost;
   hatchBtn.disabled = !canHatch;
   hatchBtn.addEventListener('click', () => {
@@ -6591,7 +6591,7 @@ function renderPetList() {
       showMsg(`⭐ ${outcome.pet.emoji} ${outcome.pet.name}이(가) ★${outcome.star}(으)로 성장! → ${describePetBonus(bonus)}`, 2800);
       spawnFloatText(player.x + player.w/2, player.y - 20, `⭐ ${outcome.pet.emoji} ★${outcome.star}`, '#ffd166');
     } else if (outcome.result === 'dup') {
-      showMsg(`🥚 성공했지만 이미 다 모았어요! 대신 +${fmtGold(outcome.bonus)}🪙`, 2400);
+      showMsg(`🥚 성공했지만 이미 다 모았어요! 대신 +${fmtGold(outcome.bonus)}💰`, 2400);
     } else {
       showMsg('💨 꽝! 알이 부화하지 않았어요.', 1800);
     }
@@ -6694,7 +6694,7 @@ function renderShopList() {
       btn.textContent = '장착';
       btn.addEventListener('click', () => equipShopItem(item, owned));
     } else {
-      btn.textContent = fmtGold(item.price) + '🪙';
+      btn.textContent = fmtGold(item.price) + '💰';
       btn.disabled = player.gold < item.price;
       btn.addEventListener('click', () => equipShopItem(item, owned, item.price));
     }
@@ -7389,13 +7389,13 @@ function showOfflineModal(result) {
     extra += `<br>🧪 물약 ${result.potionsUsed}개를 자동으로 마셨어요. (시간당 약 ${perHour}개)`;
   }
   if (result.potionsBought > 0) {
-    extra += `<br>🪙 물약이 떨어져서 ${result.potionsBought}개를 자동구매했어요. (-${fmtGold(result.potionsBought * GAME_BALANCE.potionPrice)}🪙, 획득 골드에 이미 반영됨)`;
+    extra += `<br>💰 물약이 떨어져서 ${result.potionsBought}개를 자동구매했어요. (-${fmtGold(result.potionsBought * GAME_BALANCE.potionPrice)}💰, 획득 골드에 이미 반영됨)`;
   }
   if (result.deaths > 0) extra += `<br>💀 쓰러져서 골드 일부를 잃고 사냥이 중단됐어요.`;
   if (result.eggsGained > 0) extra += `<br>🥚 펫 알 ${result.eggsGained}개를 주웠어요! (펫 메뉴에서 까볼 수 있어요)`;
   document.getElementById('offlineText').innerHTML =
     `${formatDuration(result.elapsedMs)} 동안 자동으로 사냥해서<br>` +
-    `🪙 골드 +${fmtGold(result.gold)} · ✨ 경험치 +${result.exp} 획득했어요!${extra}`;
+    `💰 골드 +${fmtGold(result.gold)} · ✨ 경험치 +${result.exp} 획득했어요!${extra}`;
   openModal('offlineModal');
 }
 document.getElementById('closeOffline').addEventListener('click', () => closeModal('offlineModal'));
@@ -7877,8 +7877,8 @@ async function tryClaimWorldBossBonus() {
     const bonus = Math.round(Number(data) || 0);
     if (bonus > 0) {
       addGold(bonus, 'worldboss_defeat');
-      showMsg(`🏆 오늘의 월드보스 처치 보너스 +${fmtGold(bonus)}🪙`, 2600);
-      spawnFloatText(player.x + player.w/2, player.y - 40, `처치 보너스 +${fmtGold(bonus)}🪙`, '#ffd166');
+      showMsg(`🏆 오늘의 월드보스 처치 보너스 +${fmtGold(bonus)}💰`, 2600);
+      spawnFloatText(player.x + player.w/2, player.y - 40, `처치 보너스 +${fmtGold(bonus)}💰`, '#ffd166');
       updateHUD();
     }
   } catch (e) { worldBossBonusClaimAttempted = false; }
@@ -8064,7 +8064,7 @@ async function submitWorldBossDamage() {
     if (applied > 0) {
       const gold = Math.max(1, Math.round(applied * WORLD_BOSS_GOLD_PER_DAMAGE));
       addGold(gold, 'worldboss');
-      spawnFloatText(player.x + player.w/2, player.y - 34, `월드보스 기여 +${fmtGold(gold)}🪙`, '#ff9a5a');
+      spawnFloatText(player.x + player.w/2, player.y - 34, `월드보스 기여 +${fmtGold(gold)}💰`, '#ff9a5a');
     }
     updateWorldBossHpUI();
     updateHUD();
@@ -8117,7 +8117,7 @@ document.getElementById('worldBossRetreatBtn').addEventListener('click', () => f
 // yourself in the same statement if you need the UI to reflect it before
 // the next donation: `update guilds set exp = 5000000, level = 12 where id = <id>;`
 const GUILD_EMOJIS = ['🏯','⚔️','🛡️','🐉','🔥','🌙','⭐','🍀'];
-const GUILD_CREATE_COST = 500000; // keep in sync with the "500,000🪙" label on #guildCreateBtn
+const GUILD_CREATE_COST = 500000; // keep in sync with the "500,000💰" label on #guildCreateBtn
 const GUILD_MAX_MEMBERS = 10;  // keep in sync with the "/10" label near #guildMemberCount
 
 let myGuild = null;             // 서버가 마지막으로 알려준 길드 row ({id,name,emoji,description,level,exp,member_count,owner_device_id}), 길드 없으면 null
@@ -8150,7 +8150,7 @@ async function syncGuildLevel() {
 
 // exp -> {level, into, need}. plpgsql의 guild_level_info()와 반드시 같은 커브를
 // 써야 한다 — 한쪽만 바꾸면 클라이언트 진행바와 서버 레벨이 어긋난다.
-// (기부 단위가 10,000/100,000🪙로 커진 뒤 맞춰 임계값도 1000배로 올렸다 —
+// (기부 단위가 10,000/100,000💰로 커진 뒤 맞춰 임계값도 1000배로 올렸다 —
 // 예전 300/450/600...은 새 기부 버튼 한 번이면 몇 레벨씩 뛰어버렸다.)
 function guildLevelInfo(exp) {
   let level = 1;
@@ -8296,7 +8296,7 @@ async function createGuildSubmit() {
   const msgEl = document.getElementById('guildCreateMsg');
   const name = nameInput.value.trim();
   if (!/^[가-힣a-zA-Z0-9 ]{2,12}$/.test(name)) { msgEl.textContent = '2~12자, 한글/영문/숫자/공백만 사용할 수 있어요.'; return; }
-  if (player.gold < GUILD_CREATE_COST) { msgEl.textContent = `골드가 부족해요 (${GUILD_CREATE_COST}🪙 필요)`; return; }
+  if (player.gold < GUILD_CREATE_COST) { msgEl.textContent = `골드가 부족해요 (${GUILD_CREATE_COST}💰 필요)`; return; }
   const client = guildSb();
   if (!client) { msgEl.textContent = '연결할 수 없어요 (인터넷 연결 확인)'; return; }
   const desc = descInput.value.trim().slice(0, 40);
@@ -8356,11 +8356,11 @@ function renderGuildMembers() {
     // 시도조차 서버에 반영되지 못했다는 뜻이다(권한/네트워크 문제 등).
     const mismatch = m.device_id === DEVICE_ID && typeof player !== 'undefined' && player && m.level !== player.level;
     name.textContent = `${playerJobLabel(m.job)} ${m.nickname || '?'} · Lv.${m.level || 1}` + (mismatch ? ` (⚠️ 실제 Lv.${player.level}, 동기화 안 됨)` : '');
-    const contrib = document.createElement('span'); contrib.className = 'gmContrib'; contrib.textContent = fmtGold(m.contribution || 0) + '🪙';
+    const contrib = document.createElement('span'); contrib.className = 'gmContrib'; contrib.textContent = fmtGold(m.contribution || 0) + '💰';
     row.appendChild(rank); row.appendChild(name); row.appendChild(contrib);
     // 오늘 하나라도 기부했으면만 작은 배지로 오늘 기부액을 덧붙인다 (0이면 굳이 안 보여줌).
     if (m.today_contribution > 0) {
-      const today = document.createElement('span'); today.className = 'gmToday'; today.textContent = `(오늘 ${fmtGold(m.today_contribution)}🪙)`;
+      const today = document.createElement('span'); today.className = 'gmToday'; today.textContent = `(오늘 ${fmtGold(m.today_contribution)}💰)`;
       row.appendChild(today);
     }
     // 길드장 본인 눈에만, 자신을 제외한 멤버 옆에 추방 버튼을 붙인다.
@@ -8429,7 +8429,7 @@ function renderGuildDonateStatus() {
   const el = document.getElementById('guildDonateStatus');
   if (!el) return;
   el.textContent = amount > 0
-    ? `오늘 남은 기부 횟수: ${left}/${GUILD_DONATE_DAILY_LIMIT} · 오늘 기부한 금액: ${fmtGold(amount)}🪙`
+    ? `오늘 남은 기부 횟수: ${left}/${GUILD_DONATE_DAILY_LIMIT} · 오늘 기부한 금액: ${fmtGold(amount)}💰`
     : `오늘 남은 기부 횟수: ${left}/${GUILD_DONATE_DAILY_LIMIT}`;
   el.classList.toggle('limit-reached', left <= 0);
   const smallBtn = document.getElementById('guildDonateSmall');
@@ -8480,7 +8480,7 @@ async function donateToGuild(amount) {
     myGuildMembers.sort((a, b) => (b.contribution || 0) - (a.contribution || 0));
     updateGuildPerk();
     const afterLevel = guildLevelInfo(myGuild.exp).level;
-    showMsg(afterLevel > beforeLevel ? `🎉 길드가 Lv.${afterLevel}로 성장했어요!` : `🏯 길드에 ${fmtGold(amount)}🪙 기부했어요!`, afterLevel > beforeLevel ? 2200 : 1600);
+    showMsg(afterLevel > beforeLevel ? `🎉 길드가 Lv.${afterLevel}로 성장했어요!` : `🏯 길드에 ${fmtGold(amount)}💰 기부했어요!`, afterLevel > beforeLevel ? 2200 : 1600);
     renderGuildModal();
   } catch (e) {
     player.gold += amount; recordEconomyEvent('guild_donate_refund', amount, 0); updateHUD();
