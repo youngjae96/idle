@@ -281,7 +281,7 @@
   /* Shared close-button base — width/color/shape were duplicated six times;
      padding, margin-top and flex-shrink (for scrollable panels) still vary
      per modal below, and #closeTeleport overrides the background tint. */
-  #closeWorldBoss, #closeShop, #closeStatus, #closeTeleport, #closeMenu, #closeBestiary {
+  #closeWorldBoss, #closeShop, #closeStatus, #closeTeleport, #closeMenu, #closeBestiary, #closeTransform {
     width:100%; background:#5a4a70; color:#fff; border:none; border-radius:8px; font-weight:bold;
   }
   #closeWorldBoss { padding:8px; }
@@ -573,24 +573,68 @@
     animation:panelRise .22s ease-out both;
   }
   #bestiaryPanel h2 { color:#ffd166; font-size:15px; margin-bottom:4px; text-align:center; flex-shrink:0; }
-  #bestiarySummary { font-size:11px; color:#c8bce8; text-align:center; margin-bottom:6px; flex-shrink:0; }
+  #bestiarySummary { font-size:12px; color:#c8bce8; text-align:center; margin-bottom:6px; flex-shrink:0; line-height:1.35; }
   #bestiaryList { overflow-y:auto; margin-bottom:10px; min-height:0; }
   .bestiaryTierLabel {
-    font-size:11px; font-weight:bold; color:#ffe9b0; margin:8px 0 3px;
+    font-size:12.5px; font-weight:bold; color:#ffe9b0; margin:7px 0 3px;
     padding-bottom:3px; border-bottom:1px solid rgba(255,255,255,0.15);
   }
   .bestiaryTierLabel:first-child { margin-top:0; }
-  .bestiaryEntry { display:flex; align-items:center; gap:10px; padding:7px 3px; border-bottom:1px dashed rgba(255,255,255,0.12); }
+  .bestiaryEntry { display:flex; align-items:center; gap:8px; padding:6px 3px; border-bottom:1px dashed rgba(255,255,255,0.12); }
   .bestiaryEntry:last-child { border-bottom:none; }
-  .bestiaryEntry .beEmoji { font-size:21px; width:28px; text-align:center; flex-shrink:0; }
+  .bestiaryEntry .beEmoji { font-size:22px; width:28px; text-align:center; flex-shrink:0; }
   .bestiaryEntry.undiscovered .beEmoji { filter:grayscale(1) brightness(0.6); opacity:0.7; }
-  .bestiaryEntry .beInfo { flex:1; min-width:0; }
-  .bestiaryEntry .beName { font-size:12px; font-weight:bold; color:#ffe9b0; }
+  .bestiaryEntry .beInfo { flex:1; min-width:0; line-height:1.3; }
+  .bestiaryEntry .beName { font-size:13.5px; font-weight:bold; color:#ffe9b0; }
   .bestiaryEntry.undiscovered .beName { color:#8a7fa8; }
-  .bestiaryEntry .beMeta { font-size:10px; color:#c8bce8; margin-top:1px; }
-  .bestiaryEntry .beProgress { font-size:10px; color:#8fe0ff; margin-top:1px; }
-  .bestiaryEntry .beRewards { font-size:9.5px; color:#a89ac0; margin-top:3px; line-height:1.6; word-break:keep-all; }
+  .bestiaryEntry .beMeta { font-size:11.5px; color:#c8bce8; margin-top:1px; }
+  .bestiaryEntry .beProgress { font-size:11.5px; color:#8fe0ff; margin-top:1px; }
+  .bestiaryEntry .beRewards { font-size:11px; color:#a89ac0; margin-top:2px; line-height:1.35; word-break:keep-all; }
   #closeBestiary { padding:9px; flex-shrink:0; }
+
+  /* ---------- [CSS] 변신 뽑기 (가챠) ---------- 데이터/로직은 JOBS 정의 바로
+     아래 "변신 뽑기 (가챠)" 섹션, 렌더링은 renderTransformPanel 참고.
+     shop/status/bestiary와 같은 "중앙 다크 배경 모달" 계열이라 같은 mechanics를
+     여기서 독립적으로 다시 선언한다 (기존 공용 셀렉터 목록을 건드리지 않기 위해). */
+  #transformModal {
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(7,5,14,0.78); z-index:20; backdrop-filter:blur(4px) saturate(0.9);
+  }
+  #transformModal.open { display:flex; }
+  #transformPanel {
+    width:90%; max-width:360px; max-height:84%;
+    display:flex; flex-direction:column; touch-action:auto; -webkit-overflow-scrolling:touch;
+    background:linear-gradient(180deg,var(--panel-a),var(--panel-b));
+    border:3px solid #ffd166; border-radius:14px; padding:14px;
+    animation:panelRise .22s ease-out both;
+    box-shadow:0 18px 38px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+  #transformPanel h2 { color:#ffd166; font-size:15px; margin-bottom:4px; text-align:center; flex-shrink:0; }
+  #transformCurrent { text-align:center; font-size:12px; margin-bottom:8px; flex-shrink:0; }
+  #transformTierList { overflow-y:auto; min-height:0; margin-bottom:8px; }
+  .transformTierRow {
+    display:flex; align-items:center; gap:10px;
+    padding:7px 8px; margin-bottom:5px; border-radius:8px;
+    background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
+    font-size:11.5px; opacity:0.55;
+  }
+  .transformTierRow.owned { opacity:1; }
+  .transformTierRow.current { border-color:#ffd166; box-shadow:0 0 0 1px rgba(255,209,102,0.4) inset; }
+  .transformTierRow .ttPreview { flex-shrink:0; background:rgba(0,0,0,0.25); border-radius:6px; }
+  .transformTierRow .ttInfo { flex:1; min-width:0; }
+  .transformTierRow .ttName { font-weight:bold; }
+  .transformTierRow .ttMeta { margin-top:2px; }
+  .transformTierRow .ttPct { color:#a89ac0; }
+  .transformTierRow .ttBonus { color:#8fe0ff; }
+  #transformGoldLabel { text-align:center; font-size:11px; color:#c8bce8; flex-shrink:0; }
+  #transformPullBtn {
+    background:linear-gradient(180deg,var(--gold-a),var(--gold-b)); color:#4a2a10; font-weight:bold;
+    border:none; border-radius:8px; margin-top:8px; padding:10px; font-size:13px; flex-shrink:0;
+    box-shadow:0 3px 0 var(--gold-shadow); transition: transform .08s, box-shadow .08s;
+  }
+  #transformPullBtn:active { box-shadow:0 1px 0 var(--gold-shadow); transform:translateY(2px); }
+  #closeTransform { margin-top:6px; padding:9px; flex-shrink:0; box-shadow: 0 3px 0 #362a4a; transition: transform .08s, box-shadow .08s; border-radius:10px; }
+  #closeTransform:active { box-shadow: 0 1px 0 #362a4a; transform: translateY(2px); }
 
   /* ---------- [CSS] Guild (길드, Supabase) ---------- 로직/데이터는 스크립트의
      동일 이름 섹션 참고.
@@ -1281,6 +1325,7 @@
         <button id="btnStatus" class="menuItemBtn"><span class="miEmoji">📊</span> 상태창</button>
         <button id="btnGuild" class="menuItemBtn"><span class="miEmoji">🏯</span> 길드<span id="guildUnreadBadge" class="unreadBadge"></span></button>
         <button id="btnBestiary" class="menuItemBtn"><span class="miEmoji">📖</span> 몬스터 도감</button>
+        <button id="btnTransform" class="menuItemBtn"><span class="miEmoji">🎭</span> 변신 뽑기</button>
         <button id="btnTownWarp" class="menuItemBtn" title="마을로 귀환"><span class="miEmoji">🏠</span> 마을로 귀환</button>
         <button id="btnMute" class="menuItemBtn" title="소리 켜기/끄기"><span class="miEmoji">🔊</span> 소리 켜기/끄기</button>
         <div id="menuVolumeRow" class="menuItemBtn">
@@ -1352,6 +1397,17 @@
         <div id="bestiarySummary"></div>
         <div id="bestiaryList"></div>
         <button id="closeBestiary">닫기</button>
+      </div>
+    </div>
+    <div id="transformModal">
+      <div id="transformPanel">
+        <h2>🎭 변신 뽑기</h2>
+        <div class="statRow" id="transformCurrent">현재 변신: <b>없음</b> (뽑기 전)</div>
+        <div class="statRow" id="transformPityLabel" style="font-size:11px;color:#8fe0ff;margin-bottom:6px;">🎯 다음 확정 전설까지: 500번</div>
+        <div id="transformTierList"></div>
+        <div class="statRow" id="transformGoldLabel" style="margin-top:6px;">보유 골드: 0</div>
+        <button id="transformPullBtn">🎲 뽑기 (💰50,000)</button>
+        <button id="closeTransform">닫기</button>
       </div>
     </div>
   </div>
@@ -2649,11 +2705,16 @@ function computeCombatStats(jobKey, level, weaponId, armorId, stats, weaponEnhan
 // farming) and estimateHuntRate (the live status-panel forecast) so the two
 // numbers shown to the player can never quietly disagree. Folds in crit as
 // an expected-value damage multiplier, matching dealDamage's crit rule.
-function estimateTimePerKill(monsterHp, atk, critPct) {
+// atkSpeedMult (변신 공격속도 배율) 인자를 반드시 넘겨야 한다 — 예전엔 이 함수가
+// autoAtkIntervalSec을 고정값으로만 써서, 실시간 전투(player.attackCooldown)는
+// 변신 속도가 반영되는데 오프라인 파밍/예상치 표시만 변신 속도를 무시하고 항상
+// "변신 없음" 속도로 계산되던 버그가 있었다.
+function estimateTimePerKill(monsterHp, atk, critPct, atkSpeedMult) {
   const B = GAME_BALANCE;
   const expectedDmgMult = 1 + (critPct / 100) * (B.critDmgMult - 1);
   const effectiveAtk = atk * expectedDmgMult;
-  return Math.max(B.minKillTimeSec, (monsterHp / Math.max(1, effectiveAtk)) * B.autoAtkIntervalSec);
+  const mult = Number.isFinite(atkSpeedMult) ? atkSpeedMult : 1;
+  return Math.max(B.minKillTimeSec, (monsterHp / Math.max(1, effectiveAtk)) * B.autoAtkIntervalSec * mult);
 }
 
 // Same idea for the quest reward curve — tier 1 is a fixed baseline, every
@@ -2679,6 +2740,72 @@ const JOBS = {
   mage:    { name:'마법사', emoji:'🔮', color:'#a880ff', baseHp:22, baseAtk:4, baseMp:60, mpGrowth:5, baseDef:0, atkType:'ranged', skillName:'파이어볼', skillEmoji:'🔥', skillCost:10, skillCooldown:130, skillDmgMult:1.15, skillRadius:60 },
   archer:  { name:'궁수', emoji:'🏹', color:'#8ce08c', baseHp:27, baseAtk:5, baseMp:34, mpGrowth:3, baseDef:4, atkType:'ranged', skillName:'멀티샷', skillEmoji:'🏹', skillCost:16, skillCooldown:190, skillDmgMult:1.4, skillRadius:90 },
 };
+
+// ---------- 변신 뽑기 (가챠) ----------
+// 장비 강화(playerRarity)와는 완전히 별개 트랙 — 강화는 공격 이펙트(궤적/오라)를
+// 담당하고, 변신은 캐릭터 자체의 생김새(실루엣/장식/색)를 담당해서 서로 정보가
+// 겹치지 않게 분리했다. player.transformTier는 지금까지 뽑은 것 중 "가장 높은
+// 등급"의 인덱스(-1 = 아직 한 번도 안 뽑음)이며, 그 등급의 모습이 항상 자동으로
+// 적용된다 — 펫처럼 따로 장착 UI를 두지 않는다.
+const TRANSFORM_TIERS = [
+  { id:'common', name:'일반', color:'#c9d2da', weight:90.95,   atkSpeedMult:1.00 },
+  { id:'rare',   name:'레어', color:'#39d6ff', weight:7.5,  atkSpeedMult:0.97 },
+  { id:'epic',   name:'에픽', color:'#d94dff', weight:1.4,  atkSpeedMult:0.94 },
+  { id:'legend', name:'전설', color:'#ffd166', weight:0.15,  atkSpeedMult:0.90 },
+];
+const TRANSFORM_GACHA_COST = 50000;
+const TRANSFORM_DUP_REFUND = 2500;
+// 천장(pity) — 전설이 0.15%라 순수 확률만 믿으면 극단적으로 운 나쁜 경우
+// 수천 번을 뽑고도 못 받을 수 있음. "마지막 전설 이후 뽑은 횟수"를
+// player.transformPity로 추적하다가, TRANSFORM_LEGEND_PITY번째에 도달하면
+// 그 뽑기는 확률과 무관하게 무조건 전설로 확정한다. 전설을 뽑으면(천장이든
+// 자연 확률이든) 카운터를 0으로 리셋.
+const TRANSFORM_LEGEND_PITY = 500;
+function rollTransformTier() {
+  const total = TRANSFORM_TIERS.reduce((sum, t) => sum + t.weight, 0);
+  let r = Math.random() * total;
+  for (const t of TRANSFORM_TIERS) {
+    if (r < t.weight) return t;
+    r -= t.weight;
+  }
+  return TRANSFORM_TIERS[0];
+}
+// 강화(rarityFxScale)와 마찬가지로 곱연산이 아니라 attackCooldown 프레임 수를
+// 직접 줄이는 배수 하나 — 패시브/도감/펫 공속 보너스가 따로 없어서 겹칠 걱정은
+// 없지만, 나중에 생기더라도 여기 하나만 곱하면 되도록 단일 지점으로 유지.
+function transformAtkSpeedMult(tierIdx) {
+  const idx = Number.isInteger(tierIdx) ? tierIdx : (Number.isInteger(player.transformTier) ? player.transformTier : -1);
+  return idx >= 0 ? TRANSFORM_TIERS[idx].atkSpeedMult : 1;
+}
+function pullTransform() {
+  if (player.gold < TRANSFORM_GACHA_COST) {
+    spawnFloatText(player.x + player.w/2, player.y - 30, '💰 골드 부족', '#ff6a6a');
+    return;
+  }
+  spendGold(TRANSFORM_GACHA_COST, 'transform_gacha');
+  player.transformPity = (player.transformPity || 0) + 1;
+  const pityHit = player.transformPity >= TRANSFORM_LEGEND_PITY;
+  const rolled = pityHit ? TRANSFORM_TIERS[TRANSFORM_TIERS.length - 1] : rollTransformTier();
+  if (rolled === TRANSFORM_TIERS[TRANSFORM_TIERS.length - 1]) player.transformPity = 0;
+  const rolledIdx = TRANSFORM_TIERS.indexOf(rolled);
+  const curIdx = Number.isInteger(player.transformTier) ? player.transformTier : -1;
+  if (rolledIdx > curIdx) {
+    player.transformTier = rolledIdx;
+    spawnFloatText(player.x + player.w/2, player.y - 30, pityHit ? `🎯 천장 달성! ${rolled.name} 확정 획득!` : `✨ ${rolled.name} 변신 획득!`, rolled.color);
+    screenShake();
+  } else {
+    // Flat, unscaled refund — deliberately bypasses addGold()'s gold-gain
+    // multipliers (passives/pets/guild/global) so it mirrors spendGold()'s
+    // flat cost above. Otherwise gold-focused builds get an ever-growing
+    // effective discount on this gacha while everyone pays the same price.
+    player.gold += TRANSFORM_DUP_REFUND;
+    recordEconomyEvent('transform_dup_refund', TRANSFORM_DUP_REFUND, 0);
+    spawnFloatText(player.x + player.w/2, player.y - 30, `${rolled.name} (중복 · 💰${fmtGold(TRANSFORM_DUP_REFUND)} 환급)`, rolled.color);
+  }
+  updateHUD();
+  renderTransformPanel();
+  saveGame();
+}
 
 // A random ID kept in this browser only (never shown to the player). Later, if this game
 // talks to a shared online backend, this - not the nickname - is what should identify
@@ -2754,6 +2881,7 @@ let player = {
   weaponId:'w0', armorId:'a0', ownedWeapons:['w0'], ownedArmors:['a0'],
   weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0},
   pets:[], petStars:{}, equippedPetId:null, petEggs:0, defeatedBosses:[],
+  transformTier:-1, transformPity:0,
 };
 
 function refreshStats() {
@@ -3225,7 +3353,7 @@ function dealDamage(map, m, baseDmg, sourceX) {
 
 function tryAttack() {
   if (player.attackCooldown > 0) return;
-  player.attackCooldown = 26;
+  player.attackCooldown = Math.round(26 * transformAtkSpeedMult());
   player.attackAnim = 14;
   sfxSwing();
   const map = MAPS[currentMap];
@@ -3425,9 +3553,9 @@ function hatchPetEgg() {
     // Everything owned AND every pet maxed — fall back to the gold payout so
     // late-game eggs still mean something.
     const bonus = 200 + player.level * 10;
-    addGold(bonus, 'pet_dup');
+    const refunded = addGold(bonus, 'pet_dup');
     updateHUD();
-    return { result: 'dup', bonus };
+    return { result: 'dup', bonus: refunded };
   }
 
   const pet = unowned[Math.floor(Math.random() * unowned.length)];
@@ -3909,9 +4037,10 @@ function updateMonster(m) {
     m.hitCooldown = 50;
   }
 }
-function drawMonster(m) {
-  if (m.dead) return;
-  if (m.type === 'bat') {
+// drawMonster()는 몬스터 타입별 스프라이트를 그린다. 예전엔 하나의 거대한
+// if/else-if 체인(200줄+)이었던 걸, 타입별 그리기 함수 + 디스패치 테이블로 분리했다.
+// 각 함수는 독립적으로 ctx에만 그리므로 분리해도 동작은 동일하다.
+function drawMonster_bat(m) {
     ctx.save();
     const flap = Math.sin(Date.now()/90 + m.x) * 0.5;
     ctx.translate(m.x + m.w/2, m.y + m.h/2);
@@ -3925,7 +4054,8 @@ function drawMonster(m) {
     ctx.fillStyle = '#ff5a5a';
     ctx.beginPath(); ctx.arc(-3, -1, 1.4, 0, Math.PI*2); ctx.arc(3, -1, 1.4, 0, Math.PI*2); ctx.fill();
     ctx.restore();
-  } else if (m.type === 'goblin') {
+}
+function drawMonster_goblin(m) {
     ctx.save();
     const bob = Math.sin(Date.now()/140 + m.x) * 2;
     ctx.translate(m.x + m.w/2, m.y + m.h/2 + bob);
@@ -3939,7 +4069,8 @@ function drawMonster(m) {
     ctx.fillStyle = '#1a2a1a'; ctx.beginPath(); ctx.arc(8,-m.h/2+1,1.5,0,Math.PI*2); ctx.fill();
     ctx.fillStyle = '#ffd6d6'; ctx.beginPath(); ctx.moveTo(10,-m.h/2+7); ctx.lineTo(14,-m.h/2+5); ctx.lineTo(13,-m.h/2+9); ctx.closePath(); ctx.fill();
     ctx.restore();
-  } else if (m.type === 'mushroom') {
+}
+function drawMonster_mushroom(m) {
     ctx.save();
     const puff = 1 + Math.sin(Date.now()/300 + m.x) * 0.05;
     ctx.translate(m.x + m.w/2, m.y + m.h);
@@ -3953,7 +4084,8 @@ function drawMonster(m) {
     ctx.beginPath(); ctx.arc(-6,-22,2,0,Math.PI*2); ctx.arc(4,-25,1.6,0,Math.PI*2); ctx.arc(8,-18,1.8,0,Math.PI*2); ctx.fill();
     ctx.fillStyle = '#1a1010'; ctx.beginPath(); ctx.arc(-4,-15,1.5,0,Math.PI*2); ctx.arc(4,-15,1.5,0,Math.PI*2); ctx.fill();
     ctx.restore();
-  } else if (m.type === 'boss') {
+}
+function drawMonster_boss(m) {
     ctx.save();
     const isTelegraph = m.state === 'telegraph';
     const isLava = m.theme === 'lava';
@@ -3983,7 +4115,8 @@ function drawMonster(m) {
       ctx.fillRect(m.x - 55, m.y - 8, m.w + 110, m.h + 16);
       ctx.restore();
     }
-  } else if (m.type === 'shadowknight') {
+}
+function drawMonster_shadowknight(m) {
     ctx.save();
     const bob = Math.sin(Date.now()/130 + m.x) * 2;
     ctx.translate(m.x + m.w/2, m.y + m.h/2 + bob);
@@ -4000,7 +4133,8 @@ function drawMonster(m) {
     ctx.strokeStyle = '#c9d2da'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(m.w/2-4, -m.h/2+8); ctx.lineTo(m.w/2+10, -m.h/2-4); ctx.stroke();
     ctx.restore();
-  } else if (m.type === 'voidbat') {
+}
+function drawMonster_voidbat(m) {
     ctx.save();
     const flap = Math.sin(Date.now()/85 + m.x) * 0.5;
     ctx.translate(m.x + m.w/2, m.y + m.h/2);
@@ -4014,7 +4148,8 @@ function drawMonster(m) {
     ctx.fillStyle = '#ff5aff';
     ctx.beginPath(); ctx.arc(-3, -1, 1.6, 0, Math.PI*2); ctx.arc(3, -1, 1.6, 0, Math.PI*2); ctx.fill();
     ctx.restore();
-  } else if (m.type === 'riftwraith') {
+}
+function drawMonster_riftwraith(m) {
     ctx.save();
     const float = Math.sin(Date.now()/210 + m.x) * 4;
     ctx.translate(m.x + m.w/2, m.y + m.h/2 + float);
@@ -4026,7 +4161,8 @@ function drawMonster(m) {
     ctx.beginPath(); ctx.moveTo(0,-m.h/2); ctx.quadraticCurveTo(m.w/2, -4, 0, m.h/2); ctx.quadraticCurveTo(-m.w/2, -4, 0, -m.h/2); ctx.fill();
     ctx.fillStyle = '#1a0a2a'; ctx.beginPath(); ctx.arc(-3, -4, 1.8, 0, Math.PI*2); ctx.arc(4, -4, 1.8, 0, Math.PI*2); ctx.fill();
     ctx.restore();
-  } else if (m.type === 'crab') {
+}
+function drawMonster_crab(m) {
     ctx.save();
     const scuttle = Math.sin(Date.now()/90 + m.x) * 3;
     ctx.translate(m.x + m.w/2, m.y + m.h/2);
@@ -4039,7 +4175,8 @@ function drawMonster(m) {
     ctx.fillStyle = '#2a1a10';
     ctx.beginPath(); ctx.arc(-4, -6, 1.6, 0, Math.PI*2); ctx.arc(4, -6, 1.6, 0, Math.PI*2); ctx.fill();
     ctx.restore();
-  } else if (m.type === 'snail') {
+}
+function drawMonster_snail(m) {
     ctx.save();
     ctx.translate(m.x + m.w/2, m.y + m.h);
     ctx.scale(m.dir, 1);
@@ -4054,7 +4191,8 @@ function drawMonster(m) {
     ctx.fillStyle = '#2a1a10';
     ctx.beginPath(); ctx.arc(-10, -8, 1.4, 0, Math.PI*2); ctx.fill();
     ctx.restore();
-  } else if (m.type === 'scorpion') {
+}
+function drawMonster_scorpion(m) {
     ctx.save();
     ctx.translate(m.x + m.w/2, m.y + m.h/2 + 4);
     ctx.scale(m.dir, 1);
@@ -4068,7 +4206,8 @@ function drawMonster(m) {
     ctx.beginPath(); ctx.ellipse(m.w/2-6, 4, 6, 4, -0.4, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = '#ff5a5a'; ctx.beginPath(); ctx.arc(4, -2, 1.4, 0, Math.PI*2); ctx.arc(9, -2, 1.4, 0, Math.PI*2); ctx.fill();
     ctx.restore();
-  } else if (m.type === 'icespirit') {
+}
+function drawMonster_icespirit(m) {
     ctx.save();
     const float = Math.sin(Date.now()/220 + m.x) * 3;
     ctx.translate(m.x + m.w/2, m.y + m.h/2 + float);
@@ -4082,7 +4221,8 @@ function drawMonster(m) {
     ctx.fillStyle = '#2a4a6a';
     ctx.beginPath(); ctx.arc(-4, 0, 1.6, 0, Math.PI*2); ctx.arc(4, 0, 1.6, 0, Math.PI*2); ctx.fill();
     ctx.restore();
-  } else if (m.type === 'frostwolf') {
+}
+function drawMonster_frostwolf(m) {
     ctx.save();
     ctx.translate(m.x + m.w/2, m.y + m.h/2 + 2);
     ctx.scale(m.dir, 1);
@@ -4094,7 +4234,8 @@ function drawMonster(m) {
     ctx.fillStyle = '#1a2a3a';
     ctx.beginPath(); ctx.arc(m.w/2-8, -2, 1.6, 0, Math.PI*2); ctx.fill();
     ctx.restore();
-  } else {
+}
+function drawMonster_default(m) {
     ctx.save();
     const sq = 1 + Math.sin(Date.now()/220 + m.x) * 0.08;
     ctx.translate(m.x + m.w/2, m.y + m.h);
@@ -4106,12 +4247,59 @@ function drawMonster(m) {
     ctx.fillStyle = '#1a2a1a';
     ctx.beginPath(); ctx.arc(-4,-m.h/2,1.6,0,Math.PI*2); ctx.arc(4,-m.h/2,1.6,0,Math.PI*2); ctx.fill();
     ctx.restore();
-  }
+}
+const MONSTER_DRAW_FNS = {
+  bat: drawMonster_bat,
+  goblin: drawMonster_goblin,
+  mushroom: drawMonster_mushroom,
+  boss: drawMonster_boss,
+  shadowknight: drawMonster_shadowknight,
+  voidbat: drawMonster_voidbat,
+  riftwraith: drawMonster_riftwraith,
+  crab: drawMonster_crab,
+  snail: drawMonster_snail,
+  scorpion: drawMonster_scorpion,
+  icespirit: drawMonster_icespirit,
+  frostwolf: drawMonster_frostwolf,
+};
+function drawMonster(m) {
+  if (m.dead) return;
+  (MONSTER_DRAW_FNS[m.type] || drawMonster_default)(m);
   // hp bar (boss uses the dedicated top bar instead)
   if (m.type !== 'boss' && m.hp < m.maxHp) {
     ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(m.x, m.y - 10, m.w, 4);
     ctx.fillStyle = '#e05a5a'; ctx.fillRect(m.x, m.y - 10, m.w * Math.max(0,m.hp/m.maxHp), 4);
   }
+}
+
+// 변신 망토를 몸통보다 넓게, 양쪽 어깨 뒤로 걸쳐서 그려주는 공용 헬퍼.
+// drawPlayer(ctx)와 뽑기 미리보기(pctx) 양쪽에서 같은 모양을 쓰도록 분리했다.
+// 기존엔 한쪽(+x)에만 좁게 그려서 몸통 도형(-11~11)에 거의 다 가려졌는데,
+// 1) 양쪽에 대칭으로 그리고 2) 몸통 폭보다 바깥까지 뻗어나가게 좌표를 넓혀서
+// 정면에서 봐도 양옆으로 망토 자락이 또렷이 삐져나오게 함. 어두운 테두리
+// 선을 같이 그려서 등급색이 직업 의상색과 톤이 비슷해도(예: 전사 파랑 vs
+// 레어 파랑) 윤곽으로 확실히 구분되게 했다.
+function drawTransformCape(c, color, swing) {
+  c.save();
+  c.globalAlpha = 0.92;
+  c.lineJoin = 'round';
+  for (const side of [1, -1]) {
+    c.save();
+    c.scale(side, 1);
+    c.fillStyle = color;
+    c.strokeStyle = 'rgba(10,12,20,0.6)';
+    c.lineWidth = 1.4;
+    c.beginPath();
+    c.moveTo(6, -10);
+    c.quadraticCurveTo(20 + swing, 3, 16 + swing * 1.4, 23);
+    c.lineTo(9, 18);
+    c.quadraticCurveTo(12, 3, 7, -9);
+    c.closePath();
+    c.fill();
+    c.stroke();
+    c.restore();
+  }
+  c.restore();
 }
 
 // ---------- Player draw ----------
@@ -4130,6 +4318,47 @@ function drawPlayer() {
   ctx.translate(player.x + player.w/2, player.y + player.h/2);
   ctx.scale(player.facing * player.squash, (2 - player.squash));
 
+  // 변신(가챠) 외형 — 등급이 오를수록 색/장식/실루엣이 극적으로 변하도록,
+  // 강화 오라(playerRarity)와는 별개로 여기서만 다룬다. 로컬 좌표계 기준
+  // +x가 캐릭터 등 쪽(무기 팔은 항상 -x)이라 망토/날개는 +x에 붙인다.
+  const transformIdx = Number.isInteger(player.transformTier) ? player.transformTier : -1;
+  const transformColor = transformIdx >= 0 ? TRANSFORM_TIERS[transformIdx].color : null;
+  if (transformIdx >= 3) {
+    // 전설: 등 뒤로 크게 펼쳐진 날개 한 쌍 (망토보다 먼저 그려서 가장 뒤에 위치)
+    ctx.save();
+    ctx.globalAlpha = 0.8;
+    const wingFlap = Math.sin(player.walkT * 0.9) * 4;
+    for (const side of [1, -1]) {
+      ctx.save();
+      ctx.scale(1, side);
+      const grad = ctx.createLinearGradient(2, -6, 24, 10);
+      grad.addColorStop(0, transformColor); grad.addColorStop(1, 'rgba(255,255,255,0.15)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(4, -6);
+      ctx.quadraticCurveTo(18 + wingFlap, -10, 24 + wingFlap, 2);
+      ctx.quadraticCurveTo(16, 3, 12, 8);
+      ctx.quadraticCurveTo(10, 0, 4, -2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  if (transformIdx >= 1) {
+    // 레어 이상: 양쪽 어깨 뒤로 걸친 망토, 등급 색으로 틴트 — drawTransformCape
+    // 참고: 몸통보다 넓게+양쪽 대칭으로 그려서 정면에서도 잘 보이게 함
+    const capeSwing = Math.sin(player.walkT * 0.7) * 3;
+    drawTransformCape(ctx, transformColor, capeSwing);
+  }
+  if (transformIdx >= 2) {
+    // 에픽 이상: 몸 전체에 은은한 등급색 글로우를 깔아 실루엣이 한층 커/화려해
+    // 보이게 함 (실제 도형 크기를 바꾸는 대신 shadowBlur로 구현해 다른 좌표
+    // 계산을 건드리지 않음)
+    ctx.shadowColor = transformColor;
+    ctx.shadowBlur = 10 + transformIdx * 6;
+  }
+
   ctx.fillStyle = '#c65a3a';
   ctx.beginPath();
   ctx.moveTo(-9,-6); ctx.quadraticCurveTo(-16-Math.abs(legSwing)*0.3,6,-10,18); ctx.lineTo(-4,14); ctx.quadraticCurveTo(-8,2,-6,-6); ctx.closePath(); ctx.fill();
@@ -4142,6 +4371,21 @@ function drawPlayer() {
   ctx.fillStyle = '#7a4a2b'; ctx.fillRect(-11,8,22,4);
   ctx.fillStyle = sleeveColor; ctx.fillRect(6,-4,6,14);
 
+  if (transformIdx >= 2) {
+    // 에픽 이상: 양쪽 어깨에 뾰족한 견갑 장식 (등급 색)
+    ctx.save();
+    ctx.fillStyle = transformColor;
+    for (const side of [1, -1]) {
+      ctx.save();
+      ctx.translate(side * 10, -8);
+      ctx.beginPath();
+      ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.lineTo(2, -6); ctx.lineTo(0, -2); ctx.lineTo(-2, -6);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   ctx.fillStyle = '#ffe0b2'; ctx.beginPath(); ctx.arc(0,-16,11,0,Math.PI*2); ctx.fill();
   ctx.fillStyle = '#5a3a24';
   ctx.beginPath(); ctx.moveTo(-11,-20); ctx.quadraticCurveTo(-13,-30,-2,-29); ctx.quadraticCurveTo(10,-30,11,-19);
@@ -4151,6 +4395,19 @@ function drawPlayer() {
   ctx.fillStyle = '#2a2a2a'; ctx.beginPath(); ctx.arc(5,-15,1.8,0,Math.PI*2); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(5.6,-15.6,0.6,0,Math.PI*2); ctx.fill();
   ctx.fillStyle = 'rgba(255,140,140,0.5)'; ctx.beginPath(); ctx.ellipse(2,-11,2,1.2,0,0,Math.PI*2); ctx.fill();
+
+  if (transformIdx >= 3) {
+    // 전설: 머리 위에 왕관 (헤드밴드 위에 얹힘)
+    ctx.save();
+    ctx.fillStyle = transformColor;
+    ctx.beginPath();
+    ctx.moveTo(-8, -20); ctx.lineTo(-8, -26); ctx.lineTo(-4, -22);
+    ctx.lineTo(0, -28); ctx.lineTo(4, -22); ctx.lineTo(8, -26); ctx.lineTo(8, -20);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff2c0';
+    ctx.beginPath(); ctx.arc(0, -23, 1.6, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
 
   // arm: sword for melee, drawn bow for archer, glow-casting hand for mage
   ctx.fillStyle = bodyColors[0]; ctx.fillRect(-10,-3,6,13);
@@ -4793,6 +5050,11 @@ function drawCloud(x,y,s) {
 let camX = 0, running = false, msgTimer = 0, townWarpCooldown = 0;
 let quest = { count: 0, target: questTargetForTier(1), reward: questRewardForTier(1), tier: 1 };
 let economyLog = [];
+// economyLog는 최근 1000건만 보관하는 롤링 윈도우라, 오래 플레이한 캐릭터는
+// 과거 기록이 밀려서 사라진다. 밀려나는 이벤트의 gold를 잃어버리지 않고
+// 여기 누적해두면, "체크포인트 + 지금 남아있는 로그 합"이 항상 실제 누적
+// 총량과 같아야 한다는 불변식을 계속 검증할 수 있다 (verifyGoldLedger 참고).
+let economyCheckpointGold = 0;
 
 function showMsg(t, ms=1500) {
   const msg = ui.get('msg');
@@ -5176,7 +5438,7 @@ function loop(nowMs) {
 // to be open, so tapping a different menu button doesn't leave two panels
 // stacked on top of each other — the player never has to close one by hand
 // before opening the next.
-const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'globalChatModal', 'worldBossModal', 'guildModal'];
+const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'transformModal', 'globalChatModal', 'worldBossModal', 'guildModal'];
 function openModal(id) {
   for (const modalId of MODAL_IDS) {
     if (modalId !== id) document.getElementById(modalId).classList.remove('open');
@@ -5254,7 +5516,7 @@ function estimateHuntRate(mapId) {
   const avg = averageMonsterStats(map);
   if (!avg) return null;
 
-  const timePerKill = estimateTimePerKill(avg.hp, player.atk, player.crit);
+  const timePerKill = estimateTimePerKill(avg.hp, player.atk, player.crit, transformAtkSpeedMult());
   const mitigatedAtk = Math.max(1, avg.atk * (100 / (100 + (player.def || 0))));
 
   const killsPerHour = 3600 / timePerKill;
@@ -5381,6 +5643,128 @@ function renderBestiaryPanel() {
 }
 document.getElementById('btnBestiary').addEventListener('click', openBestiary);
 document.getElementById('closeBestiary').addEventListener('click', closeBestiary);
+
+// ---------- 변신 뽑기 — 모달/렌더링 (데이터/로직은 JOBS 아래 섹션 참고) ----------
+// 변신 등급별 정적 미리보기 — drawPlayer와 같은 도형/좌표를 쓰지만, 뽑기 모달의
+// 작은 <canvas> 각각에 그리는 용도라 걷기/공격 애니메이션 없이 고정 자세로만
+// 그린다. 아직 안 뽑은 등급도 그대로 보여줘서 뽑을지 말지 판단할 수 있게 함.
+function drawTransformPreviewOn(pctx, tierIdx, cw, ch) {
+  pctx.clearRect(0, 0, cw, ch);
+  const bodyColors = player.job === 'mage' ? ['#9a6fe0','#6a3fb8']
+    : player.job === 'archer' ? ['#6fbf5f','#3f8a3a']
+    : ['#4d9bf0','#2f6fc9'];
+  const sleeveColor = player.job === 'mage' ? '#7a4fc0' : player.job === 'archer' ? '#5fa855' : '#3a7ad0';
+  const transformColor = tierIdx >= 0 ? TRANSFORM_TIERS[tierIdx].color : null;
+  pctx.save();
+  pctx.translate(cw / 2, ch * 0.62);
+  pctx.scale(1.4, 1.4);
+
+  if (tierIdx >= 3) {
+    pctx.save();
+    pctx.globalAlpha = 0.8;
+    for (const side of [1, -1]) {
+      pctx.save();
+      pctx.scale(1, side);
+      const grad = pctx.createLinearGradient(2, -6, 24, 10);
+      grad.addColorStop(0, transformColor); grad.addColorStop(1, 'rgba(255,255,255,0.15)');
+      pctx.fillStyle = grad;
+      pctx.beginPath();
+      pctx.moveTo(4, -6);
+      pctx.quadraticCurveTo(18, -10, 24, 2);
+      pctx.quadraticCurveTo(16, 3, 12, 8);
+      pctx.quadraticCurveTo(10, 0, 4, -2);
+      pctx.closePath(); pctx.fill();
+      pctx.restore();
+    }
+    pctx.restore();
+  }
+  if (tierIdx >= 1) {
+    drawTransformCape(pctx, transformColor, 0);
+  }
+  if (tierIdx >= 2) {
+    pctx.shadowColor = transformColor;
+    pctx.shadowBlur = 10 + tierIdx * 6;
+  }
+
+  pctx.fillStyle = '#4a3320'; pctx.fillRect(-2, 12, 7, 10);
+  pctx.fillStyle = '#5a4028'; pctx.fillRect(-4, 12, 7, 10);
+  const bodyGrad = pctx.createLinearGradient(0, -8, 0, 14); bodyGrad.addColorStop(0, bodyColors[0]); bodyGrad.addColorStop(1, bodyColors[1]);
+  pctx.fillStyle = bodyGrad; pctx.beginPath(); pctx.roundRect(-11, -8, 22, 22, 7); pctx.fill();
+  pctx.fillStyle = '#7a4a2b'; pctx.fillRect(-11, 8, 22, 4);
+  pctx.fillStyle = sleeveColor; pctx.fillRect(6, -4, 6, 14);
+
+  if (tierIdx >= 2) {
+    pctx.save();
+    pctx.fillStyle = transformColor;
+    for (const side of [1, -1]) {
+      pctx.save();
+      pctx.translate(side * 10, -8);
+      pctx.beginPath();
+      pctx.moveTo(-4, 0); pctx.lineTo(4, 0); pctx.lineTo(2, -6); pctx.lineTo(0, -2); pctx.lineTo(-2, -6);
+      pctx.closePath(); pctx.fill();
+      pctx.restore();
+    }
+    pctx.restore();
+  }
+
+  pctx.fillStyle = '#ffe0b2'; pctx.beginPath(); pctx.arc(0, -16, 11, 0, Math.PI * 2); pctx.fill();
+  pctx.fillStyle = '#5a3a24';
+  pctx.beginPath(); pctx.moveTo(-11, -20); pctx.quadraticCurveTo(-13, -30, -2, -29); pctx.quadraticCurveTo(10, -30, 11, -19);
+  pctx.quadraticCurveTo(6, -24, 0, -22); pctx.quadraticCurveTo(-6, -25, -11, -20); pctx.closePath(); pctx.fill();
+  pctx.fillStyle = '#e8862a'; pctx.fillRect(-11, -19, 22, 4);
+  pctx.fillStyle = '#ffd166'; pctx.beginPath(); pctx.arc(0, -17, 2.4, 0, Math.PI * 2); pctx.fill();
+  pctx.fillStyle = '#2a2a2a'; pctx.beginPath(); pctx.arc(5, -15, 1.8, 0, Math.PI * 2); pctx.fill();
+  pctx.fillStyle = '#fff'; pctx.beginPath(); pctx.arc(5.6, -15.6, 0.6, 0, Math.PI * 2); pctx.fill();
+
+  if (tierIdx >= 3) {
+    pctx.save();
+    pctx.fillStyle = transformColor;
+    pctx.beginPath();
+    pctx.moveTo(-8, -20); pctx.lineTo(-8, -26); pctx.lineTo(-4, -22);
+    pctx.lineTo(0, -28); pctx.lineTo(4, -22); pctx.lineTo(8, -26); pctx.lineTo(8, -20);
+    pctx.closePath(); pctx.fill();
+    pctx.fillStyle = '#fff2c0';
+    pctx.beginPath(); pctx.arc(0, -23, 1.6, 0, Math.PI * 2); pctx.fill();
+    pctx.restore();
+  }
+
+  pctx.fillStyle = bodyColors[0]; pctx.fillRect(-10, -3, 6, 13);
+  pctx.restore();
+}
+function openTransform() { renderTransformPanel(); openModal('transformModal'); }
+function closeTransform() { closeModal('transformModal'); }
+function renderTransformPanel() {
+  const curIdx = Number.isInteger(player.transformTier) ? player.transformTier : -1;
+  let html = '';
+  TRANSFORM_TIERS.forEach((t, i) => {
+    const owned = i <= curIdx;
+    const isCurrent = i === curIdx;
+    const bonusPct = Math.round((1 - t.atkSpeedMult) * 100);
+    html += `<div class="transformTierRow${owned ? ' owned' : ''}${isCurrent ? ' current' : ''}">
+      <canvas class="ttPreview" width="52" height="66" data-tier="${i}"></canvas>
+      <div class="ttInfo">
+        <div class="ttName" style="color:${t.color};">${owned ? '★' : '☆'} ${t.name}</div>
+        <div class="ttMeta"><span class="ttPct">확률 ${t.weight}%</span> · <span class="ttBonus">공속 +${bonusPct}%</span></div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('transformTierList').innerHTML = html;
+  // 아직 안 뽑은 등급이라도 미리보기는 전부 볼 수 있게 여기선 owned 여부와
+  // 상관없이 4개 다 실제 색/장식 그대로 그린다 (뽑기 결정을 돕기 위한 용도).
+  document.querySelectorAll('#transformTierList .ttPreview').forEach(cv => {
+    drawTransformPreviewOn(cv.getContext('2d'), parseInt(cv.dataset.tier, 10), cv.width, cv.height);
+  });
+  const cur = curIdx >= 0 ? TRANSFORM_TIERS[curIdx] : null;
+  document.getElementById('transformCurrent').innerHTML = cur
+    ? `현재 변신: <b style="color:${cur.color};">${cur.name}</b>`
+    : `현재 변신: <b>없음</b> (아직 안 뽑음)`;
+  const pityLeft = TRANSFORM_LEGEND_PITY - (player.transformPity || 0);
+  document.getElementById('transformPityLabel').textContent = `🎯 다음 확정 전설까지: ${pityLeft}번`;
+  document.getElementById('transformGoldLabel').textContent = `보유 골드: 💰${fmtGold(player.gold)}`;
+}
+document.getElementById('btnTransform').addEventListener('click', openTransform);
+document.getElementById('closeTransform').addEventListener('click', closeTransform);
+document.getElementById('transformPullBtn').addEventListener('click', pullTransform);
 
 const TELEPORT_DESTS = [
   { id:'town', name:'🏘️ 마을' },
@@ -6768,7 +7152,8 @@ function recordEconomyEvent(kind, gold=0, exp=0, count=1) {
   event.hash = economyEventHash(event);
   economyLog.push(event);
   if (economyLog.length > 1000) {
-    economyLog.shift();
+    const removed = economyLog.shift();
+    economyCheckpointGold += removed.gold || 0;
     let previousHash = 'GENESIS';
     economyLog.forEach((item, index) => {
       item.id = index + 1;
@@ -6777,6 +7162,19 @@ function recordEconomyEvent(kind, gold=0, exp=0, count=1) {
       previousHash = item.hash;
     });
   }
+}
+// ---------- 골드 원장 검증 ----------
+// economyLog(+ 밀려난 만큼 누적해둔 economyCheckpointGold)를 GENESIS부터 다시
+// 더하면 "addGold/spendGold를 거쳐 정상적으로 쌓인 골드 총액"이 나온다. 이게
+// 실제 player.gold와 크게 어긋난다면, 그 차액은 addGold/spendGold를 거치지
+// 않고(=콘솔 등에서 player.gold를 직접 고치는 식으로) 생긴 돈이라는 뜻이다.
+// 반올림 등 사소한 오차는 GOLD_LEDGER_TOLERANCE로 흡수한다.
+const GOLD_LEDGER_TOLERANCE = 5;
+function verifyGoldLedger() {
+  let expected = economyCheckpointGold;
+  for (const ev of economyLog) expected += (ev.gold || 0);
+  const diff = player.gold - expected;
+  return { ok: Math.abs(diff) <= GOLD_LEDGER_TOLERANCE, expected, actual: player.gold, diff };
 }
 function addGold(amount, reason='reward') {
   // guildGoldBonusPct (see the Guild section further down) is a small extra
@@ -6817,7 +7215,7 @@ function spendGold(amount, reason='purchase') {
 // means a returning player's stats, items, or progress silently reset to
 // defaults instead of carrying over. Migrating explicitly here keeps that
 // under your control instead of leaving it to sanitizeSaveData's defaults.
-const SAVE_SCHEMA_VERSION = 6;
+const SAVE_SCHEMA_VERSION = 7;
 const SAVE_MIGRATIONS = {
   // Example for the next time the shape changes:
   // 2: (data) => {
@@ -6858,6 +7256,12 @@ const SAVE_MIGRATIONS = {
     // get — older saves have no star map. Everyone starts at ★0, which is
     // exactly the bonus they already had, so nothing changes retroactively.
     if (!data.player.petStars || typeof data.player.petStars !== 'object') data.player.petStars = {};
+    return data;
+  },
+  7: (data) => {
+    // 변신 뽑기 추가 — 옛날 세이브엔 아예 필드가 없으니 "아직 한 번도 안 뽑음"
+    // 상태(-1)로 시작한다. 소급해서 등급을 줄 방법이 없으니 모두가 0부터.
+    if (!Number.isInteger(data.player.transformTier)) data.player.transformTier = -1;
     return data;
   },
 };
@@ -6957,6 +7361,8 @@ function sanitizeSaveData(data) {
   }
   p.petStars = cleanPetStars;
   p.petEggs = Math.round(clampNum(p.petEggs, 0, 999, 0));
+  p.transformTier = Math.round(clampNum(p.transformTier, -1, TRANSFORM_TIERS.length - 1, -1));
+  p.transformPity = Math.round(clampNum(p.transformPity, 0, TRANSFORM_LEGEND_PITY, 0));
   // Only real map ids with a boss survive — same rebuild-from-scratch
   // approach as pets/passives/bestiary above.
   const validBossMapIds = new Set(['field','dungeon','moonshrine10','moonshrine20','moonshrine30','beach','lava','frost','abyss','sky','ruins','throne','voidrift','ashwaste','genesis']);
@@ -6997,6 +7403,7 @@ function sanitizeSaveData(data) {
   // entire character on next load, which cost more in accidentally-deleted
   // real saves than it ever stopped in tampering.
   data.economyLog = Array.isArray(data.economyLog) ? data.economyLog : [];
+  data.economyCheckpointGold = Number.isFinite(Number(data.economyCheckpointGold)) ? Number(data.economyCheckpointGold) : 0;
   return data;
 }
 
@@ -7008,6 +7415,7 @@ function serializeSave() {
     autoHunt,
     quest,
     economyLog,
+    economyCheckpointGold,
     player: {
       job: player.job, level: player.level, exp: player.exp, expNeeded: player.expNeeded,
       gold: player.gold, stats: player.stats, statPoints: player.statPoints,
@@ -7019,6 +7427,8 @@ function serializeSave() {
       pets: player.pets || [], petStars: player.petStars || {}, equippedPetId: player.equippedPetId || null,
       petEggs: player.petEggs || 0,
       defeatedBosses: player.defeatedBosses || [],
+      transformTier: Number.isInteger(player.transformTier) ? player.transformTier : -1,
+      transformPity: Number.isInteger(player.transformPity) ? player.transformPity : 0,
     },
   };
 }
@@ -7317,7 +7727,7 @@ function computeOfflineProgress(save) {
   // crit-focused builds.
   const s = save.player.stats || {};
   const critPct = computeCritChance(s);
-  const timePerKill = estimateTimePerKill(avg.hp, atk, critPct);
+  const timePerKill = estimateTimePerKill(avg.hp, atk, critPct, transformAtkSpeedMult(save.player.transformTier));
 
   let hp = maxHp, potions = save.player.potions || 0;
   let timeUsed = 0, kills = 0, gold = 0, exp = 0, potionsUsed = 0, potionsBought = 0, deaths = 0, eggsGained = 0;
@@ -7402,7 +7812,13 @@ document.getElementById('closeOffline').addEventListener('click', () => closeMod
 
 $.startBtn.addEventListener('click', () => {
   const save = loadSave();
-  if (save) continueGame(save);
+  if (save) {
+    continueGame(save);
+    // 세션당 한 번, 불러온 직후에만 검사한다 — 그 이후 정상 플레이로 쌓이는
+    // 오차(반올림 등)까지 매번 다시 검사하면 의미 없는 노이즈만 늘어난다.
+    const ledger = verifyGoldLedger();
+    if (!ledger.ok) reportCheatFlag('gold_ledger_mismatch', ledger);
+  }
   else openModal('jobSelectModal');
 });
 $.newGameLink.addEventListener('click', () => {
@@ -7446,13 +7862,14 @@ function startCommon() {
 function beginGame(job, nickname) {
   clearSave();
   economyLog = [];
+  economyCheckpointGold = 0;
   player = { x:60, y:GROUND_Y-40, vx:0, vy:0, w:28, h:40, facing:1, onGround:false, walkT:0, squash:1,
     invuln:0, attackCooldown:0, attackAnim:0, portalCooldown:0, skillCooldown:0,
     level:1, exp:0, expNeeded:20, hp:30, maxHp:30, atk:5, mp:20, maxMp:20, crit:5, gold:10,
     job, stats:{str:0,dex:0,int:0,luk:0}, statPoints:0, potions:0, nickname, deviceId: DEVICE_ID,
     weaponId:'w0', armorId:'a0', ownedWeapons:['w0'], ownedArmors:['a0'],
     weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0}, bestiary:{},
-    pets:[], petStars:{}, equippedPetId:null, petEggs:0, defeatedBosses:[] };
+    pets:[], petStars:{}, equippedPetId:null, petEggs:0, defeatedBosses:[], transformTier:-1, transformPity:0 };
   currentMap = 'town';
   quest = { count: 0, target: questTargetForTier(1), reward: questRewardForTier(1), tier: 1 };
   refreshStats();
@@ -7469,12 +7886,13 @@ function continueGame(save) {
     hp:1, maxHp:1, atk:5, mp:1, maxMp:1, crit:5, potions:0,
     nickname: '모험가' + Math.floor(100 + Math.random()*900), deviceId: DEVICE_ID,
     weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0}, bestiary:{},
-    pets:[], petStars:{}, equippedPetId:null, petEggs:0, defeatedBosses:[],
+    pets:[], petStars:{}, equippedPetId:null, petEggs:0, defeatedBosses:[], transformTier:-1, transformPity:0,
     ...save.player,
   };
   currentMap = MAPS[save.currentMap] ? save.currentMap : 'town';
   quest = save.quest || { count: 0, target: 5, reward: 15, tier: 1 };
   economyLog = save.economyLog || [];
+  economyCheckpointGold = Number(save.economyCheckpointGold) || 0;
   refreshStats();
   player.hp = player.maxHp; player.mp = player.maxMp;
   // autoHunt는 serializeSave/sanitizeSaveData에는 있지만 여기서 복원해주지
@@ -8038,6 +8456,23 @@ async function enterWorldBossFight() {
   }
 }
 
+// ---------- 치트 의심 플래그 리포트 ----------
+// 월드보스 데미지 제출은 서버(contribute_world_boss_damage RPC)의 v_max_dps
+// 캡을 통과해야만 전액 반영된다 — 즉 "leftover > 0"은 클라이언트가 아니라
+// 서버가 "이 시간 동안 낼 수 있는 최대 데미지보다 크다"고 판정한 결과라서,
+// 정상 플레이로는 사실상 나올 수 없는 신호다. 이 신호를 무시하지 않고
+// cheat_flags 테이블에 device_id/닉네임과 함께 남겨두면, 나중에 그 신호가
+// 반복되는 닉네임/기기만 골라서 MY_BLOCKED_PLAYERS에 수동으로 추가할 수 있다.
+// (완벽한 차단은 아니다 — 이 리포트 호출 자체를 우회하는 사람은 못 잡지만,
+// 그래도 데미지는 어차피 서버 캡에 걸려 랭킹에 반영되지 않으니 손해는 없다.)
+function reportCheatFlag(kind, detail) {
+  const client = worldBossSb();
+  if (!client) return;
+  client.from('cheat_flags').insert({
+    device_id: DEVICE_ID, nickname: gchatNickname(), job: player.job, level: player.level,
+    kind, detail,
+  }).then(() => {}, () => {}); // 리포트 실패는 조용히 무시 — 게임 플레이에 영향 없어야 함
+}
 async function submitWorldBossDamage() {
   const dmg = Math.round(worldBossDamageThisFight);
   if (dmg <= 0) return;
@@ -8057,6 +8492,13 @@ async function submitWorldBossDamage() {
     const leftover = dmg - applied;
     if (leftover > 0 && row.status !== 'defeated') {
       worldBossDamageThisFight += leftover;
+    }
+    // 서버가 실제로 캡을 걸었다면(=신고한 데미지의 상당 부분이 잘렸다면)
+    // 정상 플레이로는 설명이 안 되는 수치라는 뜻이라 조작 의심 플래그를 남긴다.
+    // 아주 근소한 차이(반올림/락 경합 등)는 제외하기 위해 최소 20% 이상 잘린
+    // 경우만 신고한다.
+    if (leftover > 0 && dmg > 0 && leftover / dmg >= 0.2) {
+      reportCheatFlag('worldboss_dps_cap_exceeded', { dmg, applied, leftover });
     }
     worldBossState = Object.assign({}, worldBossState, row, {
       my_damage: (worldBossState && worldBossState.my_damage || 0) + applied
@@ -8131,6 +8573,10 @@ let guildCreateEmoji = GUILD_EMOJIS[0];
 
 function guildSb() { return dungeonSb(); } // 다른 Supabase 기능들과 같은 클라이언트 재사용
 
+// expNeededForLevel의 지수 성장 곡선상 레벨 150조차 누적 경험치가 천문학적
+// 수치라 정상 플레이로는 사실상 도달 불가능하다 — 이 값을 넘는 레벨은
+// 로그/체크섬 대조 없이도 "무조건 조작"이라고 봐도 되는 안전한 경계선.
+const PLAUSIBLE_MAX_LEVEL = 150;
 // 길드 멤버 목록에 표시되는 내 레벨을 서버(guild_members.level)에 반영한다.
 // create_guild/join_guild가 가입 시점 레벨을 딱 한 번만 저장하고 그 뒤로는
 // 아무 RPC도 갱신하지 않아서, 이 함수(sync_guild_member_level RPC)가 없으면
@@ -8140,8 +8586,15 @@ async function syncGuildLevel() {
   if (!myGuild) return;
   const client = guildSb();
   if (!client) return;
+  // PLAUSIBLE_MAX_LEVEL을 넘으면 (1) 조작 의심 플래그를 남기고 (2) 다른
+  // 길드원 화면에 그 말도 안 되는 숫자가 그대로 뜨지 않도록 서버로 보내는
+  // 값 자체를 캡에서 잘라 보낸다 — 로컬 저장 데이터 자체는 건드리지 않는다.
+  const reportedLevel = Math.min(player.level, PLAUSIBLE_MAX_LEVEL);
+  if (player.level > PLAUSIBLE_MAX_LEVEL) {
+    reportCheatFlag('implausible_level', { level: player.level });
+  }
   try {
-    const { error } = await client.rpc('sync_guild_member_level', { p_device_id: DEVICE_ID, p_level: player.level });
+    const { error } = await client.rpc('sync_guild_member_level', { p_device_id: DEVICE_ID, p_level: reportedLevel });
     if (error) console.warn('[guild] syncGuildLevel 실패 — sync_guild_member_level 함수의 실행 권한(GRANT)을 확인하세요:', error);
   } catch (e) {
     console.warn('[guild] syncGuildLevel 예외:', e);
@@ -8304,8 +8757,9 @@ async function createGuildSubmit() {
   btn.disabled = true;
   msgEl.textContent = '만드는 중...';
   try {
+    if (player.level > PLAUSIBLE_MAX_LEVEL) reportCheatFlag('implausible_level', { level: player.level, via: 'create_guild' });
     const { data, error } = await client.rpc('create_guild', {
-      p_device_id: DEVICE_ID, p_nickname: gchatNickname(), p_job: player.job, p_level: player.level,
+      p_device_id: DEVICE_ID, p_nickname: gchatNickname(), p_job: player.job, p_level: Math.min(player.level, PLAUSIBLE_MAX_LEVEL),
       p_name: name, p_emoji: guildCreateEmoji, p_description: desc,
     });
     if (error || !data) {
@@ -8330,8 +8784,9 @@ async function joinGuild(guildId, name) {
   const client = guildSb();
   if (!client) { showMsg('연결할 수 없어요', 1200); return; }
   try {
+    if (player.level > PLAUSIBLE_MAX_LEVEL) reportCheatFlag('implausible_level', { level: player.level, via: 'join_guild' });
     const { data, error } = await client.rpc('join_guild', {
-      p_device_id: DEVICE_ID, p_nickname: gchatNickname(), p_job: player.job, p_level: player.level, p_guild_id: guildId,
+      p_device_id: DEVICE_ID, p_nickname: gchatNickname(), p_job: player.job, p_level: Math.min(player.level, PLAUSIBLE_MAX_LEVEL), p_guild_id: guildId,
     });
     if (error || data !== true) { showMsg('가입할 수 없어요 (이미 길드가 있거나 정원이 찼어요)', 1600); return; }
     showMsg(`🏯 '${name}' 길드에 가입했어요!`, 1800);
