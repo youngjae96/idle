@@ -2995,6 +2995,7 @@ const DEVICE_ID = getOrCreateDeviceId();
 // 두면(null) 그 항목은 검사하지 않고 닉네임만으로 판단한다.
 const MY_BLOCKED_PLAYERS = [
   { nickname: '가나다', job: 'warrior', level: null },
+  { nickname: 'T1', job: null, level: null },
 ];
 // nickname만 알 때(예: 서버 select에 job/level이 안 실려오는 길드채팅 기록)
 // 쓰는 느슨한 매칭 — 닉네임만 같으면 걸러낸다.
@@ -5239,8 +5240,16 @@ async function openTowerRankModal() {
       loading.textContent = '아직 랭킹에 오른 도전자가 없어요.';
       return;
     }
+    // 차단 목록(MY_BLOCKED_PLAYERS)에 있는 닉네임은 랭킹에서도 안 보이게 걸러낸다.
+    // 서버 tower_rankings 테이블 자체에서 행이 지워지는 건 아니고, 이 index.html을
+    // 받아가는 모든 사람의 화면에서 표시만 안 되는 방식(isBlockedNickname과 동일).
+    const visible = data.filter(r => !isBlockedNickname(r.nickname));
+    if (!visible.length) {
+      loading.textContent = '아직 랭킹에 오른 도전자가 없어요.';
+      return;
+    }
     listEl.innerHTML = '';
-    data.forEach((r, i) => listEl.appendChild(buildTowerRankRow(i + 1, r)));
+    visible.forEach((r, i) => listEl.appendChild(buildTowerRankRow(i + 1, r)));
     // 내가 목록(상위 50명) 밖이면 맨 아래에 내 순위를 따로 붙이지는 않는다 —
     // 정확한 순위를 알려면 전체 count가 필요한데, 그 정도로 무거운 조회를
     // 랭킹창 열 때마다 돌릴 만큼 중요한 정보는 아니라고 판단.
@@ -5260,10 +5269,18 @@ function renderTowerModal() {
     ? `오늘 남은 도전: ${remain}/${TOWER_DAILY_ENTRIES}회 · 입장 1회당 1개 층`
     : '오늘 남은 도전: 무제한 (테스트 중)';
   const btn = document.getElementById('enterTowerBtn');
+  if (isSelfBlocked()) {
+    btn.disabled = true;
+    btn.textContent = '입장할 수 없어요';
+    return;
+  }
   btn.disabled = TOWER_ENTRY_LIMIT_ENABLED && remain <= 0;
   btn.textContent = (!TOWER_ENTRY_LIMIT_ENABLED || remain > 0) ? `도전하기 (${best + 1}층부터)` : '오늘의 도전 횟수를 모두 썼어요';
 }
 function enterTower() {
+  // 차단된 유저(MY_BLOCKED_PLAYERS) — 무한의 탑도 다른 멀티플레이/소셜
+  // 기능들(isSelfBlocked 사용처 참고)과 동일하게 막는다.
+  if (isSelfBlocked()) { showMsg('🚫 무한의 탑에 입장할 수 없어요', 1800); return; }
   if (TOWER_ENTRY_LIMIT_ENABLED && towerEntriesRemaining() <= 0) { showMsg('⏳ 오늘은 탑에 입장할 수 있는 횟수를 다 썼어요. 내일 다시 도전하세요!', 2200); return; }
   useTowerEntry();
   closeModal('towerModal');
