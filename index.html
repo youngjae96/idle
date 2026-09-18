@@ -270,11 +270,59 @@
      backdrop-filter still vary per modal below; only the position/display
      mechanics were duplicated eight times before this. */
   #worldBossModal, #shopModal, #jobSelectModal, #statusModal, #teleportModal,
-  #menuModal, #bestiaryModal, #offlineModal, #guildModal {
+  #menuModal, #bestiaryModal, #offlineModal, #guildModal, #towerModal {
     position:absolute; inset:0; display:none; align-items:center; justify-content:center;
   }
   #worldBossModal.open, #shopModal.open, #jobSelectModal.open, #statusModal.open,
-  #teleportModal.open, #menuModal.open, #bestiaryModal.open, #offlineModal.open, #guildModal.open { display:flex; }
+  #teleportModal.open, #menuModal.open, #bestiaryModal.open, #offlineModal.open, #guildModal.open,
+  #towerModal.open { display:flex; }
+  /* ---------- [CSS] Infinite Tower (무한의 탑) ----------
+     로직은 스크립트의 동일 이름 섹션 참고. worldBossModal과 같은 중앙 팝업
+     골격을 쓰되, 보라/금색 톤으로 다른 시스템(주황=월드보스)과 구분. */
+  #towerModal { background:rgba(8,6,16,0.88); z-index:26; }
+  #towerPanel {
+    width:86%; max-width:320px; text-align:center;
+    background:linear-gradient(180deg,#2e2044,#1a1428);
+    border:3px solid #8f6dc9; border-radius:14px; padding:16px;
+  }
+  #towerPanel h2 { color:#e0c8ff; font-size:16px; margin-bottom:8px; }
+  #towerFloorLabel { font-size:22px; color:#ffe08a; font-weight:bold; margin-bottom:2px; }
+  #towerSubLabel { font-size:10.5px; color:#c8bce8; margin-bottom:10px; }
+  #towerRewardInfo { font-size:10.5px; color:#c8bce8; margin-bottom:8px; line-height:1.5; }
+  #towerEntriesLine { font-size:11.5px; color:#d8c8f0; margin-bottom:12px; }
+  #enterTowerBtn {
+    width:100%; padding:9px; background:linear-gradient(180deg,var(--gold-a),var(--gold-b)); color:#4a2a10;
+    font-weight:bold; border:none; border-radius:8px; margin-bottom:8px;
+    box-shadow:0 3px 0 var(--gold-shadow); transition:transform .08s, box-shadow .08s;
+  }
+  #enterTowerBtn:disabled { background:#4a4460; color:#8a7fa8; box-shadow:none; }
+  #enterTowerBtn:active:not(:disabled) { box-shadow:0 1px 0 var(--gold-shadow); transform:translateY(2px); }
+  #towerRankBtn {
+    width:100%; padding:7px; background:rgba(255,255,255,0.06); color:#e0c8ff;
+    font-size:12px; border:1px solid rgba(143,109,201,0.7); border-radius:8px; margin-bottom:8px;
+  }
+  #towerRankBtn:active { background:rgba(255,255,255,0.14); }
+  #towerFloorHUD { display:none; color:#e0c8ff; }
+  /* 무한의 탑 랭킹 — guildModal의 중앙 팝업 + guildList/guildRow 골격을 그대로
+     재사용하되(같은 보라 톤), 목록 행은 별도 클래스(trRow 등)로 분리해 길드
+     쪽 스타일을 건드리지 않는다. */
+  #towerRankModal { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(8,6,16,0.88); z-index:27; }
+  #towerRankModal.open { display:flex; }
+  #towerRankPanel {
+    width:88%; max-width:340px; max-height:78vh; display:flex; flex-direction:column;
+    background:linear-gradient(180deg,#2e2044,#1a1428);
+    border:3px solid #8f6dc9; border-radius:14px; padding:14px;
+  }
+  #towerRankPanel h2 { color:#e0c8ff; font-size:15px; margin-bottom:8px; text-align:center; flex-shrink:0; }
+  #towerRankList { display:flex; flex-direction:column; gap:5px; overflow-y:auto; min-height:40px; margin-bottom:10px; }
+  .trRow { display:flex; align-items:center; gap:8px; background:rgba(255,255,255,0.05); border-radius:8px; padding:6px 9px; }
+  .trRow.trMine { background:rgba(255,214,128,0.16); border:1px solid rgba(255,214,128,0.5); }
+  .trRank { width:24px; flex-shrink:0; text-align:center; font-size:12px; font-weight:bold; color:#ffd166; }
+  .trInfo { flex:1; min-width:0; }
+  .trName { font-size:12.5px; color:#f0e8ff; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .trMeta { font-size:10px; color:#b8a8d8; }
+  .trFloor { font-size:13px; color:#ffe08a; font-weight:bold; flex-shrink:0; }
+  #closeTowerRank { width:100%; padding:8px; flex-shrink:0; }
   #worldBossModal { background:rgba(10,6,16,0.88); z-index:26; }
   #worldBossPanel {
     width:86%; max-width:320px; text-align:center;
@@ -311,7 +359,7 @@
   /* Shared close-button base — width/color/shape were duplicated six times;
      padding, margin-top and flex-shrink (for scrollable panels) still vary
      per modal below, and #closeTeleport overrides the background tint. */
-  #closeWorldBoss, #closeShop, #closeStatus, #closeTeleport, #closeMenu, #closeBestiary, #closeTransform {
+  #closeWorldBoss, #closeShop, #closeStatus, #closeTeleport, #closeMenu, #closeBestiary, #closeTransform, #closeTower {
     width:100%; background:#5a4a70; color:#fff; border:none; border-radius:8px; font-weight:bold;
   }
   #closeWorldBoss { padding:8px; }
@@ -1167,6 +1215,8 @@
         <span class="brandMark">엔드리스 리얼름</span>
         <span>📍 <b id="mapName">마을</b></span>
         <span id="dungeonTimer" style="display:none; color:#ffd166;"></span>
+        <span id="towerFloorHUD">🗼 <b id="towerFloorHUDText">1</b>층</span>
+        <span id="towerFloorTimer" style="display:none; color:#ff9a6a; font-weight:bold;"></span>
         <span id="dungeonOfflineNotice" style="display:none; color:#ff9a9a; font-size:10px;" title="이 던전은 앱을 꺼두거나 화면을 벗어나도 사냥이 진행되지 않아요.">🚫오프라인 불가</span>
         <span>Lv.<b id="lvl">1</b></span>
         <span>💰 <b id="gold">0</b></span>
@@ -1180,6 +1230,7 @@
           <button id="btnTeleport" class="hudIconBtn secondary" title="텔레포트">🗺️</button>
           <button id="btnGlobalChat" class="hudIconBtn secondary" title="전체 채팅">🌐<span id="onlineCountBadge" class="onlineCountBadge"></span><span id="globalChatUnreadBadge" class="unreadBadge unreadBadge-left"></span></button>
           <button id="btnWorldBoss" class="hudIconBtn secondary" title="월드보스">🐉</button>
+          <button id="btnTower" class="hudIconBtn secondary" title="무한의 탑">🗼</button>
         </div>
         <div class="hudIconGroup">
           <button id="btnMenu">☰ 메뉴<span id="menuUnreadBadge" class="unreadBadge"></span></button>
@@ -1315,6 +1366,25 @@
         <div id="worldBossStatusText"></div>
         <button id="enterWorldBossBtn" disabled>도전하기</button>
         <button id="closeWorldBoss">닫기</button>
+      </div>
+    </div>
+    <div id="towerModal">
+      <div id="towerPanel">
+        <h2>🗼 무한의 탑</h2>
+        <div id="towerFloorLabel">-</div>
+        <div id="towerSubLabel">최고 도달층</div>
+        <div id="towerRewardInfo">🏆 최고층을 처음 넘어설 때마다 골드 보너스 지급</div>
+        <div id="towerEntriesLine">오늘 남은 도전: -/-</div>
+        <button id="enterTowerBtn" disabled>도전하기</button>
+        <button id="towerRankBtn">🏆 전체 랭킹 보기</button>
+        <button id="closeTower">닫기</button>
+      </div>
+    </div>
+    <div id="towerRankModal">
+      <div id="towerRankPanel">
+        <h2>🏆 무한의 탑 랭킹</h2>
+        <div id="towerRankList"></div>
+        <button id="closeTowerRank">닫기</button>
       </div>
     </div>
     <div id="saveCodeModal">
@@ -2411,6 +2481,10 @@ const WEAPONS = [
   { id:'w9', name:'차원 수호자의 창', atk:115, price:204800, emoji:'🌠' },
   { id:'w9a', name:'잔재의 파괴검', atk:135, price:409600, emoji:'🔥' },
   { id:'w10', name:'태초의 심판', atk:160, price:819200, emoji:'🌟' },
+  // 추가 최상위 티어 3종 — 기존과 같은 2배 가격 곡선, atk는 약 1.18배씩 상승.
+  { id:'w11', name:'창세의 인도자', atk:189, price:1638400, emoji:'🪄' },
+  { id:'w11a', name:'만물의 파편검', atk:223, price:3276800, emoji:'💫' },
+  { id:'w12', name:'영원의 계시', atk:263, price:6553600, emoji:'✨' },
 ];
 const ARMORS = [
   { id:'a0', name:'허름한 옷', hp:0, price:0, emoji:'👕' },
@@ -2433,6 +2507,10 @@ const ARMORS = [
   { id:'a9', name:'차원 수호자의 갑주', hp:400, price:204800, emoji:'🌠' },
   { id:'a9a', name:'잔재의 방벽', hp:470, price:409600, emoji:'🔥' },
   { id:'a10', name:'태초의 성갑', hp:560, price:819200, emoji:'🌟' },
+  // 추가 최상위 티어 3종 — 무기와 동일한 곡선(2배 가격, hp 약 1.18배씩 상승).
+  { id:'a11', name:'창세의 갑주', hp:661, price:1638400, emoji:'🪄' },
+  { id:'a11a', name:'만물의 파편갑', hp:780, price:3276800, emoji:'💫' },
+  { id:'a12', name:'영원의 성의', hp:920, price:6553600, emoji:'✨' },
 ];
 
 // ---------- Enhancement (slot-bound, not item-bound) ----------
@@ -2977,6 +3055,7 @@ function createDefaultPlayer() {
     weaponEnhance:0, armorEnhance:0, passives:{atk:0,hp:0,gold:0,exp:0},
     pets:[], petStars:{}, equippedPetId:null, petEggs:0, defeatedBosses:[],
     transformTier:-1, transformPity:0, transformDupCount:{},
+    towerBestFloor:0,
   };
 }
 let player = createDefaultPlayer();
@@ -3356,7 +3435,26 @@ function playerTakeDamage(dmg) {
   spawnFloatText(player.x + player.w/2, player.y, '-' + mitigated, '#ff6a6a');
   if (player.hp <= 0) {
     player.hp = 0;
-    showMsg('쓰러졌습니다... 마을로 이동합니다.', 2200);
+    let deathMsg = '쓰러졌습니다... 마을로 이동합니다.';
+    // [추가] 무한의 탑에서 수호자를 못 잡고 쓰러지면 입장이 완전히 0원이
+    // 되던 문제 — 하루 5번뿐인 입장을 벽 근처에서 날려버리면 체감상 손해가
+    // 컸다. 신기록/마일스톤 보너스(그 층을 실제로 "깼을" 때만 의미 있는
+    // 보상)는 제외하고, 그 수호자 기본 골드/경험치만 "지금까지 깎아놓은
+    // HP 비율"만큼 나눠서 지급한다.
+    if (currentMap === 'tower') {
+      const guardian = MAPS.tower.monsters && MAPS.tower.monsters[0];
+      if (guardian && guardian.type === 'towerguardian' && !guardian.dead) {
+        const dmgFrac = Math.min(1, Math.max(0, (guardian.maxHp - guardian.hp) / guardian.maxHp));
+        if (dmgFrac > 0) {
+          const partialGold = addGold(Math.round(guardian.goldReward * dmgFrac), 'tower_partial');
+          const partialExp = addExp(Math.round(guardian.expReward * dmgFrac), 'tower_partial');
+          if (partialGold > 0 || partialExp > 0) {
+            deathMsg = `💀 ${towerCurrentFloor}층에서 쓰러졌지만, 입힌 피해만큼 +${fmtGold(partialGold)}💰 · +${partialExp}✨ 획득했어요.`;
+          }
+        }
+      }
+    }
+    showMsg(deathMsg, 2400);
     switchMap('town');
     player.hp = player.maxHp;
   }
@@ -3559,6 +3657,11 @@ function killMonster(map, m) {
       if (!Array.isArray(player.defeatedBosses)) player.defeatedBosses = [];
       if (!player.defeatedBosses.includes(currentMap)) player.defeatedBosses.push(currentMap);
     }
+  } else if (m.type === 'towerguardian') {
+    // 무한의 탑: 일반 몬스터처럼 리스폰시키지도, (예전처럼) 그 자리에서 바로
+    // 다음 층 수호자로 교체하지도 않는다 — 층 진행/입장 종료 처리는 전부
+    // onTowerGuardianKilled 안에서 한다.
+    onTowerGuardianKilled(towerCurrentFloor);
   } else {
     showMsg(`${m.name}을(를) 처치했습니다!`, 900);
     m.respawnAt = Date.now() + 3000 + Math.random()*3000;
@@ -3708,6 +3811,17 @@ const MONSTER_DEFS = {
   shadowknight: { name:'그림자기사', w:30, h:32, yOff:32, range:110, speed:[2.1,0.14], hp:[46,17.00,2.40], atk:[10,4.00,0.68], gold:[18,5], exp:[20,6], extra:()=>({dashCooldown:0,dashT:0}) },
   voidbat:      { name:'심연박쥐',   w:26, h:20, flying:true,        range:100, speed:[2.3,0.14], hp:[18,10.00,1.55], atk:[5,2.50,0.42],  gold:[16,5], exp:[18,6], extra:()=>({bobT:Math.random()*10}) },
   riftwraith:   { name:'균열정령',   w:28, h:30, yOff:30, range:50,  speed:[1.0,0.08], hp:[40,15.00,2.10], atk:[9,3.80,0.64],  gold:[20,6], exp:[22,7], extra:()=>({rangedCooldown:60+Math.random()*60}) },
+  // 무한의 탑 전용 몬스터 — tier로 "층수"를 그대로 받는다(다른 맵처럼
+  // baseTier+offset을 섞지 않음). 필드 최강 몬스터(그림자기사)보다도 기본기가
+  // 세게 잡아, 저층이라도 탑이 일반 사냥터의 연장이 아니라 별도의 도전이라는
+  // 느낌을 준다.
+  // hp 2차항(2.60→3.60)을 올려 제한시간(TOWER_FLOOR_TIME_LIMIT)이 실제
+  // DPS 벽으로 작동하게 했다 — 예전 값은 "회피 위주로 오래 때리면 언젠가
+  // 잡힌다"는 무제한시간 전제로 잡혔던 수치라, 시간제한 체제에서 그대로
+  // 두면 제한시간 안에 너무 쉽게 뚫려서 제한시간 자체가 무의미해질 위험이
+  // 있었음. 실측 없이 계산으로만 올린 첫 추정치라 플레이 데이터가 쌓이면
+  // 재조정 필요.
+  towerguardian:{ name:'탑의 수호자', w:32, h:34, yOff:34, range:110, speed:[1.6,0.05], hp:[60,22.00,3.60], atk:[12,4.20,0.72], gold:[60,16], exp:[26,8], extra:()=>({dashCooldown:0,dashT:0}) },
 };
 function makeMonsterFromDef(type, x, tier, baseY) {
   const d = MONSTER_DEFS[type];
@@ -3741,6 +3855,7 @@ function makeFrostWolf(x, tier)      { return makeMonsterFromDef('frostwolf', x,
 function makeShadowKnight(x, tier)   { return makeMonsterFromDef('shadowknight', x, tier); }
 function makeVoidBat(x, baseY, tier) { return makeMonsterFromDef('voidbat', x, tier, baseY); }
 function makeRiftWraith(x, tier)     { return makeMonsterFromDef('riftwraith', x, tier); }
+function makeTowerGuardian(x, floor) { return makeMonsterFromDef('towerguardian', x, floor); }
 
 function makeEliteVariant(factory, x, tier, name, power=1.18) {
   const monster = factory(x, tier);
@@ -4043,6 +4158,29 @@ function updateBoss(m) {
   }
 }
 
+// ---------- Infinite Tower guardian AI ----------
+// 일반 몬스터(updateMonster 상단의 patrol-and-flip 로직)와 달리 항상
+// 플레이어를 향해 걸어온다. updateBoss처럼 별도 텔레그래프/슬램 연출 없이
+// 단순 접촉 데미지 — 층마다 하나뿐인 몬스터가 그 자리에서 왔다갔다만 하면
+// 사실상 가만히 서있는 것처럼 느껴지는 걸 막기 위한 최소한의 추격 AI.
+// [되돌림] 텔레그래프→돌진 패턴을 넣어봤었는데, 방향을 "시간제한 +
+// 몹 밸런스패치" 쪽으로 다시 잡으면서 일단 제거 — 접촉 데미지만 남긴
+// 원래 형태로 복귀.
+function updateTowerGuardian(m) {
+  const distX = player.x - (m.x + m.w/2);
+  if (Math.abs(distX) > 4) {
+    m.x += Math.sign(distX) * m.speed;
+    m.dir = Math.sign(distX) || m.dir;
+  }
+  m.x = Math.max(0, Math.min(m.x, MAPS[currentMap].width - m.w));
+
+  if (m.hitCooldown > 0) m.hitCooldown--;
+  if (rectsOverlap(player, m) && m.hitCooldown <= 0 && player.invuln <= 0) {
+    playerTakeDamage(m.atk);
+    m.hitCooldown = 50;
+  }
+}
+
 function updateMonster(m) {
   if (m.dead) {
     if (m.type !== 'boss' && Date.now() > m.respawnAt) {
@@ -4051,6 +4189,10 @@ function updateMonster(m) {
     return;
   }
   if (m.type === 'boss') { updateBoss(m); return; }
+  // 무한의 탑 수호자는 일반 몬스터처럼 제자리 순찰(range 왕복)하지 않고,
+  // 층에 몬스터가 이거 하나뿐이라 항상 플레이어 쪽으로 걸어온다 — 그래야
+  // "가만히 서있는 것 같다"는 체감 없이 실제로 쫓아오는 느낌이 난다.
+  if (m.type === 'towerguardian') { updateTowerGuardian(m); return; }
 
   let moveSpeed = m.speed;
   const isDashing = (m.type === 'scorpion' || m.type === 'frostwolf' || m.type === 'shadowknight') && m.dashT > 0;
@@ -4332,6 +4474,24 @@ function drawMonster_frostwolf(m) {
     ctx.beginPath(); ctx.arc(m.w/2-8, -2, 1.6, 0, Math.PI*2); ctx.fill();
     ctx.restore();
 }
+// 탑의 수호자 — 그림자기사와 같은 골격을 재사용하되 보라/금색으로 배색해
+// "무한의 탑" 전용 몬스터임을 시각적으로 구분한다.
+function drawMonster_towerguardian(m) {
+    ctx.save();
+    const bob = Math.sin(Date.now()/130 + m.x) * 2;
+    ctx.translate(m.x + m.w/2, m.y + m.h/2 + bob);
+    ctx.scale(m.dir, 1);
+    ctx.fillStyle = '#2e1f42';
+    ctx.beginPath(); ctx.roundRect(-m.w/2, -m.h/2+4, m.w, m.h-6, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,214,128,0.95)'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(-m.w/2+4,-2); ctx.lineTo(0,5); ctx.lineTo(m.w/2-4,-5); ctx.stroke();
+    ctx.fillStyle = '#4a2a10'; ctx.beginPath(); ctx.arc(5, -m.h/2+3, 9, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffd166';
+    ctx.beginPath(); ctx.arc(9, -m.h/2+2, 1.8, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 3.4;
+    ctx.beginPath(); ctx.moveTo(m.w/2-4, -m.h/2+9); ctx.lineTo(m.w/2+13, -m.h/2-6); ctx.stroke();
+    ctx.restore();
+}
 function drawMonster_default(m) {
     ctx.save();
     const sq = 1 + Math.sin(Date.now()/220 + m.x) * 0.08;
@@ -4358,6 +4518,7 @@ const MONSTER_DRAW_FNS = {
   scorpion: drawMonster_scorpion,
   icespirit: drawMonster_icespirit,
   frostwolf: drawMonster_frostwolf,
+  towerguardian: drawMonster_towerguardian,
 };
 function drawMonster(m) {
   if (m.dead) return;
@@ -4760,15 +4921,358 @@ function updateDungeonTimerHUD() {
 setInterval(() => {
   if (!running) return;
   updateDungeonTimerHUD();
-  if (!isDailyDungeon(currentMap)) return;
-  flushDungeonTracking();
-  updateDungeonTimerHUD();
-  if (dungeonSecondsRemaining(currentMap) <= 0) {
-    setAutoHunt(false);
-    showMsg('⏳ 오늘 이 던전의 사냥 시간이 끝났어요. 마을로 돌아갑니다.', 2600);
-    switchMap('town', 'dailyPortal');
+  if (isDailyDungeon(currentMap)) {
+    flushDungeonTracking();
+    updateDungeonTimerHUD();
+    if (dungeonSecondsRemaining(currentMap) <= 0) {
+      setAutoHunt(false);
+      showMsg('⏳ 오늘 이 던전의 사냥 시간이 끝났어요. 마을로 돌아갑니다.', 2600);
+      switchMap('town', 'dailyPortal');
+    }
+  }
+  if (currentMap === 'tower') {
+    updateTowerFloorTimerHUD();
+    const guardian = MAPS.tower.monsters && MAPS.tower.monsters[0];
+    if (guardian && !guardian.dead && towerSecondsRemaining() <= 0) onTowerFloorTimeout();
   }
 }, 1000);
+
+// ---------- Infinite Tower (무한의 탑) ----------
+// 하루 5회 입장, 매번 "지금까지 클리어한 최고층 다음 층"의 수호자 한 마리만
+// 상대하는 단일 트랙 등반형 컨텐츠. 일반 사냥터/일일 던전과 달리:
+//   - 몬스터가 respawn하지 않고, 입장당 정확히 1개 층만 도전 가능하다 —
+//     수호자를 잡든(신기록) 놓치고 죽든, 그 즉시 마을로 돌아가고 다음 층은
+//     새 입장(하루 5회 한도)을 써야만 도전할 수 있다(onTowerGuardianKilled).
+//     예전에는 잡는 즉시 그 자리에서 다음 층 수호자로 교체되는 체인식
+//     등반이었으나, 스펙 좋은 캐릭터가 입장 한 번으로 훨씬 많은 층을 밀고
+//     올라가 하루 수익 상한을 무력화할 수 있어 폐지 — 이제 하루 최대 층
+//     진행량은 캐릭터 스펙과 무관하게 정확히 TOWER_DAILY_ENTRIES로 고정.
+//   - 난이도는 오직 층수(tier=floor)로만 스케일링되고 플레이어 레벨과는
+//     무관하다(요청사항: "몬스터 스탯만 계속 증가").
+//   - 최고 도달층(player.towerBestFloor)은 캐릭터 세이브에 저장되지만,
+//     "오늘 입장 횟수"는 일일 던전 사용량(DUNGEON_USAGE_KEY)과 같은 방식으로
+//     기기 단위 로컬스토리지에 따로 저장 — 캐릭터를 새로 만들어도 하루 입장
+//     횟수는 우회되지 않는다.
+//
+// [설계 전환] 점프로 위를 넘거나 원거리에서 카이팅하면 무피해로 계속
+// 클리어되던 문제를, 보스식 회피 불가 돌진 대신 "층별 제한시간"으로
+// 해결하기로 함 — 안 맞았는지 여부와 무관하게 제한시간 안에 수호자 HP를
+// 못 깎으면 그냥 실패. 회피 스킬이 아니라 "그 층을 그 시간 안에 잡을 수
+// 있는 스펙이냐"가 진짜 게이트가 된다. 그래서 하루 입장 횟수 제한도 아예
+// 잠시 꺼봤었다(8차). 그러나 하드캡이 없으면 이미 스펙을 넘어선 저층들을
+// 한 세션에 수십 층씩 연달아 쓸어버릴 수 있어, 보상표를 아무리 낮춰도
+// "하루 수익 상한"이 스펙에 비례해 늘어나는 구조 자체는 그대로였다.
+// [현재] 하루 5회 입장 제한을 다시 켰다(TOWER_ENTRY_LIMIT_ENABLED=true).
+// 이제 게이트가 둘이다 — 하루 층수 상한(5회 × 입장당 1층)이 수익을 고정하고,
+// 층별 제한시간(TOWER_FLOOR_TIME_LIMIT)이 "그 층을 잡을 스펙이냐"를 가른다.
+const TOWER_DAILY_ENTRIES = 5;
+// 하루 입장 횟수 제한 스위치. true면 TOWER_DAILY_ENTRIES회로 제한(현재),
+// false면 towerEntriesRemaining()이 항상 무제한을 반환하고 useTowerEntry()의
+// 기록(카운트)은 계속 쌓이지만 아무 것도 막지 않는다 — 테스트로 잠시
+// 풀어보고 싶을 때만 false로 두면 됨. 이 값을 바꾸면 하루 최대 수익이
+// 통째로 달라지므로 아래 TOWER_REWARD_TABLE의 [9차 조정] 주석도 함께 볼 것.
+const TOWER_ENTRY_LIMIT_ENABLED = true;
+// 층당 제한시간(초). 근거 있는 값이 아니라 첫 감 잡기용 추정치 — 실제
+// 플레이해보면서 조정 필요. 짧으면 저스펙 캐릭터가 초반 층부터 막히고,
+// 길면 카이팅/무피해 전략이 다시 의미 없어지지 않고 그냥 여유로워짐.
+// [조정] 45 → 30초. 45초는 실패 비용(하루 5회 중 1회 소멸)을 감안해 여유를
+// 준 값이었지만, 그만큼 DPS 벽이 물러져서 스펙이 애매해도 시간만 끌면 넘어가는
+// 층이 늘어난다. 하루 수익 상한은 어차피 입장 횟수가 고정해주므로, 제한시간은
+// 오히려 빡빡하게 잡아 "한 층 올라가려면 실제로 화력이 올라야 한다"는 쪽으로
+// 되돌린다. 구조적으로 걸리는 데는 없고(이 상수를 쓰는 곳은 spawnTowerFloor
+// 한 곳뿐) 체감 난이도만 바뀌는 값이라, 너무 답답하면 35~45로 되돌리면 됨.
+const TOWER_FLOOR_TIME_LIMIT = 30;
+const TOWER_USAGE_KEY = 'forestTaleTowerUsage_v1';
+function loadTowerUsage() {
+  try {
+    const data = JSON.parse(lsGet(TOWER_USAGE_KEY) || 'null');
+    if (data && Number.isFinite(data.count) && data.dateKey === todayKey()) return data;
+  } catch (e) {}
+  return { dateKey: todayKey(), count: 0 };
+}
+function towerEntriesUsedToday() { return loadTowerUsage().count; }
+function towerEntriesRemaining() {
+  if (!TOWER_ENTRY_LIMIT_ENABLED) return Infinity;
+  return Math.max(0, TOWER_DAILY_ENTRIES - towerEntriesUsedToday());
+}
+function useTowerEntry() {
+  const data = loadTowerUsage();
+  data.count += 1;
+  lsSet(TOWER_USAGE_KEY, JSON.stringify(data));
+}
+
+// 세션 전용 상태 — 저장되지 않는다(탑에 서 있는 채로 저장돼도 sanitizeSaveData가
+// 항상 마을로 되돌려보내므로 로드 시 항상 1부터 다시 계산됨).
+let towerCurrentFloor = 1;
+// 이번 층의 제한시간이 끝나는 실시간 타임스탬프(nowTrusted() 기준) — 던전
+// 타이머(dungeonSessionStart)와 같은 방식으로 실시간 기준이라 브라우저가
+// requestAnimationFrame을 백그라운드에서 스로틀링해도 정확하다.
+let towerFloorDeadline = 0;
+// 같은 층에서 타임아웃 처리가 두 번 실행되는 걸 막는 가드(마을로 전환되는
+// setTimeout 사이 중복 tick 방지).
+let towerFloorTimedOut = false;
+function towerSpawnX(map) { return Math.round(map.width / 2 - 16); }
+// 층 입장/클리어 시 호출 — 이전 수호자를 완전히 교체하고 HUD를 갱신한다.
+function spawnTowerFloor(floor) {
+  const map = MAPS.tower;
+  towerCurrentFloor = floor;
+  towerFloorDeadline = nowTrusted() + TOWER_FLOOR_TIME_LIMIT * 1000;
+  towerFloorTimedOut = false;
+  map.monsters = [ makeTowerGuardian(towerSpawnX(map), floor) ];
+  updateTowerFloorHUD();
+  updateTowerFloorTimerHUD();
+}
+function updateTowerFloorHUD() {
+  const el = document.getElementById('towerFloorHUD');
+  if (!el) return;
+  if (currentMap !== 'tower') { el.style.display = 'none'; return; }
+  el.style.display = 'inline';
+  document.getElementById('towerFloorHUDText').textContent = String(towerCurrentFloor);
+}
+function towerSecondsRemaining() {
+  return Math.max(0, Math.ceil((towerFloorDeadline - nowTrusted()) / 1000));
+}
+function updateTowerFloorTimerHUD() {
+  const el = document.getElementById('towerFloorTimer');
+  if (!el) return;
+  if (currentMap !== 'tower') { el.style.display = 'none'; return; }
+  el.style.display = 'inline';
+  el.textContent = `⏱️ ${towerSecondsRemaining()}s`;
+}
+// 제한시간 안에 수호자를 못 잡고 타임아웃됐을 때 호출 — 사망과 달리 (요청에
+// 따라) 부분 보상조차 없이 그냥 실패. 최고층 기록도 갱신하지 않는다.
+function onTowerFloorTimeout() {
+  if (towerFloorTimedOut || currentMap !== 'tower') return;
+  towerFloorTimedOut = true;
+  const remainMsg = TOWER_ENTRY_LIMIT_ENABLED ? ` (남은 도전 ${towerEntriesRemaining()}회)` : '';
+  showMsg(`⏱️ 제한시간 안에 ${towerCurrentFloor}층 수호자를 처치하지 못했습니다. 마을로 돌아갑니다.${remainMsg}`, 2000);
+  setTimeout(() => { if (currentMap === 'tower') switchMap('town'); }, 1200);
+}
+// killMonster()가 탑의 수호자를 처치했을 때 호출 — 최고 도달층을 갱신하고
+// 바로 다음 층으로 넘어간다(포탈/맵전환 없이 그 자리에서 이어서 등반).
+// 이번 층이 지금까지의 최고 기록을 갈아치우는 층일 때만 주는 별도 골드
+// 보너스 — 매 처치마다 나오는 기본 골드(MONSTER_DEFS.towerguardian.gold)와는
+// 별개로, "신기록" 자체를 보상하기 위한 값.
+//
+// [밸런스 수정 이력]
+// 1차: 원래 tierSq를 재사용해 일반 몬스터 스탯처럼 이차항까지 넣었더니, 등반
+//      구조상(bestFloor+1부터 계속 이어 올라감) 매 킬이 거의 항상 신기록이라
+//      필드 대비 시간당 수익이 10배 이상으로 폭주 → 이차항을 빼고 선형으로 완화.
+// 2차: 그 선형 완화가 과했다는 피드백(수호자가 필드 최강 몬스터보다 단단해
+//      킬당 시간이 더 걸리는데 골드는 필드 수준) → 기본 처치 골드 인상, 감쇠
+//      바닥 35%→50%로 완화.
+// 3차(현재): 그래도 여전히 근본 문제가 남아있었음 — 난이도(HP/ATK)는 tierSq로
+//      계속 제곱 성장하는데 보상 공식은 선형이라, 고층(체감상 1~2층 오르기도
+//      벅찬 구간)에서는 실전투 시간 대비 보상이 사실상 0에 수렴. 공식 기반
+//      성장을 포기하고, 구간별로 손으로 정한 고정 보상 표(TOWER_REWARD_TABLE)로
+//      교체. 60층까지는 필드 시간당 수익(약 10만골) 언저리로 수렴하게, 61층
+//      이후는 "한 층 겨우 뚫은 성취" 자체가 느껴지도록 층당 조금씩 늘어나게
+//      설계함(구체적인 증가폭/상한 값은 이후 4~5차 조정에서 재조정 — 아래 참고).
+//      한 입장 내 연속 신기록에 걸던 지수 감쇠(streak decay)는 제거했다 —
+//      반복 파밍이 애초에 불가능한 구조(수호자는 리스폰 없이 처치 즉시 다음
+//      층으로 교체)이므로 감쇠가 없어도 폭주하지 않는다. 10층 마일스톤
+//      보너스도 표에 자연히 흡수되어 별도 함수로 분리해 둘 필요가 없어졌다.
+const TOWER_REWARD_TABLE = [
+  [1, 200],    [10, 1600],
+  [11, 2000],  [20, 5000],
+  [21, 6000],  [30, 12000],
+  [31, 13000], [40, 22000],
+  [41, 24000], [50, 40000],
+  [51, 42000], [60, 76000],
+  [61, 80000],
+];
+// [4차 조정] 61층 이후 증가폭(+30,000/층)이 상한 없이 계속 커지다 보니, 하루
+// 5회 입장을 몇 개 층씩만 뚫어도 필드 대비 수 시간~십수 시간 치를 순식간에
+// 버는 문제가 재발함(예: 60→61층 두 킬만으로 39만골). 증가폭을 1/10로 크게
+// 줄이고(+30,000→+3,000), 150층부터는 더 이상 늘지 않도록 상한을 둬서
+// 고층에서도 무한정 폭주하지 않게 함.
+// [5차 조정] 4차 조정만으로는 부족했음 — "하루 5회 입장 × 매번 5층씩 클리어"
+// (실전투 몇 번뿐인 페이스) 기준으로 시뮬레이션해보니 51~75층 구간 하루치가
+// 필드 47.6시간 상당으로 여전히 압도적이었음. 표 전체(특히 41층 이후)의
+// 절대값을 다시 한 번 크게 낮추고(60층 190,000→38,000 등), 고층 증가폭도
+// +3,000→+500/층으로 더 줄임. 같은 시뮬레이션 기준 51~75층 하루치가 약
+// 947,500골(필드 약 9.5시간 상당)로, 고층 프리미엄은 남기되 폭주는 막음.
+// [6차 조정] 위 시뮬레이션들은 전부 "입장당 5층 클리어" 페이스를 가정한
+// 것이었는데, 그 페이스를 강제하는 장치가 없어 스펙 좋은 캐릭터는 입장 한
+// 번으로 그보다 훨씬 많은 층을 밀어붙일 수 있었다. onTowerGuardianKilled에서
+// 입장당 정확히 1개 층만 도전하고 곧장 마을로 돌려보내도록 바꿔 이 구멍을
+// 막았다 — 그 결과 위 시뮬레이션들의 실제 하루 수익은 여기 적힌 값의 1/5
+// 수준(하루 최대 5층)이 된다.
+// [7차 조정] 6차에서 "캐릭터 스펙과 무관하게 하루 상한이 고정된다"는 안전
+// 장치가 이미 자리잡았으므로, 더 이상 폭주 걱정 없이 절대값만 순수하게
+// 조정할 수 있게 됐다. 표 전체와 고층 상수(base/step)를 2배로 올림 — 5배
+// (원래 "하루 25층" 가정의 일일 목표치를 페이스 변경분만큼 정확히 복원하는
+// 값)까지는 원하지 않아 완만하게 2배 선택. 150층 상한 도달 시 보상은
+// 84,500 → 169,000골.
+// [8차 조정] 회피 불가 돌진 대신 층별 제한시간(TOWER_FLOOR_TIME_LIMIT)으로
+// 접근을 바꾸면서 "입장당 1층 + 하루 5회"라는 하드캡(6차에서 만든 안전
+// 장치)도 같이 껐다(TOWER_ENTRY_LIMIT_ENABLED=false) — 이제 하루 최대 층
+// 진행량을 강제하는 장치가 없다. 이미 스펙을 넘어선 저층은 제한시간 안에
+// 가볍게 잡히므로, 한 세션에 수십 층을 연달아 쓸어버리면 6차 이전처럼
+// "하루 상한 무력화" 문제가 그대로 재발한다. 정확히 6차가 없앤 그 5배
+// 배율만큼 표 전체와 고층 상수를 다시 나눔(÷5) — 즉 7차의 2배 인상을
+// 되돌리고 6차 이전 절대값의 1/5 수준으로 복귀. 층 하나하나의 보상은
+// 작아지지만, 이제 안전판이 "하루 5층"이 아니라 "그 층을 제한시간 안에
+// 잡을 수 있는 스펙이냐"이므로, 여러 층을 빠르게 통과해도 예전처럼
+// 폭주하지 않는 절대값 수준을 목표로 함. 실측 없이 계산으로만 낮춘
+// 값이라 실제 플레이 데이터가 쌓이면 다시 조정 필요.
+// [9차 조정 — 현재] 하루 5회 입장 제한을 다시 켰다. 8차의 ÷5는 "하루 상한이
+// 없어졌으니 한 층당 값어치를 5분의 1로 낮춘다"는 맞교환이었으므로, 상한이
+// 돌아온 지금 그 ÷5를 그대로 되돌린다(×5) — 즉 7차와 같은 절대값. 하루
+// 최대 5층이라는 하드캡이 다시 수익 상한을 스펙과 무관하게 고정해주므로,
+// 층 하나하나는 "오늘 다섯 번뿐인 도전"에 걸맞은 크기를 되찾는다.
+// 참고로 8차에는 표와 고층 공식이 어긋나 있었다 — 표는 61층을 16,000으로
+// 적어두고 공식은 8,000부터 시작해서, 60층(15,200)보다 61층이 오히려 적어지는
+// 역전이 생겼다. 여기서 base를 표와 같은 값(×5 후 80,000)으로 맞춰 고쳤다.
+// 150층 상한 도달 시 보상: 169,000골.
+const TOWER_HIGH_FLOOR_START = 61, TOWER_HIGH_FLOOR_STEP = 1000, TOWER_HIGH_FLOOR_CAP = 150;
+function towerFloorReward(floor) {
+  if (floor >= TOWER_HIGH_FLOOR_START) {
+    const cappedFloor = Math.min(floor, TOWER_HIGH_FLOOR_CAP);
+    return 80000 + (cappedFloor - TOWER_HIGH_FLOOR_START) * TOWER_HIGH_FLOOR_STEP;
+  }
+  for (let i = 0; i < TOWER_REWARD_TABLE.length - 1; i++) {
+    const [f0, r0] = TOWER_REWARD_TABLE[i];
+    const [f1, r1] = TOWER_REWARD_TABLE[i + 1];
+    if (floor >= f0 && floor <= f1) {
+      if (f1 === f0) return r0;
+      const t = (floor - f0) / (f1 - f0);
+      return Math.round(r0 + (r1 - r0) * t);
+    }
+  }
+  return TOWER_REWARD_TABLE[0][1];
+}
+// [밸런스 수정 이력 — 입장당 1층 고정] 예전에는 수호자를 잡는 즉시 그 자리에서
+// 다음 층 수호자로 계속 교체돼(spawnTowerFloor 체인) 한 번 입장으로 몇 층을
+// 오르는지가 순전히 캐릭터 스펙에 달려있었다. 그래서 성공/실패와 무관하게
+// 한 번에 정확히 1개 층만 도전하고 곧장 마을로 돌려보내도록 바꿨다 — 이
+// 구조 자체는 하루 입장 제한을 잠시 껐던 8차 때도 그대로 남겨뒀고, 제한이
+// 돌아온 지금은 이 둘이 맞물려 "하루 최대 5층"이라는 상한을 만든다.
+// 클리어 메시지에는 남은 입장 횟수를 같이 보여준다 — 다음 층에 또 들어갈 수
+// 있는지가 이제 다시 유한한 자원이라 바로 알려주는 편이 낫다.
+function onTowerGuardianKilled(floor) {
+  const isRecord = floor > (player.towerBestFloor || 0);
+  if (isRecord) player.towerBestFloor = floor;
+  const remain = towerEntriesRemaining();
+  const nextLine = !TOWER_ENTRY_LIMIT_ENABLED
+    ? '다음 층은 재입장이 필요합니다.'
+    : (remain > 0 ? `다음 층 도전은 ${remain}회 남았어요.` : '오늘의 도전은 여기까지!');
+  let msgDelay;
+  if (isRecord) {
+    const reward = addGold(towerFloorReward(floor), 'tower_record');
+    spawnFloatText(player.x + player.w/2, player.y - 26, `🏆 신기록! +${fmtGold(reward)}💰`, '#ffd166');
+    msgDelay = 2200;
+    showMsg(`🗼 ${floor}층 신기록 달성! +${fmtGold(reward)}💰 · ${nextLine}`, msgDelay);
+    // 랭킹 반영은 실패해도 플레이에 영향 없어야 하므로 await하지 않고
+    // fire-and-forget으로 던진다(syncGuildLevel과 동일한 방침).
+    syncTowerRanking();
+  } else {
+    msgDelay = 1800;
+    showMsg(`🗼 ${floor}층 클리어! ${nextLine}`, msgDelay);
+  }
+  saveGame();
+  // switchMap() 마지막에 "마을로 이동했습니다" 토스트를 즉시 띄워 위 보상
+  // 메시지를 바로 덮어써버리므로, 플레이어가 보상 메시지를 읽을 시간을 준
+  // 뒤에 맵을 전환한다. 그 사이 수호자는 이미 죽은 채(m.dead=true) 그대로
+  // 남아있을 뿐 아무 것도 스폰되지 않는다.
+  setTimeout(() => { if (currentMap === 'tower') switchMap('town'); }, msgDelay);
+}
+// 무한의 탑 랭킹 — sync_guild_member_level과 같은 패턴(RPC 경유, 클라이언트가
+// tower_rankings 테이블에 직접 insert/update 못 하게 막고 서버 함수 안에서만
+// upsert). best_floor는 서버에서 greatest(기존값, 새값)로 처리해 어쩌다 낮은
+// 값을 보내도 랭킹이 역행하지 않게 한다.
+// PLAUSIBLE_MAX_LEVEL과 같은 취지의 상한 — 정상 플레이로는 넘을 수 없는
+// 선이라 이 이상은 조작 의심으로 캡+플래그만 하고 완전 차단은 하지 않는다
+// (이 게임의 다른 랭킹류 검증 수준과 동일).
+const PLAUSIBLE_MAX_TOWER_FLOOR = 500;
+async function syncTowerRanking() {
+  const best = player.towerBestFloor || 0;
+  if (best <= 0) return; // 올릴 기록이 없으면 서버 호출 자체를 생략
+  const client = dungeonSb();
+  if (!client) return;
+  const reportedFloor = Math.min(best, PLAUSIBLE_MAX_TOWER_FLOOR);
+  if (best > PLAUSIBLE_MAX_TOWER_FLOOR) {
+    reportCheatFlag('implausible_tower_floor', { floor: best });
+  }
+  try {
+    const { error } = await client.rpc('sync_tower_ranking', {
+      p_device_id: DEVICE_ID, p_nickname: gchatNickname(), p_job: player.job,
+      p_level: Math.min(player.level, PLAUSIBLE_MAX_LEVEL), p_best_floor: reportedFloor,
+    });
+    if (error) console.warn('[tower] syncTowerRanking 실패 — sync_tower_ranking 함수의 실행 권한(GRANT)을 확인하세요:', error);
+  } catch (e) {
+    console.warn('[tower] syncTowerRanking 예외:', e);
+  }
+}
+function buildTowerRankRow(rank, r) {
+  // 닉네임은 다른 기기에서 온 문자열이므로 innerHTML이 아닌
+  // createElement+textContent로만 조립한다(buildGuildRow와 동일한 이유).
+  const isMine = r.device_id === DEVICE_ID;
+  const row = document.createElement('div'); row.className = 'trRow' + (isMine ? ' trMine' : '');
+  const rankEl = document.createElement('div'); rankEl.className = 'trRank'; rankEl.textContent = `${rank}`;
+  const info = document.createElement('div'); info.className = 'trInfo';
+  const nameEl = document.createElement('div'); nameEl.className = 'trName';
+  nameEl.textContent = (r.nickname || '???') + (isMine ? ' (나)' : '');
+  const jobDef = JOBS[r.job] || JOBS.warrior;
+  const metaEl = document.createElement('div'); metaEl.className = 'trMeta';
+  metaEl.textContent = `${jobDef.emoji} ${jobDef.name} · Lv.${r.level ?? '?'}`;
+  info.appendChild(nameEl); info.appendChild(metaEl);
+  const floorEl = document.createElement('div'); floorEl.className = 'trFloor'; floorEl.textContent = `${r.best_floor}층`;
+  row.appendChild(rankEl); row.appendChild(info); row.appendChild(floorEl);
+  return row;
+}
+async function openTowerRankModal() {
+  openModal('towerRankModal');
+  const listEl = document.getElementById('towerRankList');
+  listEl.innerHTML = '';
+  const loading = document.createElement('div'); loading.id = 'towerRankEmptyMsg'; loading.textContent = '불러오는 중...';
+  listEl.appendChild(loading);
+  const client = dungeonSb();
+  if (!client) { loading.textContent = '연결할 수 없어요 (인터넷 연결 확인)'; return; }
+  try {
+    const { data, error } = await client.from('tower_rankings')
+      .select('device_id,nickname,job,level,best_floor')
+      .order('best_floor', { ascending: false }).limit(50);
+    if (error || !data || !data.length) {
+      loading.textContent = '아직 랭킹에 오른 도전자가 없어요.';
+      return;
+    }
+    listEl.innerHTML = '';
+    data.forEach((r, i) => listEl.appendChild(buildTowerRankRow(i + 1, r)));
+    // 내가 목록(상위 50명) 밖이면 맨 아래에 내 순위를 따로 붙이지는 않는다 —
+    // 정확한 순위를 알려면 전체 count가 필요한데, 그 정도로 무거운 조회를
+    // 랭킹창 열 때마다 돌릴 만큼 중요한 정보는 아니라고 판단.
+  } catch (e) { loading.textContent = '연결할 수 없어요 (인터넷 연결 확인)'; }
+}
+document.getElementById('towerRankBtn').addEventListener('click', openTowerRankModal);
+document.getElementById('closeTowerRank').addEventListener('click', () => closeModal('towerRankModal'));
+function openTowerModal() {
+  openModal('towerModal');
+  renderTowerModal();
+}
+function renderTowerModal() {
+  const best = player.towerBestFloor || 0;
+  document.getElementById('towerFloorLabel').textContent = `${best}층`;
+  const remain = towerEntriesRemaining();
+  document.getElementById('towerEntriesLine').textContent = TOWER_ENTRY_LIMIT_ENABLED
+    ? `오늘 남은 도전: ${remain}/${TOWER_DAILY_ENTRIES}회 · 입장 1회당 1개 층`
+    : '오늘 남은 도전: 무제한 (테스트 중)';
+  const btn = document.getElementById('enterTowerBtn');
+  btn.disabled = TOWER_ENTRY_LIMIT_ENABLED && remain <= 0;
+  btn.textContent = (!TOWER_ENTRY_LIMIT_ENABLED || remain > 0) ? `도전하기 (${best + 1}층부터)` : '오늘의 도전 횟수를 모두 썼어요';
+}
+function enterTower() {
+  if (TOWER_ENTRY_LIMIT_ENABLED && towerEntriesRemaining() <= 0) { showMsg('⏳ 오늘은 탑에 입장할 수 있는 횟수를 다 썼어요. 내일 다시 도전하세요!', 2200); return; }
+  useTowerEntry();
+  closeModal('towerModal');
+  const startFloor = (player.towerBestFloor || 0) + 1;
+  spawnTowerFloor(startFloor);
+  switchMap('tower');
+  showMsg(`🗼 무한의 탑 ${startFloor}층에 입장했습니다!`, 2000);
+}
+document.getElementById('btnTower').addEventListener('click', openTowerModal);
+document.getElementById('closeTower').addEventListener('click', () => closeModal('towerModal'));
+document.getElementById('enterTowerBtn').addEventListener('click', enterTower);
 
 // ---------- Maps ----------
 const MAPS = {
@@ -4781,6 +5285,11 @@ const MAPS = {
     // 일일 던전 입구 — 메인 진행 루트(portalBack/portalForward)와는 별개의
     // 세 번째 포탈이라 updatePlayer의 portalsHere 배열에도 따로 추가돼 있음.
     dailyPortal: { x: 500, y: GROUND_Y-70, w:36, h:70, to:'moonshrine', arriveSide:'portalBack' },
+    // 무한의 탑 전용 출구 도착 지점 — 탑 입장 자체는 btnTower 모달(도전하기
+    // 버튼)을 통해서만 가능하고 이 좌표로 걸어 들어가는 실제 포탈은 없다.
+    // switchMap이 탑에서 나올 때 arriveSide로 이 지점을 참조해 플레이어를
+    // 자연스러운 위치에 내려놓기 위한 좌표만 필요.
+    towerPortal: { x: 650, y: GROUND_Y-70, w:36, h:70 },
     npc: { x: 300, y: GROUND_Y, emoji:'🧙', name:'상점 주인' },
     decor: 'town',
     monsters: null,
@@ -4991,7 +5500,20 @@ const MAPS = {
     ],
     portalBack: { x: 20, y: GROUND_Y-70, w:36, h:70, to:'ashwaste', arriveSide:'portalForward' },
     npc: null, decor: 'abyss', monsters: [], minLevel: 92,
-  }
+  },
+  // ---------- 무한의 탑 (Infinite Tower) ----------
+  // 로직/입장 제한/층 진행은 스크립트의 "Infinite Tower" 섹션 참고. 다른
+  // 사냥터와 달리 monsters 배열은 정적 라인업이 아니라 spawnTowerFloor()가
+  // 매 층 입장/클리어마다 동적으로 다시 채워넣는다 — 여기서는 빈 배열과
+  // 레이아웃(포탈은 마을로 나가는 것 하나뿐)만 정의해둔다.
+  tower: {
+    name: '무한의 탑',
+    width: 700,
+    groundColor: '#241a30',
+    platforms: [ {x:0,y:GROUND_Y,w:700,h:60} ],
+    portalBack: { x: 20, y: GROUND_Y-70, w:36, h:70, to:'town', arriveSide:'towerPortal' },
+    npc: null, decor: 'dungeon', monsters: [], minLevel: 1,
+  },
 };
 // 일일 던전처럼 "일반 사냥터보다 후한 보상"을 줄 때 쓰는 헬퍼 — 몬스터 hp/atk는
 // 그대로 두고 goldReward/expReward만 배율을 곱한다.
@@ -5112,6 +5634,8 @@ function switchMap(id, arriveSide) {
     }
   }
   updateDungeonTimerHUD();
+  updateTowerFloorHUD();
+  updateTowerFloorTimerHUD();
   sfxPortal();
   const pt = arriveSide ? map[arriveSide] : null;
   if (pt) {
@@ -5619,7 +6143,7 @@ function loop(nowMs) {
 // to be open, so tapping a different menu button doesn't leave two panels
 // stacked on top of each other — the player never has to close one by hand
 // before opening the next.
-const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'transformModal', 'globalChatModal', 'worldBossModal', 'guildModal'];
+const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'transformModal', 'globalChatModal', 'worldBossModal', 'guildModal', 'towerModal'];
 function openModal(id) {
   for (const modalId of MODAL_IDS) {
     if (modalId !== id) document.getElementById(modalId).classList.remove('open');
@@ -6250,12 +6774,20 @@ function closeAllConnections() {
   updateChatStatus();
 }
 const CHAT_HISTORY_MAX = 200; // shared cap: a spammy/malicious peer or a chatty global lobby shouldn't grow either chat's DOM list without bound
-// Shared renderer for BOTH chat panels (P2P friend/room chat below, and the
-// Supabase global chat further down) — same DOM shape (system line vs
+// 70레벨 달성 시 전체/친구/길드 채팅 전부에서 닉네임이 이 색으로 표시됨 —
+// 기존 chatLine-me(금색)/friend(초록)/other(파랑)와 안 겹치는 핫핑크.
+// 레벨 자체는 이미 각 채팅 경로(global chat profile, p2p 'chat' payload,
+// guild_chat_messages.level)에 실려 오므로 새 state 없이 색만 얹는다.
+const VETERAN_CHAT_LEVEL = 70;
+const VETERAN_CHAT_COLOR = '#ff4fd8';
+// Shared renderer for ALL THREE chat panels (P2P friend/room chat, Supabase
+// global chat, and guild chat) — same DOM shape (system line vs
 // "nickname: body"), same trim-to-max + autoscroll. Kind must be one of
-// 'system' | 'me' | 'friend' (P2P) | 'other' (global) to pick up the right
-// .chatLine-* color from CSS.
-function renderChatLine(listEl, kind, nickname, text, maxLen, profile) {
+// 'system' | 'me' | 'friend' (P2P) | 'other' (global/guild) to pick up the
+// right .chatLine-* color from CSS. `level`, when given (or read off
+// `profile.level` when a profile is passed), only ever adds the veteran
+// name color above — never touched by any gameplay logic.
+function renderChatLine(listEl, kind, nickname, text, maxLen, profile, level) {
   const div = document.createElement('div');
   div.className = 'chatLine chatLine-' + kind;
   if (kind === 'system') {
@@ -6263,6 +6795,8 @@ function renderChatLine(listEl, kind, nickname, text, maxLen, profile) {
   } else {
     const b = document.createElement('b');
     b.textContent = nickname || '?';
+    const lv = profile && typeof profile.level === 'number' ? profile.level : level;
+    if (typeof lv === 'number' && lv >= VETERAN_CHAT_LEVEL) b.style.color = VETERAN_CHAT_COLOR;
     // Global chat lines carry a stats "profile" snapshot (see
     // sendGlobalChatMsg/loadGlobalChatHistory below) — tapping the nickname
     // opens the same kind of "캐릭터 상세보기" panel the friend/room-member
@@ -6280,8 +6814,8 @@ function renderChatLine(listEl, kind, nickname, text, maxLen, profile) {
   while (listEl.children.length > maxLen) listEl.removeChild(listEl.firstChild);
   listEl.scrollTop = listEl.scrollHeight;
 }
-function addChatMessage(kind, text, nickname) {
-  renderChatLine($.chatMessages, kind, nickname, text, CHAT_HISTORY_MAX);
+function addChatMessage(kind, text, nickname, level) {
+  renderChatLine($.chatMessages, kind, nickname, text, CHAT_HISTORY_MAX, undefined, level);
   // Anything that isn't our own outgoing message is worth surfacing if the
   // chat window happens to be closed when it comes in.
   if (kind !== 'me') bumpChatUnread();
@@ -6546,7 +7080,7 @@ const PEER_MSG_LIMIT_WINDOW_MS = 1000, PEER_MSG_LIMIT_MAX = 30;
 function announceConnectionOpen(c) {
   updateChatStatus();
   addChatMessage('system', '친구와 연결되었습니다!');
-  try { c.send({ type:'chat', id: peer ? peer.id : null, nickname: player.nickname || '모험가', text: '👋 접속했습니다!' }); } catch(e) {}
+  try { c.send({ type:'chat', id: peer ? peer.id : null, nickname: player.nickname || '모험가', text: '👋 접속했습니다!', level: player.level }); } catch(e) {}
   sendCurrentState(c);
   setTimeout(() => sendCurrentState(c), 250);
   lastStateSent = 0; // force an immediate state broadcast next frame
@@ -6573,12 +7107,16 @@ function setupConnection(c) {
       if (!text) return;
       const nickname = typeof data.nickname === 'string' ? data.nickname.slice(0, 12) : '모험가';
       if (isBlockedNickname(nickname)) return; // 차단한 닉네임 — 내 화면엔 표시하지 않음
-      addChatMessage('friend', text, nickname);
+      // 70레벨 닉네임 색상용 — 순전히 표시색 하나 결정하는 데만 쓰이므로,
+      // 상대가 값을 속여도(가짜로 70+ 주장) 핑크색 닉네임 이상 얻는 게 없다.
+      // 그래도 숫자 범위는 가볍게 한 번 clamp해서 이상한 값이 굴러다니지 않게 한다.
+      const level = Number.isFinite(data.level) ? Math.max(1, Math.min(9999, Math.floor(data.level))) : undefined;
+      addChatMessage('friend', text, nickname, level);
       // Relay a clean object built from scratch, not the raw payload plus
       // patches — anything else an attacker packed onto `data` (arbitrary
       // extra fields, oversized junk) would otherwise get forwarded and
       // amplified through the rest of the mesh unexamined.
-      relayToOthers(c.peer, { type: 'chat', id: originId, text, nickname });
+      relayToOthers(c.peer, { type: 'chat', id: originId, text, nickname, level });
     } else if (data.type === 'state') {
       const clean = sanitizeRemoteState(data);
       if (isBlockedPlayer(clean)) {
@@ -6919,8 +7457,8 @@ function sendChatMessage() {
   const input = $.chatInput;
   const text = input.value.trim();
   if (!text) return;
-  addChatMessage('me', text, player.nickname || '나');
-  broadcastAll({ type:'chat', id: peer ? peer.id : null, nickname: player.nickname || '모험가', text });
+  addChatMessage('me', text, player.nickname || '나', player.level);
+  broadcastAll({ type:'chat', id: peer ? peer.id : null, nickname: player.nickname || '모험가', text, level: player.level });
   input.value = '';
 }
 document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
@@ -7555,6 +8093,9 @@ function sanitizeSaveData(data) {
   }
   p.petStars = cleanPetStars;
   p.petEggs = Math.round(clampNum(p.petEggs, 0, 999, 0));
+  // 무한의 탑 최고 도달층 — 음수/비정상 값만 걸러내고 위쪽은 사실상 무제한
+  // (탑 자체가 무한이라 상한을 두면 나중에 발목 잡힘).
+  p.towerBestFloor = Math.round(clampNum(p.towerBestFloor, 0, 1_000_000, 0));
   p.transformTier = Math.round(clampNum(p.transformTier, -1, TRANSFORM_TIERS.length - 1, -1));
   p.transformPity = Math.round(clampNum(p.transformPity, 0, TRANSFORM_LEGEND_PITY, 0));
   // 중복 뽑기 기록 — 등급 id별 정수 카운트만 살아남는다(다른 필드/음수/소수는
@@ -7590,7 +8131,10 @@ function sanitizeSaveData(data) {
   // 일일 던전에 서 있던 채로 저장된 세이브는 항상 마을에서 다시 시작한다 —
   // 서버 없이는 "앱이 꺼져 있던 동안"을 신뢰성 있게 판정할 수 없고, 어차피
   // computeOfflineProgress에서도 이 지역은 보상 대상에서 빠진다.
-  if (!MAPS[data.currentMap] || isDailyDungeon(data.currentMap)) data.currentMap = 'town';
+  // 무한의 탑도 일일 던전과 같은 이유로 저장된 층 진행 상태(currentTowerFloor)는
+  // 세션 변수라 저장되지 않으므로, 항상 마을에서 다시 시작한다 — 대신
+  // towerBestFloor(최고 도달층)는 위에서 이미 정상적으로 복원돼 있다.
+  if (!MAPS[data.currentMap] || isDailyDungeon(data.currentMap) || data.currentMap === 'tower') data.currentMap = 'town';
   data.autoHunt = !!data.autoHunt;
   const questTier = Math.round(clampNum(data.quest && data.quest.tier, 1, 10000, 1));
   const defaultTarget = questTargetForTier(questTier);
@@ -7637,6 +8181,7 @@ function serializeSave() {
       transformTier: Number.isInteger(player.transformTier) ? player.transformTier : -1,
       transformPity: Number.isInteger(player.transformPity) ? player.transformPity : 0,
       transformDupCount: player.transformDupCount || {},
+      towerBestFloor: Number.isInteger(player.towerBestFloor) ? player.towerBestFloor : 0,
     },
   };
 }
@@ -7917,7 +8462,17 @@ function computeOfflineProgress(save) {
   // 일일 던전은 "자동사냥은 되지만 오프라인 파밍은 안 되게" 설계된 지역이라
   // 여기서 무조건 컷 — 앱을 꺼뒀다 열거나(continueGame) 탭 전환 후 복귀
   // (markBack)했을 때나 동일하게 적용된다(둘 다 이 함수를 거침).
-  if (isDailyDungeon(save.currentMap)) return null;
+  //
+  // [버그 수정] 무한의 탑도 같은 이유로 빠져야 하는데 여기 체크가 빠져 있었다.
+  // sanitizeSaveData는 완전히 앱을 껐다 켜는 경로(loadSave)에서만
+  // currentMap==='tower'를 'town'으로 되돌리고, markBack(탭/앱 전환 후 focus)은
+  // sanitizeSaveData를 거치지 않고 serializeSave()를 그대로 써서 이 함수에
+  // 넘긴다. 그 결과 탑 안에서 자동사냥을 켠 채 탭만 전환했다 돌아오면,
+  // averageMonsterStats가 "층에 하나뿐인, 리젠 안 되는 수호자"를 마치 계속
+  // 리스폰되는 일반 사냥터 몬스터처럼 취급해서 그 골드/경험치를 무한 반복
+  // 지급하는 구멍이 있었다 — 실제로 처치하지도, 층을 올리지도 않았는데
+  // 시간만 지나면 보상이 나오는 상태. 일일 던전처럼 여기서 직접 막는다.
+  if (isDailyDungeon(save.currentMap) || save.currentMap === 'tower') return null;
 
   const elapsedMs = Math.min(nowTrusted() - save.savedAt, GAME_BALANCE.offlineMaxHours * 3600 * 1000);
   if (elapsedMs < 30000) return null;
@@ -9239,8 +9794,8 @@ async function refreshGuildHome() {
 
 // ---- Guild chat ---- mirrors global chat's pattern (see initGlobalChatListener
 // above) but scoped to this guild's rows/channel only.
-function appendGuildChatMsg(kind, nickname, body) {
-  renderChatLine(document.getElementById('guildChatMessages'), kind, nickname, body, CHAT_HISTORY_MAX);
+function appendGuildChatMsg(kind, nickname, body, level) {
+  renderChatLine(document.getElementById('guildChatMessages'), kind, nickname, body, CHAT_HISTORY_MAX, undefined, level);
 }
 function subscribeGuildChat() {
   if (!myGuild || guildChatChannel) return;
@@ -9250,7 +9805,7 @@ function subscribeGuildChat() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guild_chat_messages', filter: `guild_id=eq.${myGuild.id}` }, payload => {
       if (outgoingGuildChat.consume(payload.new.nickname, payload.new.body)) return;
       if (isBlockedNickname(payload.new.nickname)) return; // 차단한 닉네임 — 조용히 무시
-      if (guildChatHistoryLoaded) appendGuildChatMsg('other', payload.new.nickname, payload.new.body);
+      if (guildChatHistoryLoaded) appendGuildChatMsg('other', payload.new.nickname, payload.new.body, payload.new.level);
       bumpGuildChatUnread();
     })
     .subscribe();
@@ -9269,11 +9824,11 @@ async function loadGuildChatHistory() {
   // 수 없다. 과거 메시지의 '내 것' 표시는 못 하게 되지만(전체채팅과 같은
   // 트레이드오프), 이번 세션에 새로 보내는 메시지는 outgoingGuildChat로
   // 정확히 구분된다.
-  const { data } = await client.from('guild_chat_messages').select('nickname,body')
+  const { data } = await client.from('guild_chat_messages').select('nickname,body,level')
     .eq('guild_id', myGuild.id).order('created_at', { ascending: false }).limit(30);
   if (data) data.reverse().forEach(row => {
     if (isBlockedNickname(row.nickname)) return; // 차단한 닉네임 — 조용히 무시
-    appendGuildChatMsg('other', row.nickname, row.body);
+    appendGuildChatMsg('other', row.nickname, row.body, row.level);
   });
   subscribeGuildChat();
 }
@@ -9287,10 +9842,11 @@ function sendGuildChatMsg() {
   if (now - lastGuildChatSentAt < 1000) return;
   lastGuildChatSentAt = now;
   const nickname = gchatNickname();
+  const level = typeof player !== 'undefined' && player ? player.level : undefined;
   input.value = '';
-  appendGuildChatMsg('me', nickname, text);
+  appendGuildChatMsg('me', nickname, text, level);
   outgoingGuildChat.remember(nickname, text);
-  client.from('guild_chat_messages').insert({ guild_id: myGuild.id, device_id: DEVICE_ID, nickname, body: text })
+  client.from('guild_chat_messages').insert({ guild_id: myGuild.id, device_id: DEVICE_ID, nickname, body: text, level })
     .then(({ error }) => { if (error) appendGuildChatMsg('system', '', '전송 실패했어요'); });
 }
 function bumpGuildChatUnread() {
@@ -9356,6 +9912,10 @@ document.getElementById('guildChatInput').addEventListener('keydown', e => { if 
 // 없어도(즉 사냥 중에도) 레벨 보너스가 바로 적용되도록. initPresence와 같은 시점.
 // 오프라인 사냥으로 접속 전에 레벨이 오른 경우도 여기서 한 번 서버에 반영한다.
 window.addEventListener('load', () => { loadMyGuildFull().then(() => syncGuildLevel()); });
+// 이번 세션에 새로 신기록을 못 세워도(=onTowerGuardianKilled가 한 번도
+// 안 불려도), 세이브에 저장된 기존 최고층이 랭킹에 반영되도록 로드 시 한 번
+// 더 동기화한다. 실패해도 조용히 무시(syncTowerRanking 내부에서 처리).
+window.addEventListener('load', syncTowerRanking);
 
 // ---------- First-play onboarding tour ----------
 // See the CSS comment above #onboardOverlay for the overall approach.
