@@ -4952,7 +4952,9 @@ setInterval(() => {
 //   - 최고 도달층(player.towerBestFloor)은 캐릭터 세이브에 저장되지만,
 //     "오늘 입장 횟수"는 일일 던전 사용량(DUNGEON_USAGE_KEY)과 같은 방식으로
 //     기기 단위 로컬스토리지에 따로 저장 — 캐릭터를 새로 만들어도 하루 입장
-//     횟수는 우회되지 않는다.
+//     횟수는 우회되지 않는다. 기기 간 이어하기(buildTransferPayload)에도
+//     dungeonUsage와 같은 방식으로 함께 실어 보내 병합(mergeIncomingTowerUsage,
+//     큰 쪽 채택)하므로, 캐릭터를 다른 기기로 옮기는 걸로도 우회되지 않는다.
 //
 // [설계 전환] 점프로 위를 넘거나 원거리에서 카이팅하면 무피해로 계속
 // 클리어되던 문제를, 보스식 회피 불가 돌진 대신 "층별 제한시간"으로
@@ -8221,12 +8223,16 @@ function clearSave() { lsRemove(SAVE_KEY); }
 // (valid) log on import.
 function buildTransferPayload(saveObj) {
   const { economyLog, ...exportable } = saveObj;
-  // dungeonUsage를 함께 실어 보낸다 — 이걸 안 보내면 캐릭터를 다른 기기로
-  // 옮겨도(아래는 원래 기기 캐릭터를 지우는 MOVE지만) 새 기기의 일일던전
-  // 사용량 키는 비어 있어서, 기기만 바꿔가며 하루 한도를 매번 새로 받는
-  // 구멍이 생긴다. 받는 쪽(parseTransferPayload/mergeIncomingDungeonUsage)
-  // 에서 이 값과 자기 기기 값 중 큰 쪽을 채택해서 병합한다.
-  const json = JSON.stringify({ ...exportable, dungeonUsage: loadDungeonUsage() });
+  // dungeonUsage/towerUsage를 함께 실어 보낸다 — 이걸 안 보내면 캐릭터를
+  // 다른 기기로 옮겨도(아래는 원래 기기 캐릭터를 지우는 MOVE지만) 새 기기의
+  // 일일던전/무한의 탑 사용량 키는 비어 있어서, 기기만 바꿔가며 하루 한도를
+  // 매번 새로 받는 구멍이 생긴다 — 특히 탑은 towerBestFloor(최고층)는 캐릭터
+  // 세이브에 실려 그대로 넘어가는데 "오늘 입장 횟수"만 별도 로컬스토리지라,
+  // 이걸 빠뜨리면 층 기록은 유지한 채 입장 5회만 공짜로 리필되는 우회가
+  // 생긴다. 받는 쪽(parseTransferPayload/mergeIncomingDungeonUsage/
+  // mergeIncomingTowerUsage)에서 이 값과 자기 기기 값 중 큰 쪽을 채택해서
+  // 병합한다.
+  const json = JSON.stringify({ ...exportable, dungeonUsage: loadDungeonUsage(), towerUsage: loadTowerUsage() });
   return { data: json, chk: signPayload(json) };
 }
 // Inverse of buildTransferPayload: validates + migrates + sanitizes a
@@ -8239,13 +8245,13 @@ function parseTransferPayload(wrapper) {
   if (!wrapper || typeof wrapper.data !== 'string' || typeof wrapper.chk !== 'string') throw new Error('bad-data');
   if (signPayload(wrapper.data) !== wrapper.chk) throw new Error('bad-checksum');
   const raw = JSON.parse(wrapper.data);
-  const { dungeonUsage, ...saveFields } = raw;
+  const { dungeonUsage, towerUsage, ...saveFields } = raw;
   const data = migrateSaveData(saveFields);
   // Transfer payloads always exclude economyLog by design (see
   // buildTransferPayload) — that's expected here, not a sign of tampering.
   const clean = sanitizeSaveData(data);
   if (!clean || !clean.player || !clean.player.job) throw new Error('bad-data');
-  return { save: clean, dungeonUsage };
+  return { save: clean, dungeonUsage, towerUsage };
 }
 // 넘어온 "오늘 일일던전 사용량"을 이 기기의 사용량과 그룹별로 병합한다(큰
 // 쪽 채택). dateKey가 오늘 것이 아니면(보낸 기기 시계가 다르거나 하루
@@ -8268,6 +8274,20 @@ function mergeIncomingDungeonUsage(incoming) {
   lsSet(DUNGEON_USAGE_KEY, JSON.stringify(local));
   return { applied: true, carriedSeconds: carried };
 }
+// mergeIncomingDungeonUsage와 같은 이유, 같은 규칙(큰 쪽 채택 + dateKey가
+// 오늘이 아니면 통째로 무시)으로 무한의 탑 "오늘 입장 횟수"를 병합한다.
+// 구조가 { dateKey, count } 하나뿐이라 던전 쪽의 usage 맵 순회는 필요 없다.
+function mergeIncomingTowerUsage(incoming) {
+  if (!incoming || typeof incoming.count !== 'number') return { applied: false, reason: 'no-data' };
+  if (incoming.dateKey !== todayKey()) return { applied: false, reason: 'stale-date' };
+  const local = loadTowerUsage();
+  const before = local.count || 0;
+  const merged = Math.max(before, incoming.count || 0);
+  const carried = merged - before;
+  local.count = merged;
+  lsSet(TOWER_USAGE_KEY, JSON.stringify(local));
+  return { applied: true, carriedEntries: carried };
+}
 function setSaveCodeMsg(text, ok) {
   const el = $.saveCodeMsg;
   el.textContent = text;
@@ -8285,7 +8305,7 @@ function setSaveCodeMsg(text, ok) {
 // This is always a move (the sender's character is deleted once the P2P ack
 // goes through), so the confirm text says so plainly — this is the one
 // destructive step the player can't undo from here.
-function applyImportedSaveData(data, dungeonUsage) {
+function applyImportedSaveData(data, dungeonUsage, towerUsage) {
   const hasExisting = running || !!loadSave();
   const message = hasExisting
     ? '현재 진행 상황을 덮어쓰고 이 캐릭터를 불러올까요? 보내는 기기의 캐릭터는 삭제돼요. 되돌릴 수 없어요.'
@@ -8301,8 +8321,9 @@ function applyImportedSaveData(data, dungeonUsage) {
   const encoded = encodeSavePayload(json);
   lsSet(SAVE_KEY, JSON.stringify({ data: encoded, chk: signPayload(encoded) }));
   const mergeResult = mergeIncomingDungeonUsage(dungeonUsage);
+  const towerMergeResult = mergeIncomingTowerUsage(towerUsage);
   running = false;
-  return mergeResult;
+  return { ...mergeResult, tower: towerMergeResult };
 }
 
 // ---------- 기기 간 전송 (Supabase 경유로 코드 주고받기 — 예전엔 PeerJS로
@@ -8410,7 +8431,7 @@ async function startSyncReceive() {
   // applyImportedSaveData가 확인창을 띄운다 — 취소하면 false를 돌려받고,
   // 이 경우 서버 상태를 건드리지 않아서(complete를 호출 안 함) 보내는
   // 기기는 계속 대기 상태 그대로 남는다.
-  const mergeResult = applyImportedSaveData(parsed.save, parsed.dungeonUsage);
+  const mergeResult = applyImportedSaveData(parsed.save, parsed.dungeonUsage, parsed.towerUsage);
   if (!mergeResult) { statusEl.textContent = '취소했어요.'; return; }
   try { await client.rpc('complete_save_transfer', { p_code: code, p_new_device_id: DEVICE_ID }); } catch (e) {}
   let extra = '';
@@ -8418,6 +8439,9 @@ async function startSyncReceive() {
     extra = ` (일일던전 사용시간 ${fmtDuration(mergeResult.carriedSeconds)} 반영됨)`;
   } else if (mergeResult.reason === 'stale-date') {
     extra = ' (일일던전 사용시간은 날짜가 달라 반영 안 됨)';
+  }
+  if (mergeResult.tower && mergeResult.tower.applied && mergeResult.tower.carriedEntries > 0) {
+    extra += ` (무한의 탑 오늘 입장 ${mergeResult.tower.carriedEntries}회 반영됨)`;
   }
   statusEl.textContent = '불러왔어요!' + extra + ' 잠시 후 새로고침됩니다...';
   setTimeout(() => location.reload(), 1400);
