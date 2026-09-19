@@ -179,6 +179,23 @@
   }
   #updateBanner button:active { filter:brightness(0.95); }
 
+  /* Save-health notice — see showSaveNotice() next to saveGame(). Top banner for
+     "저장이 안 되고 있어요" / in-app-browser / iOS 홈 화면 추가 안내. Dismissible. */
+  #saveNotice {
+    position:fixed; left:50%; top:calc(env(safe-area-inset-top, 0px) + 8px);
+    transform:translateX(-50%); z-index:9998; display:none;
+    background:linear-gradient(180deg,#3a2a4a,#241a30); border:2px solid var(--gold-a);
+    border-radius:14px; padding:8px 6px 8px 12px; box-shadow:0 6px 18px rgba(0,0,0,0.5);
+    align-items:center; gap:6px; width:max-content; max-width:92%;
+  }
+  #saveNotice.show { display:flex; }
+  #saveNotice.bad { border-color:#ff6b6b; }
+  #saveNotice span { color:#ffe08a; font-size:12px; font-weight:bold; line-height:1.45; }
+  #saveNotice.bad span { color:#ffc4c4; }
+  #saveNotice button { background:none; border:none; color:#ffe08a; font-size:18px; padding:2px 8px; flex-shrink:0; cursor:pointer; }
+  #lastSaveText { text-align:center; font-size:11px; color:#a99cc0; margin:2px 0 8px; }
+  #lastSaveText.bad { color:#ff8a8a; font-weight:bold; }
+
   #touchPad { position:absolute; inset:0; pointer-events:none; }
   /* Decorative "controller plate" behind each button cluster so the loose
      circles read as one grouped control instead of stray buttons floating
@@ -1196,6 +1213,10 @@
   <span id="updateBannerText">🔄 새 버전이 있어요</span>
   <button id="updateBannerBtn">지금 새로고침</button>
 </div>
+<div id="saveNotice">
+  <span id="saveNoticeText"></span>
+  <button id="saveNoticeClose" aria-label="닫기">✕</button>
+</div>
 <div id="onboardOverlay">
   <div id="onboardHighlight"></div>
   <div id="onboardBubble">
@@ -1440,6 +1461,7 @@
         </div>
         <button id="btnShake" class="menuItemBtn" title="화면 흔들림 켜기/끄기"><span class="miEmoji">📳</span> 화면 흔들림 켜기/끄기</button>
         <button id="btnSaveCode" class="menuItemBtn" title="저장 코드 백업/복원"><span class="miEmoji">💾</span> 기기 간 이어하기</button>
+        <div id="lastSaveText">💾 마지막 저장: 아직 없음</div>
         <button id="closeMenu">닫기</button>
       </div>
     </div>
@@ -8208,7 +8230,8 @@ function saveGame() {
   if (!running) return;
   const json = JSON.stringify(serializeSave());
   const encoded = encodeSavePayload(json);
-  lsSet(SAVE_KEY, JSON.stringify({ data: encoded, chk: signPayload(encoded) }));
+  // 저장 내용/키/포맷은 그대로 — lsSet의 성공 여부만 noteSaveResult로 넘겨서 감시한다.
+  noteSaveResult(lsSet(SAVE_KEY, JSON.stringify({ data: encoded, chk: signPayload(encoded) })));
 }
 function loadSave() {
   const raw = lsGet(SAVE_KEY);
@@ -8229,6 +8252,114 @@ function loadSave() {
   return sanitizeSaveData(migrateSaveData(parsed));
 }
 function clearSave() { lsRemove(SAVE_KEY); }
+
+// ---------- Save health monitoring ----------
+// 저장 실패 감지 / 안내 배너 / 마지막 저장 시각 표시.
+// 세이브 데이터·키·포맷·로드 로직은 전혀 건드리지 않는다(기존 유저 세이브 영향 없음).
+// 새로 쓰는 키는 안내 배너 쿨다운용 'forestTaleNotice_*' 뿐이다.
+var lastSaveAt = 0, saveFailStreak = 0, saveFailShown = false;
+var saveNoticeId = null, saveNoticeTimer = null;
+var SAVE_NOTICE_PRIORITY = { saveFail: 3, inApp: 2, iosTip: 1 };
+function showSaveNotice(id, text, autoHideMs) {
+  try {
+    if (saveNoticeId && SAVE_NOTICE_PRIORITY[saveNoticeId] > SAVE_NOTICE_PRIORITY[id]) return;
+    const box = document.getElementById('saveNotice');
+    if (!box) return;
+    clearTimeout(saveNoticeTimer);
+    saveNoticeId = id;
+    document.getElementById('saveNoticeText').textContent = text;
+    box.classList.toggle('bad', id === 'saveFail');
+    box.classList.add('show');
+    if (autoHideMs) saveNoticeTimer = setTimeout(() => hideSaveNotice(id), autoHideMs);
+  } catch (e) {}
+}
+function hideSaveNotice(id) {
+  try {
+    if (id && saveNoticeId !== id) return;
+    clearTimeout(saveNoticeTimer);
+    saveNoticeId = null;
+    const box = document.getElementById('saveNotice');
+    if (box) box.classList.remove('show');
+  } catch (e) {}
+}
+document.getElementById('saveNoticeClose').addEventListener('click', () => hideSaveNotice());
+
+const SAVE_FAIL_MSG = '⚠️ 저장이 안 되고 있어요! 사생활 보호 모드이거나 앱 내 브라우저(카톡 등), 저장 공간 부족일 수 있어요. Safari·Chrome 일반 탭에서 열어주세요.';
+function noteSaveResult(ok) {
+  try {
+    if (ok) {
+      lastSaveAt = Date.now();
+      if (saveFailStreak > 0 || saveFailShown) {
+        saveFailStreak = 0; saveFailShown = false;
+        hideSaveNotice('saveFail');
+      }
+    } else {
+      saveFailStreak++;
+      // 한 번 실패로는 배너를 띄우지 않는다(일시적 오류 방지) — 연속 2회부터.
+      if (saveFailStreak >= 2 && !saveFailShown) {
+        saveFailShown = true;
+        showSaveNotice('saveFail', SAVE_FAIL_MSG);
+      }
+    }
+    updateLastSaveText();
+  } catch (e) {}
+}
+function updateLastSaveText() {
+  const el = document.getElementById('lastSaveText');
+  if (!el) return;
+  if (saveFailStreak >= 2) {
+    el.textContent = '⚠️ 저장 실패 — 저장 공간에 접근할 수 없어요';
+    el.classList.add('bad');
+    return;
+  }
+  el.classList.remove('bad');
+  if (!lastSaveAt) { el.textContent = '💾 마지막 저장: 아직 없음'; return; }
+  const s = Math.max(0, Math.round((Date.now() - lastSaveAt) / 1000));
+  el.textContent = '💾 마지막 저장: ' + (s < 10 ? '방금 전' : s < 60 ? s + '초 전' : s < 3600 ? Math.floor(s / 60) + '분 전' : Math.floor(s / 3600) + '시간 전');
+}
+setInterval(updateLastSaveText, 2000);
+
+(function initSaveHealth() {
+  const UA = navigator.userAgent || '';
+  const IS_IOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const IS_STANDALONE = navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  const IS_INAPP = /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|FB_IAB|Line\/|DaumApps|everytimeApp|Snapchat|TikTok|musical_ly|; wv\)/i.test(UA);
+  function cooledDown(id, ms) {
+    const t = parseInt(lsGet('forestTaleNotice_' + id), 10);
+    return !(Number.isFinite(t) && Date.now() - t < ms);
+  }
+
+  // 저장 공간 자체가 막혀 있는지 시작 시점에 한 번 확인(쓰기→읽기→삭제).
+  try {
+    const ok = lsSet('forestTale_probe', '1') && lsGet('forestTale_probe') === '1';
+    lsRemove('forestTale_probe');
+    if (!ok) { saveFailStreak = 2; saveFailShown = true; showSaveNotice('saveFail', SAVE_FAIL_MSG); updateLastSaveText(); }
+  } catch (e) {}
+
+  // 브라우저가 저장소를 함부로 비우지 않도록 요청(파이어폭스는 팝업이 떠서 제외).
+  try {
+    if (!/firefox|fxios/i.test(UA) && navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().catch(() => {});
+    }
+  } catch (e) {}
+
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      if (saveNoticeId === 'saveFail') return;
+      if (IS_INAPP) {
+        if (cooledDown('inApp', 24 * 3600 * 1000)) {
+          lsSet('forestTaleNotice_inApp', String(Date.now()));
+          showSaveNotice('inApp', '📱 앱 내 브라우저(카톡 등)에서는 저장이 사라질 수 있어요. 앱의 ⋯(더보기) 메뉴에서 "Safari/기본 브라우저로 열기"로 접속해 주세요. 기존 진행은 메뉴 → 기기 간 이어하기로 옮길 수 있어요.', 15000);
+        }
+      } else if (IS_IOS && !IS_STANDALONE) {
+        if (cooledDown('iosTip', 3 * 24 * 3600 * 1000)) {
+          lsSet('forestTaleNotice_iosTip', String(Date.now()));
+          showSaveNotice('iosTip', '📲 아이폰은 Safari 공유 버튼 → "홈 화면에 추가"로 설치하면 저장이 더 안전해요.', 12000);
+        }
+      }
+    }, 1500);
+  });
+})();
 
 // ---------- Save transfer payload (P2P only — no server, no text code) ----------
 // Builds the {data, chk} payload used by the P2P send/receive flow below.
