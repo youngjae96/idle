@@ -1139,6 +1139,42 @@
   }
   #closeSaveCode:active { box-shadow: 0 1px 0 #1f6a45; transform: translateY(2px); }
 
+  /* ---- 🎁 보상 코드 입력 (redeemModal) — saveCodeModal과 같은 골격/톤 ---- */
+  #redeemModal {
+    position:fixed; inset:0; background:rgba(7,5,14,0.78); backdrop-filter:blur(4px) saturate(0.9);
+    display:none; align-items:center; justify-content:center; z-index:9999;
+  }
+  #redeemModal.open { display:flex; }
+  #redeemPanel {
+    width:90%; max-width:360px; max-height:85vh; max-height:85dvh;
+    display:flex; flex-direction:column;
+    background:linear-gradient(180deg,#243a2a,#182620);
+    border:3px solid #8adf9a; border-radius:14px; padding:14px;
+    animation:panelRise .22s ease-out both;
+    box-shadow:0 18px 38px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+  #redeemPanel h2 { color:#8adf9a; font-size:15px; margin-bottom:6px; text-align:center; flex-shrink:0; }
+  #redeemPanel .rdDesc { color:#a8c8ae; font-size:10.5px; line-height:1.5; text-align:center; }
+  #redeemInput {
+    width:100%; padding:10px; font-size:16px; font-family:monospace; text-align:center; letter-spacing:2px;
+    text-transform:uppercase;
+    background:rgba(0,0,0,0.35); border:2px solid #4a6a50; border-radius:8px; color:#e8ffe8; margin-top:10px;
+  }
+  #redeemInput:focus { outline:none; border-color:#8adf9a; }
+  #redeemPanel button { width:100%; padding:9px; font-weight:bold; border:none; border-radius:8px; font-size:12px; margin-top:8px; flex-shrink:0; }
+  #redeemSubmitBtn {
+    background:linear-gradient(180deg,#7ae0a8,#3a9a6a); color:#0a2a1a;
+    transition: transform .08s, box-shadow .08s; box-shadow: 0 3px 0 #1f6a45;
+  }
+  #redeemSubmitBtn:active { box-shadow: 0 1px 0 #1f6a45; transform: translateY(2px); }
+  #redeemSubmitBtn:disabled { opacity:0.5; }
+  #redeemMsg { min-height:16px; text-align:center; font-size:11.5px; margin-top:8px; color:#cdf5dc; line-height:1.4; }
+  #redeemMsg.err { color:#ff9c9c; }
+  #redeemMsg.ok { color:#ffe08a; font-weight:bold; }
+  #closeRedeem {
+    background:rgba(0,0,0,0.3); color:#cdf5dc; border:2px solid #4a6a50 !important; margin-top:10px !important; border-radius:10px !important;
+  }
+
   /* ---- shared depth/tactility pass for secondary buttons & toolbar icons ---- */
   #closeShop, #closeStatus, #closeTeleport, #closeChat {
     box-shadow: 0 3px 0 #362a4a; transition: transform .08s, box-shadow .08s; border-radius:10px;
@@ -1442,6 +1478,16 @@
         <button id="closeSaveCode">닫기</button>
       </div>
     </div>
+    <div id="redeemModal">
+      <div id="redeemPanel">
+        <h2>🎁 보상 코드 입력</h2>
+        <div class="rdDesc">운영자에게 받은 코드를 입력하면<br>보상이 바로 지급돼요. 코드는 <b>1회만</b> 사용할 수 있어요.</div>
+        <input id="redeemInput" type="text" maxlength="32" placeholder="코드 입력" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button id="redeemSubmitBtn">받기</button>
+        <div id="redeemMsg"></div>
+        <button id="closeRedeem">닫기</button>
+      </div>
+    </div>
     <!-- 상점/장비·텔레포트·채팅(친구연결)은 자주 쓰는 기능이라 HUD 상단에
          별도 아이콘 버튼으로 다시 꺼내놓았다. 나머지 자잘한 기능들만 이
          메뉴 하나로 모아둔다. -->
@@ -1461,6 +1507,7 @@
         </div>
         <button id="btnShake" class="menuItemBtn" title="화면 흔들림 켜기/끄기"><span class="miEmoji">📳</span> 화면 흔들림 켜기/끄기</button>
         <button id="btnSaveCode" class="menuItemBtn" title="저장 코드 백업/복원"><span class="miEmoji">💾</span> 기기 간 이어하기</button>
+        <button id="btnRedeem" class="menuItemBtn" title="보상 코드 입력"><span class="miEmoji">🎁</span> 보상 코드 입력</button>
         <div id="lastSaveText">💾 마지막 저장: 아직 없음</div>
         <button id="closeMenu">닫기</button>
       </div>
@@ -1976,7 +2023,7 @@ const TabLock = (function () {
 // BUILD_VERSION은 "build 표시용" 참고 라벨일 뿐, 업데이트 감지 자체와는
 // 무관하다 (안 바꿔도 새 버전 감지에 전혀 지장 없음) — 기기 간 전송 모달에
 // "이게 최신 코드가 맞나?" 눈으로 확인하는 용도로만 남겨둔다.
-const BUILD_VERSION = '2026-09-14.2-update-check-auto';
+const BUILD_VERSION = '2026-09-19.1-redeem-code';
 {
   const buildTag = document.getElementById('buildVersionTag');
   if (buildTag) buildTag.textContent = 'build ' + BUILD_VERSION;
@@ -6192,7 +6239,7 @@ function loop(nowMs) {
 // to be open, so tapping a different menu button doesn't leave two panels
 // stacked on top of each other — the player never has to close one by hand
 // before opening the next.
-const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'transformModal', 'globalChatModal', 'worldBossModal', 'guildModal', 'towerModal'];
+const MODAL_IDS = ['shopModal', 'statusModal', 'teleportModal', 'chatModal', 'saveCodeModal', 'redeemModal', 'jobSelectModal', 'offlineModal', 'menuModal', 'bestiaryModal', 'transformModal', 'globalChatModal', 'worldBossModal', 'guildModal', 'towerModal'];
 function openModal(id) {
   for (const modalId of MODAL_IDS) {
     if (modalId !== id) document.getElementById(modalId).classList.remove('open');
@@ -8624,6 +8671,83 @@ function openSaveCodeModal() {
 }
 document.getElementById('btnSaveCode').addEventListener('click', openSaveCodeModal);
 document.getElementById('closeSaveCode').addEventListener('click', () => { teardownSync(); closeModal('saveCodeModal'); });
+
+// ---------- 🎁 보상 코드 (redeem code) ----------
+// 코드/보상액/사용 이력은 전부 Supabase(redeem_codes, redeem_log 테이블 +
+// redeem_code RPC)에만 있다 — 소스에는 코드가 하나도 없고, "1회 사용"도 서버가
+// 판정하므로 localStorage를 지워도 재사용이 안 된다. 클라이언트는 서버가 준
+// 골드 액수를 받아 그대로 넣기만 한다. (redeem_codes.sql 참고)
+//
+// ⚠️ addGold()를 쓰면 안 된다: addGold는 패시브/펫/길드/전역 배율을 곱해서
+// "145만 지급"이 배율만큼 부풀려진다. 보상은 정확히 표기된 액수여야 하니
+// player.gold에 직접 더하고, 골드 원장(verifyGoldLedger)이 안 어긋나도록
+// recordEconomyEvent로 같은 값을 기록한다 — 변신 중복 환급과 같은 방식.
+const REDEEM_ERRORS = {
+  invalid:      '존재하지 않는 코드예요. 오타가 없는지 확인해주세요.',
+  already_used: '이미 사용한 코드예요.',
+  exhausted:    '이미 사용이 끝난 코드예요.',
+  expired:      '기간이 만료된 코드예요.',
+  bad_device:   '기기 정보를 확인할 수 없어요. 새로고침 후 다시 시도해주세요.',
+};
+let redeemBusy = false;          // RPC 응답 전 동기 락 — 연타/더블탭으로 중복 요청 방지
+let redeemCooldownUntil = 0;     // 실패 후 잠깐 쉬게 해서 코드 무작위 대입을 느리게 함
+function setRedeemMsg(text, kind) {
+  const el = document.getElementById('redeemMsg');
+  el.textContent = text;
+  el.className = kind || '';
+}
+async function submitRedeemCode() {
+  if (redeemBusy) return;
+  const input = document.getElementById('redeemInput');
+  const btn = document.getElementById('redeemSubmitBtn');
+  const code = input.value.trim().replace(/\s+/g, '').toUpperCase();
+  if (!code) { setRedeemMsg('코드를 입력해주세요.', 'err'); return; }
+  if (Date.now() < redeemCooldownUntil) {
+    setRedeemMsg('잠시 후 다시 시도해주세요.', 'err');
+    return;
+  }
+  const client = dungeonSb();
+  if (!client) { setRedeemMsg('서버에 연결할 수 없어요. 인터넷 연결을 확인해주세요.', 'err'); return; }
+  redeemBusy = true;
+  btn.disabled = true;
+  setRedeemMsg('확인 중...', '');
+  try {
+    const { data, error } = await client.rpc('redeem_code', { p_device_id: DEVICE_ID, p_code: code });
+    if (error) throw error;
+    const res = Array.isArray(data) ? data[0] : data;
+    if (!res || !res.ok) {
+      redeemCooldownUntil = Date.now() + 2500;
+      setRedeemMsg(REDEEM_ERRORS[res && res.reason] || '코드를 사용할 수 없어요.', 'err');
+      return;
+    }
+    const gold = Math.max(0, Math.round(Number(res.gold) || 0));
+    if (gold > 0) {
+      player.gold += gold;                         // 배율 없는 정확한 지급 (위 ⚠️ 참고)
+      recordEconomyEvent('redeem_code', gold, 0);  // 골드 원장 일치 유지
+      updateHUD();
+      saveGame();                                  // 새로고침/종료돼도 지급분이 날아가지 않게 즉시 저장
+      spawnFloatText(player.x + player.w/2, player.y - 40, `보상 +${fmtGold(gold)}💰`, '#ffd166');
+    }
+    input.value = '';
+    setRedeemMsg(`🎉 ${fmtGold(gold)}💰 지급 완료!`, 'ok');
+    showMsg(`🎁 보상 코드 +${fmtGold(gold)}💰`, 2600);
+  } catch (e) {
+    // 네트워크/서버 오류 — 이 경우 서버는 코드를 소진하지 않았을 가능성이 높으니 재시도 안내
+    setRedeemMsg('서버 오류가 발생했어요. 잠시 후 다시 시도해주세요.', 'err');
+  } finally {
+    redeemBusy = false;
+    btn.disabled = false;
+  }
+}
+function openRedeemModal() {
+  document.getElementById('redeemInput').value = '';
+  setRedeemMsg('', '');
+  openModal('redeemModal');
+}
+document.getElementById('btnRedeem').addEventListener('click', openRedeemModal);
+document.getElementById('closeRedeem').addEventListener('click', () => closeModal('redeemModal'));
+document.getElementById('redeemSubmitBtn').addEventListener('click', submitRedeemCode);
+document.getElementById('redeemInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitRedeemCode(); });
 
 // Estimate of gold/exp earned while away, based on current power vs. the
 // actual monsters in the map the player was farming (see
