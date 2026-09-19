@@ -3057,7 +3057,7 @@ function getOrCreateDeviceId() {
 }
 const DEVICE_ID = getOrCreateDeviceId();
 
-// 내가 직접 차단한 유저 목록 — 여기 적어두면 전체채팅/길드채팅/귓속말(P2P)
+// 내가 직접 차단한 유저 목록 — 여기 적어두면 전체채팅/길드채팅/P2P 친구연결 채팅
 // 어디서 와도 화면에 표시되지 않고, 조용히 무시된다. 닉네임은 공유 자원이라
 // (누구나 같은 닉네임을 다시 쓸 수 있음) job/level을 같이 적어두면 같은
 // 닉네임을 쓰는 다른 사람까지 오차단하는 걸 줄일 수 있다. job/level을 비워
@@ -3089,8 +3089,35 @@ function isBlockedPlayer(info) {
 // 지금 이 브라우저에서 플레이 중인 사람의 닉네임 자체가 차단 목록에 있는지.
 // 정적 페이지라 모든 플레이어가 같은 index.html을 받아가므로, 이 체크는
 // "차단된 사람의 브라우저에서" 실행돼 스스로 길드/멀티플레이를 막는 역할을 한다.
+// 서버 밴 목록(banned_devices)에 이 기기의 DEVICE_ID가 올라 있는지. 닉네임 차단과
+// 달리 재배포 없이 Supabase 대시보드에서 행 하나 추가/삭제로 제어하고, 캐릭터를
+// 지우고 새로 만들어도(DEVICE_ID는 세이브와 별개로 남는다) 그대로 걸린다.
+// 한 번 확인되면 localStorage에 캐싱해서 다음 접속부터는 로드 직후 서버 응답을
+// 기다리지 않고 바로 막는다 — 서버 응답이 오면 그 값으로 갱신(해제도 반영).
+const BAN_CACHE_KEY = 'forestTaleBanned';
+let deviceBanned = lsGet(BAN_CACHE_KEY) === '1';
 function isSelfBlocked() {
-  return typeof player !== 'undefined' && player && isBlockedPlayer(player);
+  return deviceBanned || (typeof player !== 'undefined' && player && isBlockedPlayer(player));
+}
+
+// ---------- 온라인 기능 최소 레벨 ----------
+// 레벨 1짜리 부캐를 계속 만들어서 길드 자리를 채우거나 채팅을 도배하는 식의 테러를
+// 막는 방어벽. 레벨은 클라이언트가 서버에 알려주는 값이라 코드를 아는 사람이
+// 직접 RPC를 부르면 우회할 수 있다 — 악의적인 사람은 기기 밴(banned_devices)으로
+// 처리하고, 이건 "일반 유저의 부캐 스팸"을 막는 용도. 숫자는 여기서만 바꾸면 된다.
+// 읽기(채팅 보기 등)는 막지 않고, 보내기/가입/입장만 막는다.
+const ONLINE_MIN_LEVEL = Object.freeze({
+  chat:        { level: 10, msg: '채팅은 Lv.10부터 보낼 수 있어요' },
+  multiplayer: { level: 10, msg: '멀티플레이는 Lv.10부터 이용할 수 있어요' },
+  guild:       { level: 20, msg: '길드는 Lv.20부터 가입하거나 만들 수 있어요' },
+  worldBoss:   { level: 20, msg: '월드보스는 Lv.20부터 도전할 수 있어요' },
+});
+// 레벨이 모자라면 화면에 보여줄 안내 문구를, 통과면 ''을 돌려준다.
+// (캐릭터가 아직 없는 상태는 각 기능의 기존 가드가 처리하므로 여기선 통과)
+function onlineLevelGate(feature) {
+  if (typeof player === 'undefined' || !player) return '';
+  const rule = ONLINE_MIN_LEVEL[feature];
+  return rule && player.level < rule.level ? rule.msg : '';
 }
 
 // Nicknames people should not be allowed to claim (impersonating staff, etc.)
@@ -3102,6 +3129,13 @@ function validateNickname(raw) {
   }
   const lower = val.toLowerCase();
   if (BLOCKED_NICKNAMES.some(w => lower.includes(w))) {
+    return { ok: false, reason: '사용할 수 없는 닉네임이에요.' };
+  }
+  // 차단 목록(MY_BLOCKED_PLAYERS)에 있는 닉네임은 새 캐릭터도 못 만들게 한다 —
+  // 안 그러면 같은 닉네임을 우연히 고른 무관한 유저가 채팅이 가려지고 길드/멀티가
+  // 막히는데 이유를 알 수 없다. 포함(includes)이 아니라 정확히 일치할 때만 막고,
+  // 사유는 굳이 알리지 않도록 위와 같은 문구를 쓴다.
+  if (isBlockedNickname(val)) {
     return { ok: false, reason: '사용할 수 없는 닉네임이에요.' };
   }
   return { ok: true, value: val };
@@ -4906,11 +4940,7 @@ function loadDungeonUsage() {
 // 폴백한다 (완전한 차단은 로그인 없이는 불가능하지만, 최소한 "키 하나
 // 지우기"로는 더 이상 우회되지 않는다).
 let serverDungeonUsage = {}; // group -> 서버가 마지막으로 알려준 사용 초
-function dungeonSb() {
-  if (typeof supabase === 'undefined') return null;
-  if (!sb) sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  return sb;
-}
+function dungeonSb() { return getSb(); } // 예전 이름 — 실제 생성은 getSb() 한 곳에서만
 async function refreshServerDungeonUsage(group) {
   const client = dungeonSb();
   if (!client) return;
@@ -7431,6 +7461,8 @@ function becomeLobbyHost(order, idx) {
 function startRandomMatch() {
   if (isMatching) return;
   if (isSelfBlocked()) { setMatchUI('done', '멀티플레이 기능을 사용할 수 없어요'); return; }
+  const mpLvGate = onlineLevelGate('multiplayer');
+  if (mpLvGate) { setMatchUI('done', mpLvGate); return; }
   if (Object.keys(connections).length > 0) {
     setMatchUI('done', '이미 연결된 모험가가 있어요. 먼저 현재 연결을 종료해주세요.');
     return;
@@ -7540,6 +7572,8 @@ $.copyPeerId.addEventListener('click', () => {
 document.getElementById('connectPeerBtn').addEventListener('click', () => {
   const code = document.getElementById('friendIdInput').value.trim();
   if (!/^\d{6}$/.test(code)) { addChatMessage('system', '방 번호는 숫자 6자리예요.'); return; }
+  const mpLvGate = onlineLevelGate('multiplayer');
+  if (mpLvGate) { addChatMessage('system', mpLvGate); return; }
   if (!peer) return;
   const targetId = ROOM_PREFIX + code;
   if (connections[targetId]) return;
@@ -7554,6 +7588,8 @@ function sendChatMessage() {
   const input = $.chatInput;
   const text = input.value.trim();
   if (!text) return;
+  const mpLvGate = onlineLevelGate('multiplayer');
+  if (mpLvGate) { addChatMessage('system', mpLvGate); return; }
   addChatMessage('me', text, player.nickname || '나', player.level);
   broadcastAll({ type:'chat', id: peer ? peer.id : null, nickname: player.nickname || '모험가', text, level: player.level });
   input.value = '';
@@ -8707,15 +8743,18 @@ async function submitRedeemCode() {
     setRedeemMsg('잠시 후 다시 시도해주세요.', 'err');
     return;
   }
-  const client = dungeonSb();
-  if (!client) { setRedeemMsg('서버에 연결할 수 없어요. 인터넷 연결을 확인해주세요.', 'err'); return; }
   redeemBusy = true;
   btn.disabled = true;
   setRedeemMsg('확인 중...', '');
   try {
-    const { data, error } = await client.rpc('redeem_code', { p_device_id: DEVICE_ID, p_code: code });
-    if (error) throw error;
-    const res = Array.isArray(data) ? data[0] : data;
+    const { data: res, error } = await callRpc('redeem_code', { p_device_id: DEVICE_ID, p_code: code }, { firstRow: true });
+    if (error) {
+      // 네트워크/서버 오류 — 이 경우 서버는 코드를 소진하지 않았을 가능성이 높으니 재시도 안내
+      setRedeemMsg(error.code === 'no-client'
+        ? '서버에 연결할 수 없어요. 인터넷 연결을 확인해주세요.'
+        : '서버 오류가 발생했어요. 잠시 후 다시 시도해주세요.', 'err');
+      return;
+    }
     if (!res || !res.ok) {
       redeemCooldownUntil = Date.now() + 2500;
       setRedeemMsg(REDEEM_ERRORS[res && res.reason] || '코드를 사용할 수 없어요.', 'err');
@@ -8732,9 +8771,6 @@ async function submitRedeemCode() {
     input.value = '';
     setRedeemMsg(`🎉 ${fmtGold(gold)}💰 지급 완료!`, 'ok');
     showMsg(`🎁 보상 코드 +${fmtGold(gold)}💰`, 2600);
-  } catch (e) {
-    // 네트워크/서버 오류 — 이 경우 서버는 코드를 소진하지 않았을 가능성이 높으니 재시도 안내
-    setRedeemMsg('서버 오류가 발생했어요. 잠시 후 다시 시도해주세요.', 'err');
   } finally {
     redeemBusy = false;
     btn.disabled = false;
@@ -9116,6 +9152,40 @@ const SUPABASE_URL = 'https://iymtczfpxqoctkdtjjpd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_lzqbd3FVK5PzCj-df5SONg_jI2vHvY5';
 // ⚠️ 범용 이름 전역 — 재선언/재사용 금지: sb (Supabase 클라이언트), presenceChannel
 let sb = null;
+// Supabase 클라이언트의 단일 진입점 — 새 코드는 createClient를 직접 부르지 말고
+// 항상 getSb()를 쓴다 (supabase-js가 아직 안 뜬 상태면 null).
+function getSb() {
+  if (typeof supabase === 'undefined') return null;
+  if (!sb) sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  return sb;
+}
+// RPC 호출 헬퍼 — 클라이언트 null 체크 + try/catch를 한 곳에 모아서, 절대 throw하지
+// 않고 { data, error }만 돌려준다. error.code === 'no-client'면 supabase-js 미로드/
+// 오프라인. 서버가 1행 테이블을 배열로 감싸 돌려주는 RPC는 { firstRow: true }로
+// 첫 행만 꺼낼 수 있다 (목록을 돌려주는 RPC에는 쓰지 말 것).
+// 새 RPC 호출은 이걸 쓰고, 기존 호출부는 손댈 일이 있을 때 옮긴다.
+async function callRpc(name, params, { firstRow = false } = {}) {
+  const client = getSb();
+  if (!client) return { data: null, error: Object.assign(new Error('supabase-unavailable'), { code: 'no-client' }) };
+  try {
+    const { data, error } = await client.rpc(name, params);
+    if (error) return { data: null, error };
+    return { data: firstRow && Array.isArray(data) ? data[0] : data, error: null };
+  } catch (e) {
+    return { data: null, error: e };
+  }
+}
+// 이 기기가 서버 밴 목록에 있는지 확인 (is_device_banned RPC, banned_devices.sql 참고).
+// 네트워크 오류/RPC 미생성 등으로 답을 못 받으면 기존 상태를 그대로 둔다(fail-open) —
+// 서버 문제 때문에 멀쩡한 유저가 갑자기 막히면 안 되니까. 밴 사실은 화면에 따로
+// 알리지 않고, 각 기능이 원래 쓰는 "입장할 수 없어요" 류 문구만 나온다.
+async function checkDeviceBan() {
+  const { data, error } = await callRpc('is_device_banned', { p_device_id: DEVICE_ID });
+  if (error || typeof data !== 'boolean') return;
+  deviceBanned = data;
+  if (data) lsSet(BAN_CACHE_KEY, '1'); else lsRemove(BAN_CACHE_KEY);
+}
+window.addEventListener('load', checkDeviceBan);
 let presenceChannel = null;
 let globalChatChannel = null;
 let globalChatHistoryLoaded = false;
@@ -9194,7 +9264,7 @@ function updateOnlineCountBadge(n) {
 // the panel is actually opened.
 function initPresence() {
   if (typeof supabase === 'undefined' || presenceChannel) return;
-  if (!sb) sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  getSb();
   presenceChannel = sb.channel('online-players', { config: { presence: { key: DEVICE_ID } } });
   presenceChannel
     .on('presence', { event: 'sync' }, () => {
@@ -9215,7 +9285,7 @@ function initPresence() {
 let globalChatListening = false;
 function initGlobalChatListener() {
   if (typeof supabase === 'undefined' || globalChatListening) return;
-  if (!sb) sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  getSb();
   globalChatListening = true;
   globalChatChannel = sb.channel('chat')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, payload => {
@@ -9237,7 +9307,7 @@ async function loadGlobalChatHistory() {
     return;
   }
   globalChatHistoryLoaded = true; // set first so a slow/failed fetch can't be retried into a duplicate history load
-  if (!sb) sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  getSb();
   // postgres_changes (see initGlobalChatListener) only pushes *new* rows
   // from the moment it subscribes, so without this one-time fetch the
   // panel would open empty.
@@ -9271,6 +9341,8 @@ function sendGlobalChatMsg() {
     return;
   }
   if (isSelfBlocked()) { $.globalChatInput.value = ''; return; }
+  const chatLvGate = onlineLevelGate('chat');
+  if (chatLvGate) { appendGlobalChatMsg('system', '', chatLvGate); return; }
   // Simple 1-per-second throttle — not real spam protection (that belongs
   // in an RLS policy / rate limit on the table), just stops accidental
   // double-taps from posting the same line twice.
@@ -9467,6 +9539,8 @@ async function enterWorldBossFight() {
   // 동기적으로 먼저 세팅해서 진짜 레이스 컨디션을 막는다.
   if (worldBossFightActive || worldBossEntering) return;
   if (isSelfBlocked()) { showMsg('월드보스에 도전할 수 없어요', 1400); return; }
+  const wbLvGate = onlineLevelGate('worldBoss');
+  if (wbLvGate) { showMsg(wbLvGate, 1800); return; }
   worldBossEntering = true;
   const enterBtn = document.getElementById('enterWorldBossBtn');
   if (enterBtn) enterBtn.disabled = true;
@@ -9818,6 +9892,8 @@ async function createGuildSubmit() {
   const msgEl = document.getElementById('guildCreateMsg');
   const name = nameInput.value.trim();
   if (!/^[가-힣a-zA-Z0-9 ]{2,12}$/.test(name)) { msgEl.textContent = '2~12자, 한글/영문/숫자/공백만 사용할 수 있어요.'; return; }
+  const lvGate = onlineLevelGate('guild');
+  if (lvGate) { msgEl.textContent = lvGate; return; }
   if (player.gold < GUILD_CREATE_COST) { msgEl.textContent = `골드가 부족해요 (${GUILD_CREATE_COST}💰 필요)`; return; }
   const client = guildSb();
   if (!client) { msgEl.textContent = '연결할 수 없어요 (인터넷 연결 확인)'; return; }
@@ -9850,6 +9926,8 @@ async function createGuildSubmit() {
 }
 async function joinGuild(guildId, name) {
   if (isSelfBlocked()) { showMsg('가입할 수 없어요', 1200); return; }
+  const lvGate = onlineLevelGate('guild');
+  if (lvGate) { showMsg(lvGate, 1800); return; }
   const client = guildSb();
   if (!client) { showMsg('연결할 수 없어요', 1200); return; }
   try {
@@ -10143,6 +10221,8 @@ function sendGuildChatMsg() {
   const input = document.getElementById('guildChatInput');
   const text = input.value.trim().slice(0, 200);
   if (!text || !myGuild) return;
+  const chatLvGate = onlineLevelGate('chat');
+  if (chatLvGate) { showMsg(chatLvGate, 1800); return; }
   const client = guildSb();
   if (!client) return;
   const now = Date.now();
