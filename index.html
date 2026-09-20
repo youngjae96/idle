@@ -9179,12 +9179,49 @@ async function callRpc(name, params, { firstRow = false } = {}) {
     return { data: null, error: e };
   }
 }
+// canvas 렌더링 + 화면/폰트/타임존 정보를 조합해 기기 지문 해시를 만든다.
+// localStorage에 저장하지 않고 매번 새로 계산 — 저장된 값이 아니라 기기
+// 자체의 특성에서 나오는 값이라야 device_id(localStorage)를 지워도 그대로 나온다.
+function computeFingerprint() {
+  try {
+    const c = document.createElement('canvas');
+    const ctx = c.getContext('2d');
+    ctx.textBaseline = 'top';
+    ctx.font = '14px Arial';
+    ctx.fillText('fp-idle-forest-tale', 2, 2);
+    const canvasData = c.toDataURL();
+
+    const raw = [
+      navigator.userAgent,
+      navigator.language,
+      screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+      navigator.hardwareConcurrency || '',
+      canvasData,
+    ].join('||');
+
+    // 간단한 FNV-1a 해시 (외부 라이브러리 없이 문자열 -> 32bit hex)
+    let h = 0x811c9dc5;
+    for (let i = 0; i < raw.length; i++) {
+      h ^= raw.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0).toString(16);
+  } catch (e) {
+    return null; // 계산 실패 시 null — 서버 쪽에서 null은 그냥 device_id만으로 체크
+  }
+}
+
 // 이 기기가 서버 밴 목록에 있는지 확인 (is_device_banned RPC, banned_devices.sql 참고).
+// device_id와 함께 fingerprint도 같이 보낸다 — 이 함수는 window load 시 무조건
+// 한 번 실행되므로(길드/월드보스 등 특정 기능 사용 여부와 무관), 접속하는 모든
+// 유저의 device_id-fingerprint 매핑이 device_sightings에 빠짐없이 쌓인다.
 // 네트워크 오류/RPC 미생성 등으로 답을 못 받으면 기존 상태를 그대로 둔다(fail-open) —
 // 서버 문제 때문에 멀쩡한 유저가 갑자기 막히면 안 되니까. 밴 사실은 화면에 따로
 // 알리지 않고, 각 기능이 원래 쓰는 "입장할 수 없어요" 류 문구만 나온다.
 async function checkDeviceBan() {
-  const { data, error } = await callRpc('is_device_banned', { p_device_id: DEVICE_ID });
+  const fp = computeFingerprint();
+  const { data, error } = await callRpc('is_device_banned', { p_device_id: DEVICE_ID, p_fingerprint: fp });
   if (error || typeof data !== 'boolean') return;
   deviceBanned = data;
   if (data) lsSet(BAN_CACHE_KEY, '1'); else lsRemove(BAN_CACHE_KEY);
